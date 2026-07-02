@@ -1,4 +1,43 @@
+import { useRef, useState } from "react";
+
 function MessageInput({ input, setInput, sendMessage, loading }) {
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef(null);
+
+  function startListening() {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Speech recognition या browser मध्ये support नाही.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-IN";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => setListening(true);
+
+    recognition.onresult = (event) => {
+      const text = event.results[0][0].transcript;
+      setInput(text);
+    };
+
+    recognition.onend = () => setListening(false);
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  }
+
+  function stopListening() {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    setListening(false);
+  }
+
   return (
     <div className="p-5 border-t border-slate-800 bg-slate-950 flex gap-3">
       <input
@@ -8,6 +47,15 @@ function MessageInput({ input, setInput, sendMessage, loading }) {
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && sendMessage()}
       />
+
+      <button
+        onClick={listening ? stopListening : startListening}
+        className={`px-4 rounded-xl text-white font-bold ${
+          listening ? "bg-red-600" : "bg-purple-600"
+        }`}
+      >
+        🎤
+      </button>
 
       <button
         onClick={sendMessage}
