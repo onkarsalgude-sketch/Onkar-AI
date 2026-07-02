@@ -1,15 +1,22 @@
-# Virtual Environment
-.venv/
-
 # Python
+.venv/
 __pycache__/
-*.py[cod]
+*.pyc
 
-# Environment variables
-.env
+# Chroma DB
+app/vector_db/
+
+# Uploaded PDFs
+app/uploads/
+
+# Node
+frontend/node_modules/
+
+# Build
+frontend/dist/
 
 # VS Code
 .vscode/
 
-# Logs
-*.log
+# Environment
+.env
