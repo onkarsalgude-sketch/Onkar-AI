@@ -1,17 +1,23 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
+from app.api.chat import router as chat_router
+from app.api.documents import router as documents_router
 
 app = FastAPI(title="Onkar AI")
+from fastapi.middleware.cors import CORSMiddleware
 
-class ChatRequest(BaseModel):
-    message: str
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.get("/")
 def root():
     return {"message": "Onkar AI is running 🚀"}
 
-@app.post("/chat")
-def chat(request: ChatRequest):
-    return {
-        "reply": f"Onkar AI received your message: {request.message}"
-    }
+
+app.include_router(chat_router)
+app.include_router(documents_router)
