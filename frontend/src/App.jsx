@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 
 import Sidebar from "./components/Sidebar";
@@ -18,6 +18,26 @@ function App() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  useEffect(() => {
+  loadHistory();
+}, []);
+
+async function loadHistory() {
+  try {
+    const res = await axios.get("http://127.0.0.1:8000/chat/history");
+
+    if (res.data.messages.length > 0) {
+      setMessages(
+        res.data.messages.map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+        }))
+      );
+    }
+  } catch (err) {
+    console.log(err);
+  }
+}
 
   function newChat() {
     setMessages([
@@ -51,6 +71,15 @@ function App() {
           content: `✅ PDF uploaded successfully!\n\n📄 ${file.name}\nChunks: ${res.data.chunks}`,
         },
       ]);
+      // AI Voice Reply
+const speech = new SpeechSynthesisUtterance(res.data.reply);
+
+speech.lang = "en-IN";
+speech.rate = 1;
+speech.pitch = 1;
+
+window.speechSynthesis.cancel();
+window.speechSynthesis.speak(speech);
     } catch {
       setMessages((prev) => [
         ...prev,
