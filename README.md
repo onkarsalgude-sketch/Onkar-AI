@@ -1,27 +1,88 @@
-# Onkar AI 🤖
+# 🤖 Onkar AI
 
-An AI-powered Personal Assistant built with FastAPI, IBM watsonx.ai, React, Flutter, and Agentic AI.
+A Personal AI Assistant powered by Local LLM, FastAPI, React and RAG.
 
-## 🚀 Current Features
+---
 
-- FastAPI Backend
-- REST API
-- Chat API
-- Git Version Control
+## ✨ Features
+
+- 💬 AI Chat Assistant
+- 📄 PDF Upload
+- 🔍 Semantic Search using ChromaDB
+- 🧠 Retrieval-Augmented Generation (RAG)
+- 🤖 Local LLM using Ollama
+- ⚡ FastAPI Backend
+- 🎨 React Frontend
+- 💾 Conversation Memory
+
+---
 
 ## 🛠 Tech Stack
 
+### Backend
 - Python
 - FastAPI
-- Uvicorn
-- Git
-- IBM watsonx.ai (Coming Soon)
-- React (Coming Soon)
-- Flutter (Coming Soon)
+- Ollama
+- ChromaDB
+- Sentence Transformers
+
+### Frontend
+- React
+- Axios
+- CSS
+
+---
+
+## 📁 Project Structure
+
+```
+Onkar-AI
+│
+├── app
+│   ├── api
+│   ├── services
+│   ├── memory
+│   ├── uploads
+│   └── vector_db
+│
+├── frontend
+│   ├── src
+│   ├── public
+│   └── components
+│
+└── requirements.txt
+```
+
+---
+
+## 🚀 Installation
+
+### Backend
+
+```bash
+pip install -r requirements.txt
+python -m uvicorn app.main:app --reload
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+---
+
+## 📷 Screenshots
+
+(Add screenshots here)
+
+---
 
 ## 👨‍💻 Author
 
-Onkar Haribhau Salgude
+**Onkar Haribhau Salgude**
 
 GitHub:
 https://github.com/onkarsalgude-sketch
