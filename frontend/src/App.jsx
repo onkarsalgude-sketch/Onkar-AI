@@ -18,8 +18,10 @@ function App() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [documents, setDocuments] = useState([]);
   useEffect(() => {
   loadHistory();
+  loadDocuments();
 }, []);
 
 async function loadHistory() {
@@ -38,15 +40,47 @@ async function loadHistory() {
     console.log(err);
   }
 }
+async function loadDocuments() {
+  try {
+    const res = await axios.get("http://127.0.0.1:8000/documents");
+    setDocuments(res.data.documents);
+  } catch (err) {
+    console.log(err);
+  }
+}
+async function deleteDocument(filename) {
+  try {
+    await axios.delete(`http://127.0.0.1:8000/documents/${filename}`);
 
-  function newChat() {
+    await loadDocuments();
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        content: `🗑️ ${filename} deleted successfully.`,
+      },
+    ]);
+  } catch (err) {
+    console.log(err);
+  }
+}
+
+ async function newChat() {
+  try {
+    await axios.delete("http://127.0.0.1:8000/chat/history");
+
     setMessages([
       {
         role: "assistant",
-        content: "👋 New chat started. PDF upload कर किंवा काहीही विचार.",
+        content:
+          "👋 Hi Onkar!\n\nमी तुझा Personal AI Assistant आहे.\nPDF upload कर किंवा काहीही विचार.",
       },
     ]);
+  } catch (err) {
+    console.log(err);
   }
+}
 
   async function uploadPDF(e) {
     const file = e.target.files[0];
@@ -64,6 +98,7 @@ async function loadHistory() {
         { headers: { "Content-Type": "multipart/form-data" } }
       );
 
+      await loadDocuments();
       setMessages((prev) => [
         ...prev,
         {
@@ -71,15 +106,7 @@ async function loadHistory() {
           content: `✅ PDF uploaded successfully!\n\n📄 ${file.name}\nChunks: ${res.data.chunks}`,
         },
       ]);
-      // AI Voice Reply
-const speech = new SpeechSynthesisUtterance(res.data.reply);
-
-speech.lang = "en-IN";
-speech.rate = 1;
-speech.pitch = 1;
-
-window.speechSynthesis.cancel();
-window.speechSynthesis.speak(speech);
+      
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -130,7 +157,13 @@ window.speechSynthesis.speak(speech);
 
   return (
     <div className="flex">
-      <Sidebar uploadPDF={uploadPDF} uploading={uploading} newChat={newChat} />
+      <Sidebar
+  uploadPDF={uploadPDF}
+  uploading={uploading}
+  newChat={newChat}
+  documents={documents}
+  deleteDocument={deleteDocument}
+/>
 
       <ChatWindow
         messages={messages}
