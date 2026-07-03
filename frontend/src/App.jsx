@@ -1,86 +1,44 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
-
 import Sidebar from "./components/Sidebar";
 import ChatWindow from "./components/ChatWindow";
+
+import useChat from "./hooks/useChat";
+
+import {
+  uploadDocument,
+  getDocuments,
+  deleteDocumentApi,
+} from "./services/documentService";
+
+import { useEffect, useState } from "react";
 
 import "./App.css";
 
 function App() {
-  const [messages, setMessages] = useState([
-    {
-      role: "assistant",
-      content:
-        "👋 Hi Onkar!\n\nमी तुझा Personal AI Assistant आहे.\nPDF upload कर किंवा काहीही विचार.",
-    },
-  ]);
+  const {
+    messages,
+    setMessages,
+    input,
+    setInput,
+    loading,
+    newChat,
+    sendMessage,
+  } = useChat();
 
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [documents, setDocuments] = useState([]);
+
   useEffect(() => {
-  loadHistory();
-  loadDocuments();
-}, []);
+    loadDocuments();
+  }, []);
 
-async function loadHistory() {
-  try {
-    const res = await axios.get("http://127.0.0.1:8000/chat/history");
-
-    if (res.data.messages.length > 0) {
-      setMessages(
-        res.data.messages.map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        }))
-      );
+  async function loadDocuments() {
+    try {
+      const res = await getDocuments();
+      setDocuments(res.data.documents);
+    } catch (err) {
+      console.log(err);
     }
-  } catch (err) {
-    console.log(err);
   }
-}
-async function loadDocuments() {
-  try {
-    const res = await axios.get("http://127.0.0.1:8000/documents");
-    setDocuments(res.data.documents);
-  } catch (err) {
-    console.log(err);
-  }
-}
-async function deleteDocument(filename) {
-  try {
-    await axios.delete(`http://127.0.0.1:8000/documents/${filename}`);
-
-    await loadDocuments();
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "assistant",
-        content: `🗑️ ${filename} deleted successfully.`,
-      },
-    ]);
-  } catch (err) {
-    console.log(err);
-  }
-}
-
- async function newChat() {
-  try {
-    await axios.delete("http://127.0.0.1:8000/chat/history");
-
-    setMessages([
-      {
-        role: "assistant",
-        content:
-          "👋 Hi Onkar!\n\nमी तुझा Personal AI Assistant आहे.\nPDF upload कर किंवा काहीही विचार.",
-      },
-    ]);
-  } catch (err) {
-    console.log(err);
-  }
-}
 
   async function uploadPDF(e) {
     const file = e.target.files[0];
@@ -92,13 +50,10 @@ async function deleteDocument(filename) {
     setUploading(true);
 
     try {
-      const res = await axios.post(
-        "http://127.0.0.1:8000/documents/upload",
-        formData,
-        { headers: { "Content-Type": "multipart/form-data" } }
-      );
+      const res = await uploadDocument(formData);
 
       await loadDocuments();
+
       setMessages((prev) => [
         ...prev,
         {
@@ -106,7 +61,6 @@ async function deleteDocument(filename) {
           content: `✅ PDF uploaded successfully!\n\n📄 ${file.name}\nChunks: ${res.data.chunks}`,
         },
       ]);
-      
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -120,50 +74,32 @@ async function deleteDocument(filename) {
     setUploading(false);
   }
 
-  async function sendMessage() {
-    if (!input.trim()) return;
-
-    const text = input;
-
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
-
-    setInput("");
-    setLoading(true);
-
+  async function deleteDocument(filename) {
     try {
-      const res = await axios.post("http://127.0.0.1:8000/chat", {
-        message: text,
-      });
+      await deleteDocumentApi(filename);
+      await loadDocuments();
 
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: res.data.reply,
+          content: `🗑️ ${filename} deleted successfully.`,
         },
       ]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "❌ Backend connection failed.",
-        },
-      ]);
+    } catch (err) {
+      console.log(err);
     }
-
-    setLoading(false);
   }
 
   return (
     <div className="flex">
       <Sidebar
-  uploadPDF={uploadPDF}
-  uploading={uploading}
-  newChat={newChat}
-  documents={documents}
-  deleteDocument={deleteDocument}
-/>
+        uploadPDF={uploadPDF}
+        uploading={uploading}
+        newChat={newChat}
+        documents={documents}
+        deleteDocument={deleteDocument}
+      />
 
       <ChatWindow
         messages={messages}
@@ -171,6 +107,7 @@ async function deleteDocument(filename) {
         setInput={setInput}
         sendMessage={sendMessage}
         loading={loading}
+        uploadPDF={uploadPDF}
       />
     </div>
   );
