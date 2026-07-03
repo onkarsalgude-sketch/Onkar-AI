@@ -1,88 +1,126 @@
 # 🤖 Onkar AI
 
-A Personal AI Assistant powered by Local LLM, FastAPI, React and RAG.
+> A Full Stack AI Assistant built with React, FastAPI, Ollama, ChromaDB, and SQLite.
+
+![Status](https://img.shields.io/badge/Status-Active-success)
+![Python](https://img.shields.io/badge/Python-3.12-blue)
+![React](https://img.shields.io/badge/React-18-61DAFB)
+![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688)
+![Ollama](https://img.shields.io/badge/Ollama-Local%20LLM-black)
 
 ---
 
-## ✨ Features
+# 📌 Overview
 
-- 💬 AI Chat Assistant
-- 📄 PDF Upload
-- 🔍 Semantic Search using ChromaDB
+Onkar AI is a local AI assistant that combines a Large Language Model (LLM), Retrieval-Augmented Generation (RAG), Internet Search, Voice Interaction, and PDF Knowledge Base into a single application.
+
+The project is designed as a production-style AI assistant using modern full-stack technologies.
+
+---
+
+# ✨ Features
+
+- 🤖 Local AI using Ollama
+- 📄 PDF Upload & Knowledge Base
 - 🧠 Retrieval-Augmented Generation (RAG)
-- 🤖 Local LLM using Ollama
+- 🌐 Internet Search Fallback
+- 🎤 Voice Input
+- 🔊 Voice Output
+- 💬 Chat History (SQLite)
+- 📂 Uploaded File Manager
+- 🗑 Delete Uploaded PDFs
+- 📋 Copy AI Responses
+- 🎨 Professional React UI
 - ⚡ FastAPI Backend
-- 🎨 React Frontend
-- 💾 Conversation Memory
 
 ---
 
-## 🛠 Tech Stack
+# 🛠 Tech Stack
 
-### Backend
-- Python
+## Frontend
+
+- React
+- Vite
+- JavaScript
+- Tailwind CSS
+
+## Backend
+
 - FastAPI
+- Python
 - Ollama
 - ChromaDB
-- Sentence Transformers
-
-### Frontend
-- React
-- Axios
-- CSS
+- SQLite
 
 ---
 
-## 📁 Project Structure
+# 🏗 Architecture
 
+```text
+User
+   │
+   ▼
+React Frontend
+   │
+   ▼
+FastAPI Backend
+   │
+   ▼
+Brain Agent
+   │
+ ┌───────────────┐
+ │               │
+ ▼               ▼
+RAG         Internet Search
+ │               │
+ └──────┬────────┘
+        ▼
+     Ollama LLM
+        ▼
+   AI Response
 ```
+
+---
+
+# 📂 Folder Structure
+
+```text
 Onkar-AI
 │
 ├── app
-│   ├── api
-│   ├── services
-│   ├── memory
-│   ├── uploads
-│   └── vector_db
-│
 ├── frontend
-│   ├── src
-│   ├── public
-│   └── components
-│
-└── requirements.txt
+├── screenshots
+├── README.md
+├── requirements.txt
+└── .gitignore
 ```
 
 ---
 
-## 🚀 Installation
+# 📸 Screenshots
 
-### Backend
-
-```bash
-pip install -r requirements.txt
-python -m uvicorn app.main:app --reload
-```
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
+Coming Soon...
 
 ---
 
-## 📷 Screenshots
+# 🚀 Future Improvements
 
-(Add screenshots here)
+- Streaming Responses
+- Image AI
+- Multiple AI Models
+- OCR
+- Docker
+- Cloud Deployment
+- Settings Page
 
 ---
 
-## 👨‍💻 Author
+# 👨‍💻 Developer
 
 **Onkar Haribhau Salgude**
 
-GitHub:
-https://github.com/onkarsalgude-sketch
+B.Sc. (Computer Applications)
+
+---
+
+# ⭐ If you like this project, don't forget to star the repository.
