@@ -1,7 +1,9 @@
 import ReactMarkdown from "react-markdown";
+import { useState } from "react";
 
 function Message({ role, content }) {
   const isUser = role === "user";
+  const [copied, setCopied] = useState(false);
 
   function speak() {
     const speech = new SpeechSynthesisUtterance(content);
@@ -11,6 +13,15 @@ function Message({ role, content }) {
 
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(speech);
+  }
+
+  async function copyText() {
+    await navigator.clipboard.writeText(content);
+    setCopied(true);
+
+    setTimeout(() => {
+      setCopied(false);
+    }, 2000);
   }
 
   return (
@@ -25,12 +36,35 @@ function Message({ role, content }) {
         <ReactMarkdown>{content}</ReactMarkdown>
 
         {!isUser && (
-          <button
-            onClick={speak}
-            className="mt-3 text-sm bg-purple-600 px-3 py-1 rounded-lg"
-          >
-            🔊 Speak
-          </button>
+          <div className="flex gap-2 mt-4">
+
+            <button
+              onClick={copyText}
+              className="bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded-lg text-sm"
+            >
+              {copied ? "✅ Copied" : "📋 Copy"}
+            </button>
+
+            <button
+              onClick={speak}
+              className="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded-lg text-sm"
+            >
+              🔊 Speak
+            </button>
+
+            <button
+              className="bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded-lg"
+            >
+              👍
+            </button>
+
+            <button
+              className="bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded-lg"
+            >
+              👎
+            </button>
+
+          </div>
         )}
       </div>
     </div>
