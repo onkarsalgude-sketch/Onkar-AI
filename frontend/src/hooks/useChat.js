@@ -34,13 +34,14 @@ export default function useChat() {
   }
 
   async function newChat() {
-    try {
-      await clearHistory();
-      setMessages([welcomeMessage]);
-    } catch (err) {
-      console.log(err);
-    }
+  try {
+    await clearHistory();
+  } catch (err) {
+    console.log("Backend not connected, clearing frontend only");
   }
+
+  setMessages([welcomeMessage]);
+}
 
   async function sendMessage() {
     if (!input.trim()) return;
