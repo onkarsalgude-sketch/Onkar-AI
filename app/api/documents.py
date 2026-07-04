@@ -2,8 +2,11 @@ import os
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File
 
+from app.services.rag_service import RAGService
+
 router = APIRouter()
 
+rag = RAGService()
 
 @router.post("/documents/upload")
 async def upload_pdf(file: UploadFile = File(...)):
@@ -14,10 +17,9 @@ async def upload_pdf(file: UploadFile = File(...)):
     with open(file_path, "wb") as f:
         f.write(await file.read())
 
-    return {
-        "message": "PDF uploaded successfully. RAG is disabled on cloud free tier.",
-        "chunks": 0
-    }
+    result = rag.add_pdf(file_path)
+
+    return result
 
 
 @router.get("/documents/search")
