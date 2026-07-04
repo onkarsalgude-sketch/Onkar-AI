@@ -2,33 +2,33 @@ import os
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File
 
-from app.services.rag_service import RAGService
-
 router = APIRouter()
-
-rag = RAGService()
 
 
 @router.post("/documents/upload")
 async def upload_pdf(file: UploadFile = File(...)):
+    os.makedirs("app/uploads", exist_ok=True)
+
     file_path = os.path.join("app/uploads", file.filename)
 
     with open(file_path, "wb") as f:
         f.write(await file.read())
 
-    result = rag.add_pdf(file_path)
-    return result
+    return {
+        "message": "PDF uploaded successfully. RAG is disabled on cloud free tier.",
+        "chunks": 0
+    }
 
 
 @router.get("/documents/search")
 async def search_documents(query: str):
-    
-    results = rag.search(query)
-    return {"results": results}
+    return {"results": []}
+
 
 @router.get("/documents")
 async def list_documents():
     upload_path = Path("app/uploads")
+    upload_path.mkdir(parents=True, exist_ok=True)
 
     files = []
 
@@ -39,6 +39,8 @@ async def list_documents():
         })
 
     return {"documents": files}
+
+
 @router.delete("/documents/{filename}")
 async def delete_document(filename: str):
     file_path = Path("app/uploads") / filename
