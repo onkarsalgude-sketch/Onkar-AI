@@ -1,31 +1,43 @@
-import { useState } from "react";
-import axios from "axios";
-
 import Sidebar from "./components/Sidebar";
 import ChatWindow from "./components/ChatWindow";
+
+import useChat from "./hooks/useChat";
+
+import {
+  uploadDocument,
+  getDocuments,
+  deleteDocumentApi,
+} from "./services/documentService";
+
+import { useEffect, useState } from "react";
 
 import "./App.css";
 
 function App() {
-  const [messages, setMessages] = useState([
-    {
-      role: "assistant",
-      content:
-        "👋 Hi Onkar!\n\nमी तुझा Personal AI Assistant आहे.\nPDF upload कर किंवा काहीही विचार.",
-    },
-  ]);
+  const {
+    messages,
+    setMessages,
+    input,
+    setInput,
+    loading,
+    newChat,
+    sendMessage,
+  } = useChat();
 
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [documents, setDocuments] = useState([]);
 
-  function newChat() {
-    setMessages([
-      {
-        role: "assistant",
-        content: "👋 New chat started. PDF upload कर किंवा काहीही विचार.",
-      },
-    ]);
+  useEffect(() => {
+    loadDocuments();
+  }, []);
+
+  async function loadDocuments() {
+    try {
+      const res = await getDocuments();
+      setDocuments(res.data.documents);
+    } catch (err) {
+      console.log(err);
+    }
   }
 
   async function uploadPDF(e) {
@@ -38,11 +50,9 @@ function App() {
     setUploading(true);
 
     try {
-      const res = await axios.post(
-        "http://127.0.0.1:8000/documents/upload",
-        formData,
-        { headers: { "Content-Type": "multipart/form-data" } }
-      );
+      const res = await uploadDocument(formData);
+
+      await loadDocuments();
 
       setMessages((prev) => [
         ...prev,
@@ -64,44 +74,32 @@ function App() {
     setUploading(false);
   }
 
-  async function sendMessage() {
-    if (!input.trim()) return;
-
-    const text = input;
-
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
-
-    setInput("");
-    setLoading(true);
-
+  async function deleteDocument(filename) {
     try {
-      const res = await axios.post("http://127.0.0.1:8000/chat", {
-        message: text,
-      });
+      await deleteDocumentApi(filename);
+      await loadDocuments();
 
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: res.data.reply,
+          content: `🗑️ ${filename} deleted successfully.`,
         },
       ]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "❌ Backend connection failed.",
-        },
-      ]);
+    } catch (err) {
+      console.log(err);
     }
-
-    setLoading(false);
   }
 
   return (
     <div className="flex">
-      <Sidebar uploadPDF={uploadPDF} uploading={uploading} newChat={newChat} />
+      <Sidebar
+        uploadPDF={uploadPDF}
+        uploading={uploading}
+        newChat={newChat}
+        documents={documents}
+        deleteDocument={deleteDocument}
+      />
 
       <ChatWindow
         messages={messages}
@@ -109,6 +107,7 @@ function App() {
         setInput={setInput}
         sendMessage={sendMessage}
         loading={loading}
+        uploadPDF={uploadPDF}
       />
     </div>
   );

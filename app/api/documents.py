@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from fastapi import APIRouter, UploadFile, File
 
 from app.services.rag_service import RAGService
@@ -21,5 +22,30 @@ async def upload_pdf(file: UploadFile = File(...)):
 
 @router.get("/documents/search")
 async def search_documents(query: str):
+    
     results = rag.search(query)
     return {"results": results}
+
+@router.get("/documents")
+async def list_documents():
+    upload_path = Path("app/uploads")
+
+    files = []
+
+    for file in upload_path.glob("*.pdf"):
+        files.append({
+            "name": file.name,
+            "size": round(file.stat().st_size / 1024, 2)
+        })
+
+    return {"documents": files}
+@router.delete("/documents/{filename}")
+async def delete_document(filename: str):
+    file_path = Path("app/uploads") / filename
+
+    if not file_path.exists():
+        return {"message": "File not found"}
+
+    file_path.unlink()
+
+    return {"message": "Document deleted", "filename": filename}
