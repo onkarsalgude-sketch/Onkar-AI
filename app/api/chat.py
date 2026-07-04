@@ -9,6 +9,7 @@ from app.services.history_service import (
     get_messages,
     clear_history,
 )
+from app.memory.memory import clear
 
 router = APIRouter()
 
@@ -52,4 +53,6 @@ def chat_history():
 @router.delete("/chat/history")
 def delete_history():
     clear_history()
+    clear()
+
     return {"message": "Chat history cleared"}
