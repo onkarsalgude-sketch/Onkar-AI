@@ -41,6 +41,7 @@ export default function useChat() {
   }
 
   setMessages([welcomeMessage]);
+  setInput("");
 }
 
   async function sendMessage() {
