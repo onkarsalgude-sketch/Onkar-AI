@@ -70,51 +70,33 @@ function Sidebar({
           Recent Chats
         </h3>
 
-       <div className="space-y-2">
-  {chats.length === 0 ? (
-    <p className="text-slate-500 text-sm">
-      No chats
-    </p>
-  ) : (
-    chats.map((chat) => (
-  <div
-    key={chat.id}
-    className={`rounded-lg ${
-      activeChatId === chat.id
-        ? "bg-blue-600"
-        : "bg-slate-900"
-    }`}
-  >
-    <div className="flex items-center justify-between p-3">
-      <button
-        onClick={() => selectChat(chat.id)}
-        className="flex-1 text-left"
-      >
-        💬 {chat.title}
-      </button>
+        <div className="space-y-2">
+          {chats.map((chat) => (
+            <div
+              key={chat.id}
+              className={`flex justify-between items-center rounded-lg p-3 cursor-pointer ${
+                activeChatId === chat.id
+                  ? "bg-blue-600"
+                  : "bg-slate-900 hover:bg-slate-800"
+              }`}
+            >
+              <div
+                className="flex-1"
+                onClick={() => selectChat(chat.id)}
+              >
+                💬 {chat.title}
+              </div>
 
-      <div className="flex gap-2">
-        <button
-          onClick={() => renameCurrentChat(chat.id)}
-          title="Rename"
-        >
-          ✏️
-        </button>
-
-        <button
-          onClick={() => deleteCurrentChat(chat.id)}
-          title="Delete"
-        >
-          🗑️
-        </button>
-      </div>
-    </div>
-  </div>
-))
-  )}
-</div>
+              <div className="flex gap-2">
+                <button onClick={() => renameCurrentChat(chat.id)}>✏️</button>
+                <button onClick={() => deleteCurrentChat(chat.id)}>🗑️</button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </aside>
   );
 }
+
 export default Sidebar;

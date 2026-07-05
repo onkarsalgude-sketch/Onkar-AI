@@ -22,6 +22,7 @@ function App() {
   loading,
   newChat,
   sendMessage,
+
   chats,
   activeChatId,
   selectChat,
@@ -104,6 +105,7 @@ function App() {
   newChat={newChat}
   documents={documents}
   deleteDocument={deleteDocument}
+
   chats={chats}
   activeChatId={activeChatId}
   selectChat={selectChat}
