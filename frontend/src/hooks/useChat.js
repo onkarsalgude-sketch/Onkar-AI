@@ -121,6 +121,18 @@ async function deleteCurrentChat(chatId) {
   if (!input.trim()) return;
 
   const text = input;
+  let currentChatId = activeChatId;
+
+if (!currentChatId) {
+  const res = await createChat();
+  currentChatId = res.data.chat_id;
+  setActiveChatId(currentChatId);
+
+  setChats((prev) => [
+    { id: currentChatId, title: res.data.title },
+    ...prev,
+  ]);
+}
 
   // User message add
   setMessages((prev) => [...prev, { role: "user", content: text }]);
@@ -137,7 +149,7 @@ async function deleteCurrentChat(chatId) {
   ]);
 
   try {
-    await streamChat(text, activeChatId, (chunk) => {
+    await streamChat(text, currentChatId, (chunk) => {
       setMessages((prev) => {
         const updated = [...prev];
         updated[updated.length - 1].content += chunk;
