@@ -144,7 +144,8 @@ async function deleteCurrentChat(chatId) {
         return updated;
       });
     });
-    await loadChats();
+    const chatsRes = await getChats();
+setChats(chatsRes.data.chats);
   } catch (err) {
     setMessages((prev) => {
       const updated = [...prev];
