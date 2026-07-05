@@ -82,23 +82,20 @@ def chat_stream(request: ChatRequest):
 
     if len(messages) == 0:
         title = brain.ai.generate_title(request.message)
-        print("CHAT ID:", chat_id)
-        print("MESSAGE:", request.message)
-        print("OLD MESSAGES:", len(messages))
-        print("GENERATED TITLE:", title)
         rename_chat(chat_id, title)
-        save_message(chat_id, "user", request.message)
 
-        def stream_generator():
-            full_reply = ""
+    save_message(chat_id, "user", request.message)
 
-            for chunk in brain.ai.generate_reply_stream(request.message):
-                full_reply += chunk
-                yield chunk
+    def stream_generator():
+        full_reply = ""
 
-            save_message(chat_id, "assistant", full_reply)
+        for chunk in brain.ai.generate_reply_stream(request.message):
+            full_reply += chunk
+            yield chunk
 
-        return StreamingResponse(stream_generator(), media_type="text/plain")
+        save_message(chat_id, "assistant", full_reply)
+
+    return StreamingResponse(stream_generator(), media_type="text/plain")
 
 
 @router.get("/chat/history")
