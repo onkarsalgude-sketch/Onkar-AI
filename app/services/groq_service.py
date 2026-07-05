@@ -11,14 +11,14 @@ class GroqService:
         self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
         self.model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-    def generate_reply(self, message):
+    def build_prompt(self, message):
         memory = get()
 
         history = ""
         for role, text in memory:
             history += f"{role}: {text}\n"
 
-        prompt = f"""
+        return f"""
 You are Onkar AI, a helpful personal AI assistant.
 
 Conversation history:
@@ -30,10 +30,37 @@ User Question:
 Give a clear and simple answer.
 """
 
+    def generate_title(self, message):
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Generate a very short chat title (maximum 4 words). "
+                        "Return only the title."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": message,
+                },
+            ],
+            temperature=0.3,
+        )
+
+        return response.choices[0].message.content.strip()
+
+    def generate_reply_stream(self, message):
+        prompt = self.build_prompt(message)
+
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
+            stream=True,
         )
 
-        return response.choices[0].message.content
+        for chunk in response:
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content

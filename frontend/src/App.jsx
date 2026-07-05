@@ -14,15 +14,20 @@ import { useEffect, useState } from "react";
 import "./App.css";
 
 function App() {
-  const {
-    messages,
-    setMessages,
-    input,
-    setInput,
-    loading,
-    newChat,
-    sendMessage,
-  } = useChat();
+ const {
+  messages,
+  setMessages,
+  input,
+  setInput,
+  loading,
+  newChat,
+  sendMessage,
+  chats,
+  activeChatId,
+  selectChat,
+  renameCurrentChat,
+  deleteCurrentChat,
+} = useChat();
 
   const [uploading, setUploading] = useState(false);
   const [documents, setDocuments] = useState([]);
@@ -93,13 +98,18 @@ function App() {
 
   return (
     <div className="flex">
-      <Sidebar
-        uploadPDF={uploadPDF}
-        uploading={uploading}
-        newChat={newChat}
-        documents={documents}
-        deleteDocument={deleteDocument}
-      />
+     <Sidebar
+  uploadPDF={uploadPDF}
+  uploading={uploading}
+  newChat={newChat}
+  documents={documents}
+  deleteDocument={deleteDocument}
+  chats={chats}
+  activeChatId={activeChatId}
+  selectChat={selectChat}
+  renameCurrentChat={renameCurrentChat}
+  deleteCurrentChat={deleteCurrentChat}
+/>
 
       <ChatWindow
         messages={messages}

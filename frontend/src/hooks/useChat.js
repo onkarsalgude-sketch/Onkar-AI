@@ -1,20 +1,66 @@
 import { useState, useEffect } from "react";
-import { sendChat, getHistory, clearHistory } from "../services/chatService";
+import {
+  streamChat,
+  getHistory,
+  clearHistory,
+  createChat,
+  getChats,
+  getChatMessages,
+  renameChat,
+  deleteChat,
+} from "../services/chatService";
+
+const welcomeMessage = {
+  role: "assistant",
+  content: "Hello! How can I help you today?",
+};
 
 export default function useChat() {
-  const welcomeMessage = {
-    role: "assistant",
-    content:
-      "👋 Hi Onkar!\n\nमी तुझा Personal AI Assistant आहे.\nPDF upload कर किंवा काहीही विचार.",
-  };
-
   const [messages, setMessages] = useState([welcomeMessage]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [activeChatId, setActiveChatId] = useState(null);
+const [chats, setChats] = useState([]);
 
-  useEffect(() => {
-    loadHistory();
-  }, []);
+ useEffect(() => {
+  loadChats();
+}, []);
+async function loadChats() {
+  try {
+    const res = await getChats();
+
+    setChats(res.data.chats);
+
+    if (res.data.chats.length > 0) {
+      const firstChat = res.data.chats[0];
+
+      setActiveChatId(firstChat.id);
+
+      const msgs = await getChatMessages(firstChat.id);
+
+      setMessages(
+        msgs.data.messages.map((m) => ({
+          role: m.role,
+          content: m.content,
+        }))
+      );
+    }
+  } catch (err) {
+    console.log(err);
+  }
+}
+async function selectChat(chatId) {
+  setActiveChatId(chatId);
+
+  const res = await getChatMessages(chatId);
+
+  setMessages(
+    res.data.messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }))
+  );
+}
 
   async function loadHistory() {
     try {
@@ -35,46 +81,81 @@ export default function useChat() {
 
   async function newChat() {
   try {
-    await clearHistory();
-  } catch (err) {
-    console.log("Backend not connected, clearing frontend only");
-  }
+    const res = await createChat();
 
-  setMessages([welcomeMessage]);
-  setInput("");
+    setActiveChatId(res.data.chat_id);
+
+    setChats((prev) => [
+      {
+        id: res.data.chat_id,
+        title: res.data.title,
+      },
+      ...prev,
+    ]);
+
+    setMessages([welcomeMessage]);
+    setInput("");
+  } catch (err) {
+    console.log(err);
+  }
+}
+async function renameCurrentChat(chatId) {
+  const title = prompt("Enter new chat title");
+
+  if (!title) return;
+
+  await renameChat(chatId, title);
+
+  await loadChats();
+}
+
+async function deleteCurrentChat(chatId) {
+  if (!confirm("Delete this chat?")) return;
+
+  await deleteChat(chatId);
+
+  await loadChats();
 }
 
   async function sendMessage() {
-    if (!input.trim()) return;
+  if (!input.trim()) return;
 
-    const text = input;
+  const text = input;
 
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
-    setInput("");
-    setLoading(true);
+  // User message add
+  setMessages((prev) => [...prev, { role: "user", content: text }]);
+  setInput("");
+  setLoading(true);
 
-    try {
-      const res = await sendChat(text);
+  // Empty assistant message add
+  setMessages((prev) => [
+    ...prev,
+    {
+      role: "assistant",
+      content: "",
+    },
+  ]);
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: res.data.reply,
-        },
-      ]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "❌ Backend connection failed.",
-        },
-      ]);
-    }
-
-    setLoading(false);
+  try {
+    await streamChat(text, activeChatId, (chunk) => {
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1].content += chunk;
+        return updated;
+      });
+    });
+    await loadChats();
+  } catch (err) {
+    setMessages((prev) => {
+      const updated = [...prev];
+      updated[updated.length - 1].content =
+        "❌ Backend connection failed.";
+      return updated;
+    });
   }
+
+  setLoading(false);
+}
 
   return {
     messages,
@@ -85,5 +166,12 @@ export default function useChat() {
     newChat,
     sendMessage,
     loadHistory,
+    activeChatId,
+    setActiveChatId,
+    chats,
+    setChats,
+    selectChat,
+    renameCurrentChat,
+    deleteCurrentChat,
   };
 }

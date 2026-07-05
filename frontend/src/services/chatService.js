@@ -1,7 +1,7 @@
 import api from "./api";
 
-export const sendChat = (message) =>
-  api.post("/chat", { message });
+export const sendChat = (message, chatId) =>
+  api.post("/chat", { message, chat_id: chatId });
 
 export const getHistory = () =>
   api.get("/chat/history");
@@ -9,8 +9,22 @@ export const getHistory = () =>
 export const clearHistory = () =>
   api.delete("/chat/history");
 
-// ✅ Streaming API
-export async function streamChat(message, onChunk) {
+export const createChat = () =>
+  api.post("/chats");
+
+export const getChats = () =>
+  api.get("/chats");
+
+export const getChatMessages = (chatId) =>
+  api.get(`/chats/${chatId}/messages`);
+
+export const deleteChat = (chatId) =>
+  api.delete(`/chats/${chatId}`);
+
+export const renameChat = (chatId, title) =>
+  api.put(`/chats/${chatId}?title=${encodeURIComponent(title)}`);
+
+export async function streamChat(message, chatId, onChunk) {
   const response = await fetch(
     `${import.meta.env.VITE_API_URL}/chat/stream`,
     {
@@ -18,7 +32,10 @@ export async function streamChat(message, onChunk) {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({
+        message,
+        chat_id: chatId,
+      }),
     }
   );
 
@@ -31,6 +48,6 @@ export async function streamChat(message, onChunk) {
     if (done) break;
 
     await new Promise((resolve) => setTimeout(resolve, 45));
-onChunk(decoder.decode(value));
+    onChunk(decoder.decode(value));
   }
 }

@@ -4,6 +4,11 @@ function Sidebar({
   newChat,
   documents,
   deleteDocument,
+  chats,
+  activeChatId,
+  selectChat,
+  renameCurrentChat,
+  deleteCurrentChat,
 }) {
   return (
     <aside className="w-80 h-screen bg-[#0b1220] text-white border-r border-slate-800 flex flex-col">
@@ -65,18 +70,51 @@ function Sidebar({
           Recent Chats
         </h3>
 
-        <div className="space-y-2 text-sm">
-          <div className="p-3 rounded-lg bg-slate-900 text-slate-300">📄 Resume Chat</div>
-          <div className="p-3 rounded-lg hover:bg-slate-900 cursor-pointer text-slate-400">🤖 IBM Project</div>
-          <div className="p-3 rounded-lg hover:bg-slate-900 cursor-pointer text-slate-400">🐍 Python Notes</div>
-        </div>
-      </div>
+       <div className="space-y-2">
+  {chats.length === 0 ? (
+    <p className="text-slate-500 text-sm">
+      No chats
+    </p>
+  ) : (
+    chats.map((chat) => (
+  <div
+    key={chat.id}
+    className={`rounded-lg ${
+      activeChatId === chat.id
+        ? "bg-blue-600"
+        : "bg-slate-900"
+    }`}
+  >
+    <div className="flex items-center justify-between p-3">
+      <button
+        onClick={() => selectChat(chat.id)}
+        className="flex-1 text-left"
+      >
+        💬 {chat.title}
+      </button>
 
-      <div className="p-5 border-t border-slate-800 text-xs text-slate-500">
-        Model: llama3.2:3b
+      <div className="flex gap-2">
+        <button
+          onClick={() => renameCurrentChat(chat.id)}
+          title="Rename"
+        >
+          ✏️
+        </button>
+
+        <button
+          onClick={() => deleteCurrentChat(chat.id)}
+          title="Delete"
+        >
+          🗑️
+        </button>
+      </div>
+    </div>
+  </div>
+))
+  )}
+</div>
       </div>
     </aside>
   );
 }
-
 export default Sidebar;
