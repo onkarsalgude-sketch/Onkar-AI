@@ -7,12 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-   allow_origins=[
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://onkar-ai.vercel.app",
-    "https://onkar-ai-lqt1.vercel.app",
-],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
