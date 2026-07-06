@@ -1,5 +1,9 @@
 import ReactMarkdown from "react-markdown";
 import { useState } from "react";
+import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import CodeBlock from "./CodeBlock";
 
 function Message({ role, content }) {
   const isUser = role === "user";
@@ -33,7 +37,27 @@ function Message({ role, content }) {
             : "bg-slate-800 text-slate-100 rounded-bl-md"
         }`}
       >
-        <ReactMarkdown>{content}</ReactMarkdown>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            code({ inline, className, children, ...props }) {
+              const match = /language-(\w+)/.exec(className || "");
+
+              return !inline && match ? (
+                <CodeBlock
+                  language={match[1]}
+                  value={String(children).replace(/\n$/, "")}
+                />
+              ) : (
+                <code className="bg-slate-900 px-1 py-0.5 rounded">
+                  {children}
+                </code>
+              );
+            },
+          }}
+        >
+          {content}
+        </ReactMarkdown>
 
         {!isUser && (
           <div className="flex gap-2 mt-4">

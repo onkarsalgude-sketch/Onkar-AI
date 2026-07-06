@@ -50,12 +50,32 @@ def get_chats():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    cursor.execute("SELECT id, title, created_at FROM chats ORDER BY id DESC")
+    cursor.execute("""
+        SELECT
+            chats.id,
+            chats.title,
+            chats.created_at,
+            (
+                SELECT content
+                FROM messages
+                WHERE messages.chat_id = chats.id
+                ORDER BY id DESC
+                LIMIT 1
+            ) AS last_message
+        FROM chats
+        ORDER BY chats.id DESC
+    """)
+
     rows = cursor.fetchall()
     conn.close()
 
     return [
-        {"id": row[0], "title": row[1], "created_at": row[2]}
+        {
+            "id": row[0],
+            "title": row[1],
+            "created_at": row[2],
+            "last_message": row[3] if row[3] else "",
+        }
         for row in rows
     ]
 

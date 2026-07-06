@@ -80,24 +80,9 @@ async function selectChat(chatId) {
   }
 
   async function newChat() {
-  try {
-    const res = await createChat();
-
-    setActiveChatId(res.data.chat_id);
-
-    setChats((prev) => [
-      {
-        id: res.data.chat_id,
-        title: res.data.title,
-      },
-      ...prev,
-    ]);
-
-    setMessages([welcomeMessage]);
-    setInput("");
-  } catch (err) {
-    console.log(err);
-  }
+  setActiveChatId(null);
+  setMessages([welcomeMessage]);
+  setInput("");
 }
 async function renameCurrentChat(chatId) {
   const title = prompt("Enter new chat title");

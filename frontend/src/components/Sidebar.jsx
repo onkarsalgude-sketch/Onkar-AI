@@ -1,3 +1,18 @@
+import { useState } from "react";
+
+function getGroup(dateString) {
+  const today = new Date();
+  const date = new Date(dateString);
+
+  const diff =
+    Math.floor((today - date) / (1000 * 60 * 60 * 24));
+
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  if (diff < 7) return "Last Week";
+
+  return "Older";
+}
 function Sidebar({
   uploadPDF,
   uploading,
@@ -10,6 +25,20 @@ function Sidebar({
   renameCurrentChat,
   deleteCurrentChat,
 }) {
+  const [search, setSearch] = useState("");
+  const filteredChats = chats.filter((chat) =>
+  chat.title.toLowerCase().includes(search.toLowerCase())
+);
+
+const groupedChats = filteredChats.reduce((acc, chat) => {
+  const group = getGroup(chat.created_at);
+
+  if (!acc[group]) acc[group] = [];
+
+  acc[group].push(chat);
+
+  return acc;
+}, {});
   return (
     <aside className="w-80 h-screen bg-[#0b1220] text-white border-r border-slate-800 flex flex-col">
       <div className="p-6 border-b border-slate-800">
@@ -69,30 +98,58 @@ function Sidebar({
         <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-3">
           Recent Chats
         </h3>
+        <input
+  type="text"
+  placeholder="🔍 Search chats..."
+  value={search}
+  onChange={(e) => setSearch(e.target.value)}
+  className="w-full mb-3 p-2 rounded-lg bg-slate-900 text-white outline-none border border-slate-700"
+/>
 
         <div className="space-y-2">
-          {chats.map((chat) => (
-            <div
-              key={chat.id}
-              className={`flex justify-between items-center rounded-lg p-3 cursor-pointer ${
-                activeChatId === chat.id
-                  ? "bg-blue-600"
-                  : "bg-slate-900 hover:bg-slate-800"
-              }`}
-            >
-              <div
-                className="flex-1"
-                onClick={() => selectChat(chat.id)}
-              >
-                💬 {chat.title}
-              </div>
+          {Object.entries(groupedChats).map(([group, groupChats]) => (
+  <div key={group} className="mb-5">
+    <h4 className="text-xs uppercase text-slate-500 mb-2">
+      {group}
+    </h4>
 
-              <div className="flex gap-2">
-                <button onClick={() => renameCurrentChat(chat.id)}>✏️</button>
-                <button onClick={() => deleteCurrentChat(chat.id)}>🗑️</button>
-              </div>
-            </div>
-          ))}
+    <div className="space-y-2">
+      {groupChats.map((chat) => (
+        <div
+          key={chat.id}
+          className={`flex justify-between items-center rounded-lg p-3 cursor-pointer ${
+            activeChatId === chat.id
+              ? "bg-blue-600"
+              : "bg-slate-900 hover:bg-slate-800"
+          }`}
+        >
+          <div
+            className="flex-1 overflow-hidden"
+            onClick={() => selectChat(chat.id)}
+          >
+            <p className="text-sm font-medium truncate">
+              💬 {chat.title}
+            </p>
+
+            <p className="text-xs text-slate-400 truncate mt-1">
+              {chat.last_message || "No messages yet"}
+            </p>
+          </div>
+
+          <div className="flex gap-2">
+            <button onClick={() => renameCurrentChat(chat.id)}>
+              ✏️
+            </button>
+
+            <button onClick={() => deleteCurrentChat(chat.id)}>
+              🗑️
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+))}
         </div>
       </div>
     </aside>

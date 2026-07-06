@@ -2,6 +2,7 @@ import Message from "./Message";
 import MessageInput from "./MessageInput";
 import DropZone from "./DropZone";
 import WelcomeScreen from "./WelcomeScreen";
+import Thinking from "./Thinking";
 
 function ChatWindow({ messages, input, setInput, sendMessage, loading, uploadPDF }) {
   return (
@@ -27,7 +28,7 @@ function ChatWindow({ messages, input, setInput, sendMessage, loading, uploadPDF
             <Message key={index} role={msg.role} content={msg.content} />
           ))}
 
-          {loading && <Message role="assistant" content="Thinking..." />}
+         {loading && <Thinking />}
         </div>
       </section>
 
