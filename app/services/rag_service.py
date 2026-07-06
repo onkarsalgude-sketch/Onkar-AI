@@ -1,11 +1,12 @@
 import os
 from pypdf import PdfReader
 
+from app.config.settings import STORAGE_DIR
+
 
 class RAGService:
     def __init__(self):
-        self.upload_dir = "app/uploads"
-        self.context_file = "app/pdf_context.txt"
+        self.context_file = STORAGE_DIR / "pdf_context.txt"
 
     def read_pdf(self, file_path):
         reader = PdfReader(file_path)

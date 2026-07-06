@@ -1,0 +1,22 @@
+ONKAR HARIBHAU SALGUDE
+B.Sc. (Computer Applications) Student
+Email: your.email@example.com
+Phone: +91-XXXXXXXXXX
+Location: Pune, Maharashtra
+Career Objective
+Motivated Computer Applications student seeking an entry-level software or AI internship where I
+can apply my programming, problem-solving, and teamwork skills.
+Education
+B.Sc. (Computer Applications), Savitribai Phule Pune University (Example)
+2024–2027
+Technical Skills
+Python, C, HTML, CSS, JavaScript, SQL, Git, GitHub, FastAPI, IBM watsonx, Langflow
+Projects
+ Personal AI Assistant
+ MindCare Safety Agent
+ AI Portfolio Website
+Certifications
+IBM SkillsBuild, Python Programming, Git & GitHub (Examples)
+Languages
+English, Hindi, Marathi
+
