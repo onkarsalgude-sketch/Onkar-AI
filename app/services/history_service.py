@@ -1,8 +1,9 @@
 import sqlite3
 from datetime import datetime
 
-DB_PATH = "app/chat_history.db"
+from app.config.settings import CHAT_DB
 
+DB_PATH = CHAT_DB
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
