@@ -1,10 +1,13 @@
 import sqlite3
 
-DB = "app/memory.db"
+from app.config.settings import MEMORY_DB
+from app.database.db import get_connection
+
+DB = str(MEMORY_DB)
 
 
 def init_memory():
-    conn = sqlite3.connect(DB)
+    conn = get_connection(DB)
     cur = conn.cursor()
 
     cur.execute("""
@@ -20,7 +23,7 @@ def init_memory():
 
 
 def add(role, content):
-    conn = sqlite3.connect(DB)
+    conn = get_connection(DB)
     cur = conn.cursor()
 
     cur.execute(
@@ -33,7 +36,7 @@ def add(role, content):
 
 
 def get(limit=10):
-    conn = sqlite3.connect(DB)
+    conn = get_connection(DB)
     cur = conn.cursor()
 
     cur.execute(
@@ -49,7 +52,7 @@ def get(limit=10):
 
 
 def clear():
-    conn = sqlite3.connect(DB)
+    conn = get_connection(DB)
     cur = conn.cursor()
 
     cur.execute("DELETE FROM memory")

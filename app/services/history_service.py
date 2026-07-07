@@ -2,11 +2,12 @@ import sqlite3
 from datetime import datetime
 
 from app.config.settings import CHAT_DB
+from app.database.db import get_connection
 
-DB_PATH = CHAT_DB
+DB_PATH = str(CHAT_DB)
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -32,7 +33,7 @@ def init_db():
 
 
 def create_chat(title="New Chat"):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -48,7 +49,7 @@ def create_chat(title="New Chat"):
 
 
 def get_chats():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -82,7 +83,7 @@ def get_chats():
 
 
 def save_message(chat_id: int, role: str, content: str):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -95,7 +96,7 @@ def save_message(chat_id: int, role: str, content: str):
 
 
 def get_messages(chat_id: int, limit: int = 50):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -113,7 +114,7 @@ def get_messages(chat_id: int, limit: int = 50):
 
 
 def rename_chat(chat_id: int, title: str):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -126,7 +127,7 @@ def rename_chat(chat_id: int, title: str):
 
 
 def delete_chat(chat_id: int):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute("DELETE FROM messages WHERE chat_id=?", (chat_id,))
@@ -137,7 +138,7 @@ def delete_chat(chat_id: int):
 
 
 def clear_history():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute("DELETE FROM messages")
