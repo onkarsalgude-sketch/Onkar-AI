@@ -1,5 +1,5 @@
-import Sidebar from "./components/Sidebar";
-import ChatWindow from "./components/ChatWindow";
+import Sidebar from "./components/Sidebar/Sidebar";
+import ChatWindow from "./components/Chat/ChatWindow";
 
 import useChat from "./hooks/useChat";
 

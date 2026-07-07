@@ -1,8 +1,9 @@
 import Message from "./Message";
 import MessageInput from "./MessageInput";
-import DropZone from "./DropZone";
-import WelcomeScreen from "./WelcomeScreen";
 import Thinking from "./Thinking";
+
+import DropZone from "../Upload/DropZone";
+import WelcomeScreen from "../Common/WelcomeScreen";
 
 function ChatWindow({ messages, input, setInput, sendMessage, loading, uploadPDF }) {
   return (
