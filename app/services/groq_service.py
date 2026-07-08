@@ -60,9 +60,8 @@ Give a clear and simple answer.
         )
 
         return response.choices[0].message.content
-    def generate_reply_stream(self, message):
-        prompt = self.build_prompt(message)
 
+    def generate_reply_stream(self, prompt):
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
@@ -76,7 +75,5 @@ Give a clear and simple answer.
         )
 
         for chunk in response:
-            # some stream chunks may not contain content
-            delta = getattr(chunk.choices[0], 'delta', None)
-            if delta and getattr(delta, 'content', None):
-                yield delta.content
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content

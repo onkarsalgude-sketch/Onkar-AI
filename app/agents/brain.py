@@ -19,23 +19,51 @@ class Brain:
             search = self.internet.search(message)
 
             prompt = f"""
-Answer the user using the internet information below.
-
-User Question:
+Question:
 {message}
 
-Internet Answer:
-{search["answer"]}
+Internet Information:
+{search['answer']}
 
-Search Results:
-{search["results"]}
-
-Give a clear answer and include sources if available.
+Answer naturally using the information above.
 """
+
             reply = self.ai.generate_reply(prompt)
 
-        else:
-            reply = self.ai.generate_reply(message)
+            add("assistant", reply)
+
+            return {
+                "reply": reply,
+                "sources": search["sources"],
+            }
+
+        reply = self.ai.generate_reply(message)
 
         add("assistant", reply)
-        return reply
+
+        return {
+            "reply": reply,
+            "sources": [],
+        }
+    def stream_chat(self, message):
+        route = self.router.route(message)
+
+        if route == "internet":
+            search = self.internet.search(message)
+
+            prompt = f"""
+Question:
+{message}
+
+Internet Information:
+{search['answer']}
+
+Answer naturally.
+"""
+
+            return self.ai.generate_reply_stream(prompt)
+
+        # non-internet route
+        return self.ai.generate_reply_stream(
+            self.ai.build_prompt(message)
+        )

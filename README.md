@@ -1,126 +1,190 @@
 # 🤖 Onkar AI
 
-> A Full Stack AI Assistant built with React, FastAPI, Ollama, ChromaDB, and SQLite.
-
-![Status](https://img.shields.io/badge/Status-Active-success)
-![Python](https://img.shields.io/badge/Python-3.12-blue)
-![React](https://img.shields.io/badge/React-18-61DAFB)
-![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688)
-![Ollama](https://img.shields.io/badge/Ollama-Local%20LLM-black)
+A modern AI-powered personal assistant built with **FastAPI**, **React**, **Groq LLM**, **Tavily Search**, and **PDF RAG**.
 
 ---
 
-# 📌 Overview
+## ✨ Features
 
-Onkar AI is a local AI assistant that combines a Large Language Model (LLM), Retrieval-Augmented Generation (RAG), Internet Search, Voice Interaction, and PDF Knowledge Base into a single application.
-
-The project is designed as a production-style AI assistant using modern full-stack technologies.
-
----
-
-# ✨ Features
-
-- 🤖 Local AI using Ollama
-- 📄 PDF Upload & Knowledge Base
-- 🧠 Retrieval-Augmented Generation (RAG)
-- 🌐 Internet Search Fallback
-- 🎤 Voice Input
-- 🔊 Voice Output
-- 💬 Chat History (SQLite)
-- 📂 Uploaded File Manager
-- 🗑 Delete Uploaded PDFs
-- 📋 Copy AI Responses
-- 🎨 Professional React UI
-- ⚡ FastAPI Backend
+- 💬 Multi Chat
+- 🧠 Conversation Memory
+- 🌐 Internet Search
+- 📄 PDF RAG
+- ⚡ Streaming Responses
+- 🔄 Regenerate Response
+- 📝 Markdown Support
+- 💻 Syntax Highlighting
+- 🔊 Text-to-Speech
+- 📁 Chat History
+- 🔍 Search Chats
+- ☁️ Deploy Ready
 
 ---
 
-# 🛠 Tech Stack
+## 🛠 Tech Stack
 
-## Frontend
-
+### Frontend
 - React
 - Vite
-- JavaScript
-- Tailwind CSS
+- TailwindCSS
+- Axios
+- React Markdown
 
-## Backend
-
+### Backend
 - FastAPI
-- Python
-- Ollama
-- ChromaDB
+- Groq API
+- Tavily Search
 - SQLite
+- PyPDF
 
 ---
 
-# 🏗 Architecture
-
-```text
-User
-   │
-   ▼
-React Frontend
-   │
-   ▼
-FastAPI Backend
-   │
-   ▼
-Brain Agent
-   │
- ┌───────────────┐
- │               │
- ▼               ▼
-RAG         Internet Search
- │               │
- └──────┬────────┘
-        ▼
-     Ollama LLM
-        ▼
-   AI Response
-```
-
----
-
-# 📂 Folder Structure
+## 📂 Project Structure
 
 ```text
 Onkar-AI
 │
 ├── app
+│   ├── agents
+│   ├── api
+│   ├── config
+│   ├── database
+│   ├── memory
+│   ├── models
+│   ├── services
+│   └── uploads
+│
 ├── frontend
+│   ├── src
+│   ├── public
+│   └── package.json
+│
+├── docs
 ├── screenshots
-├── README.md
-├── requirements.txt
-└── .gitignore
+└── README.md
 ```
 
 ---
 
-# 📸 Screenshots
+## 🚀 Installation
 
-Coming Soon...
+### Clone Repository
+
+```bash
+git clone https://github.com/onkarsalgude-sketch/Onkar-AI.git
+
+cd Onkar-AI
+```
+
+### Backend
+
+```bash
+python -m venv .venv
+
+source .venv/bin/activate
+
+pip install -r requirements.txt
+
+uvicorn app.main:app --reload
+```
+
+### Frontend
+
+```bash
+cd frontend
+
+npm install
+
+npm run dev
+```
 
 ---
 
-# 🚀 Future Improvements
+## 🔑 Environment Variables
 
-- Streaming Responses
-- Image AI
-- Multiple AI Models
-- OCR
-- Docker
-- Cloud Deployment
-- Settings Page
+Create `.env`
+
+```env
+GROQ_API_KEY=
+
+TAVILY_API_KEY=
+
+GROQ_MODEL=llama-3.3-70b-versatile
+```
 
 ---
 
-# 👨‍💻 Developer
+## 📸 Screenshots
+
+### Chat
+
+(Add Screenshot)
+
+### Internet Search
+
+(Add Screenshot)
+
+### PDF RAG
+
+(Add Screenshot)
+
+---
+
+## 🏗 Architecture
+
+```text
+                User
+
+                  │
+
+            React Frontend
+
+                  │
+
+             FastAPI Backend
+
+                  │
+
+               Brain Router
+
+      ┌───────────┼───────────┐
+
+      ▼           ▼           ▼
+
+ Internet     PDF RAG      Memory
+
+                  │
+
+              Groq LLM
+```
+
+---
+
+## 🎯 Roadmap
+
+- ✅ Multi Chat
+- ✅ Internet Search
+- ✅ PDF Chat
+- ✅ Memory
+- ✅ Streaming
+- ✅ Regenerate
+- ⏳ Sources Card
+- ⏳ Theme Switch
+- ⏳ Voice Chat
+- ⏳ Vision AI
+- ⏳ Authentication
+
+---
+
+## 👨‍💻 Author
 
 **Onkar Haribhau Salgude**
 
-B.Sc. (Computer Applications)
+GitHub:
+https://github.com/onkarsalgude-sketch
 
 ---
 
-# ⭐ If you like this project, don't forget to star the repository.
+## ⭐ Support
+
+If you like this project, don't forget to star the repository.

@@ -89,7 +89,7 @@ def chat_stream(request: ChatRequest):
     def stream_generator():
         full_reply = ""
 
-        for chunk in brain.ai.generate_reply_stream(request.message):
+        for chunk in brain.stream_chat(request.message):
             full_reply += chunk
             yield chunk
 

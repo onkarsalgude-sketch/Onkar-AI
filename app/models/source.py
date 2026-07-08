@@ -1,15 +1,10 @@
 from pydantic import BaseModel
-from typing import Optional
-
-
-class ChatRequest(BaseModel):
-    message: str
-    chat_id: Optional[int] = None
 
 
 class Source(BaseModel):
     title: str
     url: str
+    domain: str
 
 
 class ChatResponse(BaseModel):

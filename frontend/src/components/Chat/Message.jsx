@@ -4,8 +4,9 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import CodeBlock from "./CodeBlock";
+import SourcesCard from "./SourcesCard";
 
-function Message({ role, content }) {
+function Message({ role, content, sources = [], regenerateResponse, isLast })  {
   const isUser = role === "user";
   const [copied, setCopied] = useState(false);
 
@@ -58,6 +59,7 @@ function Message({ role, content }) {
         >
           {content}
         </ReactMarkdown>
+        {!isUser && <SourcesCard sources={sources} />}
 
         {!isUser && (
           <div className="flex gap-2 mt-4">
@@ -87,6 +89,14 @@ function Message({ role, content }) {
             >
               👎
             </button>
+            {isLast && (
+  <button
+    onClick={regenerateResponse}
+    className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-lg text-sm"
+  >
+    🔄 Regenerate
+  </button>
+)}
 
           </div>
         )}

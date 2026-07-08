@@ -28,6 +28,7 @@ function App() {
   selectChat,
   renameCurrentChat,
   deleteCurrentChat,
+   regenerateResponse,
 } = useChat();
 
   const [uploading, setUploading] = useState(false);
@@ -120,6 +121,7 @@ function App() {
         sendMessage={sendMessage}
         loading={loading}
         uploadPDF={uploadPDF}
+        regenerateResponse={regenerateResponse}
       />
     </div>
   );

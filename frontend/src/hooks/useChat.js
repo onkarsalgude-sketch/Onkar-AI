@@ -1,14 +1,6 @@
 import { useState, useEffect } from "react";
-import {
-  streamChat,
-  getHistory,
-  clearHistory,
-  createChat,
-  getChats,
-  getChatMessages,
-  renameChat,
-  deleteChat,
-} from "../services/chatService";
+import { streamChat, getChats } from "../services/chatService";
+import useChats from "./useChats";
 
 const welcomeMessage = {
   role: "assistant",
@@ -19,141 +11,108 @@ export default function useChat() {
   const [messages, setMessages] = useState([welcomeMessage]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [activeChatId, setActiveChatId] = useState(null);
-const [chats, setChats] = useState([]);
 
- useEffect(() => {
-  loadChats();
-}, []);
-async function loadChats() {
-  try {
-    const res = await getChats();
+  const {
+    chats,
+    setChats,
+    activeChatId,
+    setActiveChatId,
+    loadChats,
+    selectChat,
+    newChat,
+    createNewChatIfNeeded,
+    renameCurrentChat,
+    deleteCurrentChat,
+  } = useChats(setMessages, setInput);
 
-    setChats(res.data.chats);
-
-    if (res.data.chats.length > 0) {
-      const firstChat = res.data.chats[0];
-
-      setActiveChatId(firstChat.id);
-
-      const msgs = await getChatMessages(firstChat.id);
-
-      setMessages(
-        msgs.data.messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        }))
-      );
-    }
-  } catch (err) {
-    console.log(err);
-  }
-}
-async function selectChat(chatId) {
-  setActiveChatId(chatId);
-
-  const res = await getChatMessages(chatId);
-
-  setMessages(
-    res.data.messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }))
-  );
-}
-
-  async function loadHistory() {
-    try {
-      const res = await getHistory();
-
-      if (res.data.messages.length > 0) {
-        setMessages(
-          res.data.messages.map((msg) => ({
-            role: msg.role,
-            content: msg.content,
-          }))
-        );
-      }
-    } catch (err) {
-      console.log(err);
-    }
-  }
-
-  async function newChat() {
-  setActiveChatId(null);
-  setMessages([welcomeMessage]);
-  setInput("");
-}
-async function renameCurrentChat(chatId) {
-  const title = prompt("Enter new chat title");
-
-  if (!title) return;
-
-  await renameChat(chatId, title);
-
-  await loadChats();
-}
-
-async function deleteCurrentChat(chatId) {
-  if (!confirm("Delete this chat?")) return;
-
-  await deleteChat(chatId);
-
-  await loadChats();
-}
+  useEffect(() => {
+    loadChats();
+  }, []);
 
   async function sendMessage() {
-  if (!input.trim()) return;
+    if (!input.trim()) return;
 
-  const text = input;
-  let currentChatId = activeChatId;
+    const text = input;
+    const currentChatId = await createNewChatIfNeeded();
 
-if (!currentChatId) {
-  const res = await createChat();
-  currentChatId = res.data.chat_id;
-  setActiveChatId(currentChatId);
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: text, sources: [] },
+      { role: "assistant", content: "", sources: [] },
+    ]);
 
-  setChats((prev) => [
-    { id: currentChatId, title: res.data.title },
-    ...prev,
-  ]);
-}
+    setInput("");
+    setLoading(true);
 
-  // User message add
-  setMessages((prev) => [...prev, { role: "user", content: text }]);
-  setInput("");
-  setLoading(true);
+    try {
+      await streamChat(text, currentChatId, (chunk) => {
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1].content += chunk;
+          return updated;
+        });
+      });
 
-  // Empty assistant message add
-  setMessages((prev) => [
-    ...prev,
-    {
-      role: "assistant",
-      content: "",
-    },
-  ]);
-
-  try {
-    await streamChat(text, currentChatId, (chunk) => {
+      const chatsRes = await getChats();
+      setChats(chatsRes.data.chats);
+    } catch (err) {
       setMessages((prev) => {
         const updated = [...prev];
-        updated[updated.length - 1].content += chunk;
+        updated[updated.length - 1].content =
+          "❌ Backend connection failed.";
         return updated;
       });
-    });
-    const chatsRes = await getChats();
-setChats(chatsRes.data.chats);
-  } catch (err) {
-    setMessages((prev) => {
-      const updated = [...prev];
-      updated[updated.length - 1].content =
-        "❌ Backend connection failed.";
-      return updated;
-    });
+    }
+
+    setLoading(false);
   }
 
-  setLoading(false);
-}
+  async function regenerateResponse() {
+    const lastUserMessage = [...messages]
+      .reverse()
+      .find((msg) => msg.role === "user");
+
+    if (!lastUserMessage || loading || !activeChatId) return;
+
+    setLoading(true);
+
+    setMessages((prev) => {
+      const updated = [...prev];
+
+      if (updated[updated.length - 1]?.role === "assistant") {
+        updated.pop();
+      }
+
+      updated.push({
+        role: "assistant",
+        content: "",
+        sources: [],
+      });
+
+      return updated;
+    });
+
+    try {
+      await streamChat(lastUserMessage.content, activeChatId, (chunk) => {
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1].content += chunk;
+          return updated;
+        });
+      });
+
+      const chatsRes = await getChats();
+      setChats(chatsRes.data.chats);
+    } catch (err) {
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1].content = "❌ Regenerate failed.";
+        return updated;
+      });
+    }
+
+    setLoading(false);
+  }
 
   return {
     messages,
@@ -161,15 +120,18 @@ setChats(chatsRes.data.chats);
     input,
     setInput,
     loading,
-    newChat,
-    sendMessage,
-    loadHistory,
-    activeChatId,
-    setActiveChatId,
+
     chats,
     setChats,
+    activeChatId,
+    setActiveChatId,
+
+    loadChats,
     selectChat,
+    newChat,
+    sendMessage,
     renameCurrentChat,
     deleteCurrentChat,
+    regenerateResponse,
   };
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import SettingsModal from "../Common/SettingsModal";
 
 function getGroup(dateString) {
   const today = new Date();
@@ -12,6 +13,7 @@ function getGroup(dateString) {
   if (diff < 7) return "Last Week";
 
   return "Older";
+  const [showSettings, setShowSettings] = useState(false);
 }
 function Sidebar({
   uploadPDF,
@@ -26,7 +28,9 @@ function Sidebar({
   deleteCurrentChat,
 }) {
   const [search, setSearch] = useState("");
-  const filteredChats = chats.filter((chat) =>
+const [showSettings, setShowSettings] = useState(false);
+
+const filteredChats = chats.filter((chat) =>
   chat.title.toLowerCase().includes(search.toLowerCase())
 );
 
@@ -34,7 +38,6 @@ const groupedChats = filteredChats.reduce((acc, chat) => {
   const group = getGroup(chat.created_at);
 
   if (!acc[group]) acc[group] = [];
-
   acc[group].push(chat);
 
   return acc;
@@ -58,6 +61,18 @@ const groupedChats = filteredChats.reduce((acc, chat) => {
           📎 {uploading ? "Uploading..." : "Upload PDF"}
           <input type="file" accept="application/pdf" hidden onChange={uploadPDF} />
         </label>
+
+        <button
+  onClick={() => setShowSettings(true)}
+  className="w-full bg-slate-700 hover:bg-slate-600 transition p-3 rounded-xl font-semibold"
+>
+  ⚙ Settings
+</button>
+
+        <SettingsModal
+  open={showSettings}
+  onClose={() => setShowSettings(false)}
+/>
       </div>
 
       <div className="px-5 mt-4 flex-1">
