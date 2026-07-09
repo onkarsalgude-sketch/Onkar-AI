@@ -17,12 +17,17 @@ class AgentRouter:
         ]
 
         pdf_keywords = [
-            "pdf",
-            "document",
-            "resume",
-            "file",
-            "uploaded",
-        ]
+    "pdf",
+    "document",
+    "resume",
+    "file",
+    "uploaded",
+    "summarize",
+    "candidate",
+    "skills",
+    "education",
+    "experience",
+]
 
         if any(word in text for word in internet_keywords):
             return "internet"

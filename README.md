@@ -1,74 +1,108 @@
 # 🤖 Onkar AI
 
-A modern AI-powered personal assistant built with **FastAPI**, **React**, **Groq LLM**, **Tavily Search**, and **PDF RAG**.
+> A Full-Stack AI Personal Assistant built with FastAPI, React, Groq LLM, Tavily Search and PDF RAG.
+
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)
+![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi)
+![Python](https://img.shields.io/badge/Python-3.13-blue?logo=python)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
 
-## ✨ Features
+# 📸 Screenshots
 
-- 💬 Multi Chat
-- 🧠 Conversation Memory
-- 🌐 Internet Search
+## 🏠 Home
+![Home](screenshots/home.png)
+
+## 💬 Chat
+![Chat](screenshots/chat.png)
+
+## 🌐 Internet Search
+![Internet Search](screenshots/internet-search.png)
+
+## 📄 PDF RAG
+![PDF RAG](screenshots/pdf-rag.png)
+
+## 💻 Code Generation
+![Code](screenshots/code-generation.png)
+
+## ⚙️ Settings
+![Settings](screenshots/settings.png)
+
+---
+
+# ✨ Features
+
+- 🤖 AI Chat Assistant
+- 💬 Multi Chat Support
+- 📚 Conversation Memory
+- 🌐 Internet Search (Tavily)
 - 📄 PDF RAG
 - ⚡ Streaming Responses
 - 🔄 Regenerate Response
 - 📝 Markdown Support
 - 💻 Syntax Highlighting
-- 🔊 Text-to-Speech
-- 📁 Chat History
-- 🔍 Search Chats
-- ☁️ Deploy Ready
+- 🔊 Text To Speech
+- 📂 Chat History
+- ⚙️ Settings Panel
 
 ---
 
-## 🛠 Tech Stack
+# 🏗 Architecture
+
+```
+React Frontend
+        │
+        ▼
+ FastAPI Backend
+        │
+        ▼
+     Brain Agent
+   ┌────┴────┐
+   ▼         ▼
+Groq LLM   Tavily Search
+   │
+   ▼
+ PDF RAG + Memory
+```
+
+---
+
+# 🛠 Tech Stack
 
 ### Frontend
 - React
 - Vite
-- TailwindCSS
-- Axios
-- React Markdown
+- Tailwind CSS
 
 ### Backend
 - FastAPI
-- Groq API
-- Tavily Search
 - SQLite
-- PyPDF
+- Pydantic
+
+### AI
+- Groq LLM
+- Tavily Search
+- PDF RAG
 
 ---
 
-## 📂 Project Structure
+# 📂 Folder Structure
 
 ```text
 Onkar-AI
 │
 ├── app
-│   ├── agents
-│   ├── api
-│   ├── config
-│   ├── database
-│   ├── memory
-│   ├── models
-│   ├── services
-│   └── uploads
-│
 ├── frontend
-│   ├── src
-│   ├── public
-│   └── package.json
-│
-├── docs
 ├── screenshots
-└── README.md
+├── README.md
+├── requirements.txt
+└── .env.example
 ```
 
 ---
 
-## 🚀 Installation
-
-### Clone Repository
+# 🚀 Installation
 
 ```bash
 git clone https://github.com/onkarsalgude-sketch/Onkar-AI.git
@@ -76,19 +110,17 @@ git clone https://github.com/onkarsalgude-sketch/Onkar-AI.git
 cd Onkar-AI
 ```
 
-### Backend
+Backend
 
 ```bash
 python -m venv .venv
-
-source .venv/bin/activate
 
 pip install -r requirements.txt
 
 uvicorn app.main:app --reload
 ```
 
-### Frontend
+Frontend
 
 ```bash
 cd frontend
@@ -100,83 +132,42 @@ npm run dev
 
 ---
 
-## 🔑 Environment Variables
+# 🔑 Environment Variables
 
 Create `.env`
 
 ```env
-GROQ_API_KEY=
-
-TAVILY_API_KEY=
-
+GROQ_API_KEY=your_key
+TAVILY_API_KEY=your_key
 GROQ_MODEL=llama-3.3-70b-versatile
 ```
 
 ---
 
-## 📸 Screenshots
+# 🛣 Roadmap
 
-### Chat
+## ✅ Version 1.0
 
-(Add Screenshot)
+- Multi Chat
+- PDF RAG
+- Internet Search
+- Memory
+- Streaming
+- Settings
+- Markdown
 
-### Internet Search
+## 🚀 Version 2.0
 
-(Add Screenshot)
-
-### PDF RAG
-
-(Add Screenshot)
-
----
-
-## 🏗 Architecture
-
-```text
-                User
-
-                  │
-
-            React Frontend
-
-                  │
-
-             FastAPI Backend
-
-                  │
-
-               Brain Router
-
-      ┌───────────┼───────────┐
-
-      ▼           ▼           ▼
-
- Internet     PDF RAG      Memory
-
-                  │
-
-              Groq LLM
-```
+- Voice Chat
+- Vision AI
+- Theme Switch
+- Export Chat
+- Multiple PDFs
+- PostgreSQL
 
 ---
 
-## 🎯 Roadmap
-
-- ✅ Multi Chat
-- ✅ Internet Search
-- ✅ PDF Chat
-- ✅ Memory
-- ✅ Streaming
-- ✅ Regenerate
-- ⏳ Sources Card
-- ⏳ Theme Switch
-- ⏳ Voice Chat
-- ⏳ Vision AI
-- ⏳ Authentication
-
----
-
-## 👨‍💻 Author
+# 👨‍💻 Author
 
 **Onkar Haribhau Salgude**
 
@@ -185,6 +176,6 @@ https://github.com/onkarsalgude-sketch
 
 ---
 
-## ⭐ Support
+# 📄 License
 
-If you like this project, don't forget to star the repository.
+This project is licensed under the MIT License.

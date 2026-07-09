@@ -89,11 +89,16 @@ def chat_stream(request: ChatRequest):
     def stream_generator():
         full_reply = ""
 
-        for chunk in brain.stream_chat(request.message):
-            full_reply += chunk
-            yield chunk
+        try:
+            for chunk in brain.stream_chat(request.message):
+                full_reply += chunk
+                yield chunk
 
-        save_message(chat_id, "assistant", full_reply)
+            save_message(chat_id, "assistant", full_reply)
+
+        except Exception as e:
+            print("STREAM ERROR:", e)
+            raise
 
     return StreamingResponse(stream_generator(), media_type="text/plain")
 
