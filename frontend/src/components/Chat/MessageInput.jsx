@@ -54,7 +54,7 @@ function MessageInput({ input, setInput, sendMessage, loading }) {
           listening ? "bg-red-600" : "bg-purple-600"
         }`}
       >
-        🎤
+        {listening ? "🔴 Listening..." : "🎤"}
       </button>
 
       <button
