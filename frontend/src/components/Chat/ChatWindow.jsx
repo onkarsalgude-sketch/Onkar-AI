@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import Message from "./Message";
 import MessageInput from "./MessageInput";
@@ -15,7 +15,17 @@ function ChatWindow({
   regenerateResponse,
 }) {
   const [isDragging, setIsDragging] = useState(false);
+
   const dragCounter = useRef(0);
+  const messagesEndRef = useRef(null);
+
+  // नवीन message किंवा streaming response आल्यावर खाली scroll
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
+  }, [messages, loading]);
 
   function handleDragEnter(event) {
     event.preventDefault();
@@ -140,6 +150,9 @@ function ChatWindow({
           ))}
 
           {loading && <Thinking />}
+
+          {/* Auto-scroll target */}
+          <div ref={messagesEndRef} />
         </div>
       </section>
 
