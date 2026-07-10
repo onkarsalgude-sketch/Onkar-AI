@@ -4,6 +4,7 @@ import Thinking from "./Thinking";
 
 import DropZone from "../Upload/DropZone";
 import WelcomeScreen from "../Common/WelcomeScreen";
+import ImageUpload from "../Upload/ImageUpload";
 
 function ChatWindow({
   messages,
@@ -30,7 +31,8 @@ function ChatWindow({
       <section className="flex-1 overflow-y-auto px-8 py-6">
         <div className="max-w-4xl mx-auto">
           <div className="mb-6">
-  <DropZone uploadPDF={uploadPDF} />
+  {<DropZone uploadPDF={uploadPDF} />}
+  {<ImageUpload />}
 </div>
 {messages.length <= 1 && <WelcomeScreen setInput={setInput} />}
   {messages.map((msg, index) => (

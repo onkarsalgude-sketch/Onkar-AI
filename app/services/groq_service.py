@@ -7,9 +7,13 @@ load_dotenv()
 
 
 class GroqService:
-    def __init__(self):
-        self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-        self.model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+   def __init__(self):
+    self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+    self.model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    self.vision_model = os.getenv(
+        "GROQ_VISION_MODEL",
+        "meta-llama/llama-4-scout-17b-16e-instruct"
+    )
 
     def build_prompt(self, message):
         memory = get()
@@ -77,3 +81,28 @@ Give a clear and simple answer.
         for chunk in response:
             if chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
+
+    def analyze_image(self, image_url, prompt="Explain this image clearly."):
+        response = self.client.chat.completions.create(
+            model=self.vision_model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": prompt,
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": image_url,
+                            },
+                        },
+                    ],
+                }
+            ],
+            temperature=0.4,
+        )
+
+        return response.choices[0].message.content

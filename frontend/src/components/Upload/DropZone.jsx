@@ -6,6 +6,11 @@ function DropZone({ uploadPDF }) {
 
     if (!file) return;
 
+    if (file.type !== "application/pdf") {
+      alert("Please drop only PDF files here. Use Image Upload for images.");
+      return;
+    }
+
     uploadPDF({
       target: {
         files: [file],
