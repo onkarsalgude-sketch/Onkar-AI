@@ -23,17 +23,22 @@ class RAGService:
             metadata={"hnsw:space": "cosine"},
         )
 
-    def read_pdf(self, file_path: str | Path) -> str:
+    def read_pdf(self, file_path: str | Path) -> list[dict]:
         reader = PdfReader(str(file_path))
         pages = []
 
-        for page in reader.pages:
+        for page_number, page in enumerate(reader.pages, start=1):
             page_text = page.extract_text()
 
-            if page_text:
-                pages.append(page_text.strip())
+            if page_text and page_text.strip():
+                pages.append(
+                    {
+                        "page": page_number,
+                        "text": page_text.strip(),
+                    }
+                )
 
-        return "\n".join(pages)
+        return pages
 
     def split_text(
         self,
@@ -65,46 +70,65 @@ class RAGService:
 
     def add_pdf(self, file_path: str | Path) -> dict:
         file_path = Path(file_path)
-        text = self.read_pdf(file_path)
-        chunks = self.split_text(text)
+        pages = self.read_pdf(file_path)
 
-        if not chunks:
+        if not pages:
             return {
                 "message": "No readable text found in PDF",
+                "filename": file_path.name,
+                "chunks": 0,
+            }
+
+        document_id = uuid4().hex
+
+        all_chunks = []
+        all_ids = []
+        all_metadata = []
+
+        for page_data in pages:
+            page_number = page_data["page"]
+            page_chunks = self.split_text(page_data["text"])
+
+            for chunk_index, chunk in enumerate(page_chunks):
+                all_chunks.append(chunk)
+
+                all_ids.append(
+                    f"{document_id}-page-{page_number}-chunk-{chunk_index}"
+                )
+
+                all_metadata.append(
+                    {
+                        "document_id": document_id,
+                        "filename": file_path.name,
+                        "page": page_number,
+                        "chunk_index": chunk_index,
+                    }
+                )
+
+        if not all_chunks:
+            return {
+                "message": "No readable text found in PDF",
+                "filename": file_path.name,
                 "chunks": 0,
             }
 
         embeddings = self.embedding_model.encode(
-            chunks,
+            all_chunks,
             normalize_embeddings=True,
         ).tolist()
 
-        document_id = uuid4().hex
-
-        ids = [
-            f"{document_id}-{index}"
-            for index in range(len(chunks))
-        ]
-
-        metadatas = [
-            {
-                "filename": file_path.name,
-                "chunk_index": index,
-            }
-            for index in range(len(chunks))
-        ]
-
         self.collection.add(
-            ids=ids,
-            documents=chunks,
+            ids=all_ids,
+            documents=all_chunks,
             embeddings=embeddings,
-            metadatas=metadatas,
+            metadatas=all_metadata,
         )
 
         return {
             "message": "PDF indexed successfully",
             "filename": file_path.name,
-            "chunks": len(chunks),
+            "pages": len(pages),
+            "chunks": len(all_chunks),
         }
 
     def get_context(
@@ -115,7 +139,9 @@ class RAGService:
         if not query:
             return ""
 
-        if self.collection.count() == 0:
+        total_documents = self.collection.count()
+
+        if total_documents == 0:
             return ""
 
         query_embedding = self.embedding_model.encode(
@@ -125,13 +151,30 @@ class RAGService:
 
         results = self.collection.query(
             query_embeddings=query_embedding,
-            n_results=min(limit, self.collection.count()),
+            n_results=min(limit, total_documents),
             include=["documents", "metadatas", "distances"],
         )
 
         documents = results.get("documents", [])
+        metadatas = results.get("metadatas", [])
 
         if not documents or not documents[0]:
             return ""
 
-        return "\n\n".join(documents[0])
+        context_parts = []
+
+        for index, document in enumerate(documents[0]):
+            metadata = {}
+
+            if metadatas and metadatas[0]:
+                metadata = metadatas[0][index] or {}
+
+            filename = metadata.get("filename", "Unknown PDF")
+            page = metadata.get("page", "Unknown")
+
+            context_parts.append(
+                f"Source: {filename}, Page: {page}\n"
+                f"Content:\n{document}"
+            )
+
+        return "\n\n---\n\n".join(context_parts)
