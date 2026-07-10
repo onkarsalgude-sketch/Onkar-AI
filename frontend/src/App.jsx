@@ -20,16 +20,15 @@ function App() {
   input,
   setInput,
   loading,
-  uploadFile,
+  uploadFile: uploadImageFile,
   newChat,
   sendMessage,
-
   chats,
   activeChatId,
   selectChat,
   renameCurrentChat,
   deleteCurrentChat,
-   regenerateResponse,
+  regenerateResponse,
 } = useChat();
 
   const [uploading, setUploading] = useState(false);
@@ -49,38 +48,83 @@ function App() {
   }
 
   async function uploadPDF(e) {
-    const file = e.target.files[0];
-    if (!file) return;
+  const file = e.target.files?.[0];
 
-    const formData = new FormData();
-    formData.append("file", file);
+  if (!file) return;
 
-    setUploading(true);
+  const formData = new FormData();
+  formData.append("file", file);
 
-    try {
-      const res = await uploadDocument(formData);
+  const fileSize =
+    file.size < 1024 * 1024
+      ? `${(file.size / 1024).toFixed(1)} KB`
+      : `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
 
-      await loadDocuments();
+  // User message मध्ये PDF preview card
+  setMessages((prev) => [
+    ...prev,
+    {
+      role: "user",
+      content: "",
+      fileType: "pdf",
+      fileName: file.name,
+      fileSize,
+      sources: [],
+    },
+  ]);
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `✅ PDF uploaded successfully!\n\n📄 ${file.name}\nChunks: ${res.data.chunks}`,
-        },
-      ]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "❌ PDF upload failed. Please upload only PDF.",
-        },
-      ]);
-    }
+  setUploading(true);
 
+  try {
+    const res = await uploadDocument(formData);
+
+    await loadDocuments();
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        content: `✅ **${file.name}** uploaded and indexed successfully.\n\nChunks: ${
+          res.data?.chunks ?? 0
+        }`,
+        sources: [],
+      },
+    ]);
+  } catch (error) {
+    console.error("PDF upload error:", error);
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        content:
+          error.response?.data?.detail ||
+          "❌ PDF upload failed. Please upload a valid PDF.",
+        sources: [],
+      },
+    ]);
+  } finally {
     setUploading(false);
+    e.target.value = "";
   }
+}
+  async function handleUploadFile(e) {
+  const file = e.target.files?.[0];
+
+  if (!file) return;
+
+  if (file.type === "application/pdf") {
+    await uploadPDF(e);
+    return;
+  }
+
+  if (file.type.startsWith("image/")) {
+    await uploadImageFile(e);
+    return;
+  }
+
+  alert("Only PDF and image files are supported.");
+}
 
   async function deleteDocument(filename) {
     try {
@@ -116,15 +160,14 @@ function App() {
 />
 
       <ChatWindow
-        messages={messages}
-        input={input}
-        setInput={setInput}
-        sendMessage={sendMessage}
-        loading={loading}
-        uploadPDF={uploadPDF}
-        uploadFile={uploadFile}
-        regenerateResponse={regenerateResponse}
-      />
+  messages={messages}
+  input={input}
+  setInput={setInput}
+  sendMessage={sendMessage}
+  loading={loading || uploading}
+  uploadFile={handleUploadFile}
+  regenerateResponse={regenerateResponse}
+/>
     </div>
   );
 }

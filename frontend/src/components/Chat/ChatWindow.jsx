@@ -32,8 +32,7 @@ function ChatWindow({
       <section className="flex-1 overflow-y-auto px-8 py-6">
         <div className="max-w-4xl mx-auto">
           <div className="mb-6">
-  {<DropZone uploadPDF={uploadPDF} />}
-  {<ImageUpload />}
+ 
 </div>
 {messages.length <= 1 && <WelcomeScreen setInput={setInput} />}
   {messages.map((msg, index) => (
@@ -43,6 +42,8 @@ function ChatWindow({
   content={msg.content}
   imageUrl={msg.imageUrl}
   fileName={msg.fileName}
+  fileType={msg.fileType}
+  fileSize={msg.fileSize}
   sources={msg.sources || []}
   isLast={index === messages.length - 1}
   regenerateResponse={regenerateResponse}

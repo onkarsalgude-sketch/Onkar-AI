@@ -9,6 +9,8 @@ function Message({
   content,
   imageUrl,
   fileName,
+  fileType,
+  fileSize,
   sources = [],
   regenerateResponse,
   isLast,
@@ -57,27 +59,47 @@ function Message({
     </p>
   </div>
 )}
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={{
-            code({ inline, className, children, ...props }) {
-              const match = /language-(\w+)/.exec(className || "");
+{fileType === "pdf" && (
+  <div className="mb-3 flex items-center gap-3 rounded-xl border border-slate-600 bg-slate-900 p-3">
+    <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-red-500/20 text-2xl">
+      📄
+    </div>
 
-              return !inline && match ? (
-                <CodeBlock
-                  language={match[1]}
-                  value={String(children).replace(/\n$/, "")}
-                />
-              ) : (
-                <code className="bg-slate-900 px-1 py-0.5 rounded">
-                  {children}
-                </code>
-              );
-            },
-          }}
-        >
-          {content}
-        </ReactMarkdown>
+    <div className="min-w-0">
+      <p className="max-w-64 truncate font-medium text-slate-100">
+        {fileName || "Uploaded PDF"}
+      </p>
+
+      <p className="text-xs text-slate-400">
+        PDF document
+        {fileSize ? ` • ${fileSize}` : ""}
+      </p>
+    </div>
+  </div>
+)}
+        {content && (
+  <ReactMarkdown
+    remarkPlugins={[remarkGfm]}
+    components={{
+      code({ inline, className, children }) {
+        const match = /language-(\w+)/.exec(className || "");
+
+        return !inline && match ? (
+          <CodeBlock
+            language={match[1]}
+            value={String(children).replace(/\n$/, "")}
+          />
+        ) : (
+          <code className="bg-slate-900 px-1 py-0.5 rounded">
+            {children}
+          </code>
+        );
+      },
+    }}
+  >
+    {content}
+  </ReactMarkdown>
+)}
         {!isUser && <SourcesCard sources={sources} />}
 
         {!isUser && (

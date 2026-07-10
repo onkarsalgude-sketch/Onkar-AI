@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { streamChat, getChats } from "../services/chatService";
 import useChats from "./useChats";
 import { analyzeImage } from "../services/imageService";
+import { uploadDocument } from "../services/documentService";
 
 const welcomeMessage = {
   role: "assistant",
@@ -110,6 +111,64 @@ async function sendMessage() {
   }
 }
 
+async function uploadPDF(e) {
+  const file = e.target.files?.[0];
+
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const fileSize =
+    file.size < 1024 * 1024
+      ? `${(file.size / 1024).toFixed(1)} KB`
+      : `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+
+  setMessages((prev) => [
+    ...prev,
+    {
+      role: "user",
+      content: "",
+      fileType: "pdf",
+      fileName: file.name,
+      fileSize,
+      sources: [],
+    },
+  ]);
+
+  setLoading(true);
+
+  try {
+    const response = await uploadDocument(formData);
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        content:
+          response.data?.message ||
+          `✅ ${file.name} uploaded and indexed successfully.`,
+        sources: [],
+      },
+    ]);
+  } catch (error) {
+    console.error("PDF upload error:", error);
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        content:
+          error.response?.data?.detail ||
+          "❌ PDF upload failed.",
+        sources: [],
+      },
+    ]);
+  } finally {
+    setLoading(false);
+    e.target.value = "";
+  }
+}
 
   async function uploadFile(e) {
   const file = e.target.files[0];
