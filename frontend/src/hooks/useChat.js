@@ -89,9 +89,11 @@ export default function useChat() {
       setMessages((prev) => [
         ...prev,
         {
-          role: "user",
-          content: `📷 ${file.name}`,
-        },
+  role: "user",
+  content: "",
+  imageUrl: URL.createObjectURL(file),
+  fileName: file.name,
+},
         {
           role: "assistant",
           content: res.result,

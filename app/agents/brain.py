@@ -39,7 +39,7 @@ Answer naturally using the information above.
             }
 
         if route == "pdf":
-            pdf_context = self.rag.get_context()
+            pdf_context = self.rag.get_context(message)
 
             prompt = f"""
 Use the following PDF content to answer the user question.
@@ -89,7 +89,7 @@ Answer naturally.
             return self.ai.generate_reply_stream(prompt)
 
         if route == "pdf":
-            pdf_context = self.rag.get_context()
+            pdf_context = self.rag.get_context(message)
 
             prompt = f"""
 Use the following PDF content to answer the user question.

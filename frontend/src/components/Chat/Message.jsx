@@ -11,6 +11,7 @@ function Message({
   content,
   imageUrl,
   fileName,
+  sources = [],
   regenerateResponse,
   isLast,
 }) {
