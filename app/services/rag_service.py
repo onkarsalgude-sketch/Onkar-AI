@@ -3,16 +3,12 @@ from uuid import uuid4
 
 import chromadb
 from pypdf import PdfReader
-from sentence_transformers import SentenceTransformer
 
 from app.config.settings import VECTOR_DB_DIR
 
 
 class RAGService:
     def __init__(self):
-        self.embedding_model = SentenceTransformer(
-            "sentence-transformers/all-MiniLM-L6-v2"
-        )
 
         self.client = chromadb.PersistentClient(
             path=str(VECTOR_DB_DIR)
@@ -114,15 +110,11 @@ class RAGService:
                 "chunks": 0,
             }
 
-        embeddings = self.embedding_model.encode(
-            all_chunks,
-            normalize_embeddings=True,
-        ).tolist()
+       
 
         self.collection.add(
             ids=all_ids,
             documents=all_chunks,
-            embeddings=embeddings,
             metadatas=all_metadata,
         )
 
@@ -144,13 +136,9 @@ class RAGService:
                 "sources": [],
             }
 
-        query_embedding = self.embedding_model.encode(
-            [query],
-            normalize_embeddings=True,
-        ).tolist()
 
         results = self.collection.query(
-            query_embeddings=query_embedding,
+            query_texts=[query],
             n_results=min(limit, self.collection.count()),
             include=["documents", "metadatas", "distances"],
         )
