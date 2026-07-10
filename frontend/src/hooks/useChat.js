@@ -30,43 +30,86 @@ export default function useChat() {
     loadChats();
   }, []);
 
-  async function sendMessage() {
-    if (!input.trim()) return;
+async function sendMessage() {
+  if (!input.trim() || loading) return;
 
-    const text = input;
-    const currentChatId = await createNewChatIfNeeded();
+  const text = input.trim();
+  const currentChatId = await createNewChatIfNeeded();
 
-    setMessages((prev) => [
-      ...prev,
-      { role: "user", content: text, sources: [] },
-      { role: "assistant", content: "", sources: [] },
-    ]);
+  setMessages((prev) => [
+    ...prev,
+    {
+      role: "user",
+      content: text,
+      sources: [],
+    },
+    {
+      role: "assistant",
+      content: "",
+      sources: [],
+    },
+  ]);
 
-    setInput("");
-    setLoading(true);
+  setInput("");
+  setLoading(true);
 
-    try {
-      await streamChat(text, currentChatId, (chunk) => {
+  try {
+    const result = await streamChat(
+      text,
+      currentChatId,
+      (chunk) => {
         setMessages((prev) => {
           const updated = [...prev];
-          updated[updated.length - 1].content += chunk;
+          const lastIndex = updated.length - 1;
+
+          updated[lastIndex] = {
+            ...updated[lastIndex],
+            content: updated[lastIndex].content + chunk,
+          };
+
           return updated;
         });
-      });
+      }
+    );
 
-      const chatsRes = await getChats();
-      setChats(chatsRes.data.chats);
-    } catch (err) {
-      setMessages((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1].content =
-          "❌ Backend connection failed.";
-        return updated;
-      });
+    setMessages((prev) => {
+      const updated = [...prev];
+      const lastIndex = updated.length - 1;
+
+      updated[lastIndex] = {
+        ...updated[lastIndex],
+        sources: result?.sources || [],
+      };
+
+      return updated;
+    });
+
+    if (result?.chatId) {
+      setActiveChatId(result.chatId);
     }
 
+    const chatsRes = await getChats();
+    setChats(chatsRes.data.chats);
+  } catch (error) {
+    console.error("Chat error:", error);
+
+    setMessages((prev) => {
+      const updated = [...prev];
+      const lastIndex = updated.length - 1;
+
+      updated[lastIndex] = {
+        ...updated[lastIndex],
+        content: "❌ Backend connection failed.",
+        sources: [],
+      };
+
+      return updated;
+    });
+  } finally {
     setLoading(false);
   }
+}
+
 
   async function uploadFile(e) {
   const file = e.target.files[0];
@@ -144,13 +187,37 @@ export default function useChat() {
     });
 
     try {
-      await streamChat(lastUserMessage.content, activeChatId, (chunk) => {
-        setMessages((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1].content += chunk;
-          return updated;
-        });
-      });
+      const result = await streamChat(
+  lastUserMessage.content,
+  activeChatId,
+  (chunk) => {
+    setMessages((prev) => {
+      const updated = [...prev];
+
+      const lastMessage = {
+        ...updated[updated.length - 1],
+      };
+
+      lastMessage.content += chunk;
+      updated[updated.length - 1] = lastMessage;
+
+      return updated;
+    });
+  }
+);
+
+setMessages((prev) => {
+  const updated = [...prev];
+
+  const lastMessage = {
+    ...updated[updated.length - 1],
+    sources: result.sources || [],
+  };
+
+  updated[updated.length - 1] = lastMessage;
+
+  return updated;
+});
 
       const chatsRes = await getChats();
       setChats(chatsRes.data.chats);

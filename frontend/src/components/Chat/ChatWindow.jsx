@@ -38,14 +38,14 @@ function ChatWindow({
 {messages.length <= 1 && <WelcomeScreen setInput={setInput} />}
   {messages.map((msg, index) => (
   <Message
-    key={index}
-    role={msg.role}
-    content={msg.content}
-    imageUrl={msg.imageUrl}
-    fileName={msg.fileName}
-    sources={msg.sources || []}
-    isLast={index === messages.length - 1}
-    regenerateResponse={regenerateResponse}
+  key={index}
+  role={msg.role}
+  content={msg.content}
+  imageUrl={msg.imageUrl}
+  fileName={msg.fileName}
+  sources={msg.sources || []}
+  isLast={index === messages.length - 1}
+  regenerateResponse={regenerateResponse}
 />
 ))}
 

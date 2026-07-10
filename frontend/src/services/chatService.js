@@ -1,7 +1,14 @@
 import api from "./api";
 
+const API_URL = (
+  api.defaults.baseURL || "http://127.0.0.1:8000"
+).replace(/\/$/, "");
+
 export const sendChat = (message, chatId) =>
-  api.post("/chat", { message, chat_id: chatId });
+  api.post("/chat", {
+    message,
+    chat_id: chatId,
+  });
 
 export const getHistory = () =>
   api.get("/chat/history");
@@ -22,11 +29,17 @@ export const deleteChat = (chatId) =>
   api.delete(`/chats/${chatId}`);
 
 export const renameChat = (chatId, title) =>
-  api.put(`/chats/${chatId}?title=${encodeURIComponent(title)}`);
+  api.put(
+    `/chats/${chatId}?title=${encodeURIComponent(title)}`
+  );
 
-export async function streamChat(message, chatId, onChunk) {
+export async function streamChat(
+  message,
+  chatId,
+  onChunk
+) {
   const response = await fetch(
-    `${import.meta.env.VITE_API_URL}/chat/stream`,
+    `${API_URL}/chat/stream`,
     {
       method: "POST",
       headers: {
@@ -39,15 +52,67 @@ export async function streamChat(message, chatId, onChunk) {
     }
   );
 
+  if (!response.ok) {
+    const errorText = await response.text();
+
+    throw new Error(
+      `Chat request failed: ${response.status} ${errorText}`
+    );
+  }
+
+  let sources = [];
+
+  const encodedSources =
+    response.headers.get("X-Sources");
+
+  if (encodedSources) {
+    try {
+      sources = JSON.parse(
+        decodeURIComponent(encodedSources)
+      );
+    } catch (error) {
+      console.error(
+        "Failed to parse sources:",
+        error
+      );
+    }
+  }
+
+  const returnedChatId =
+    Number(response.headers.get("X-Chat-Id")) ||
+    chatId;
+
+  if (!response.body) {
+    throw new Error(
+      "Streaming response body is unavailable."
+    );
+  }
+
   const reader = response.body.getReader();
-  const decoder = new TextDecoder();
+  const decoder = new TextDecoder("utf-8");
 
   while (true) {
     const { value, done } = await reader.read();
 
     if (done) break;
 
-    await new Promise((resolve) => setTimeout(resolve, 45));
-    onChunk(decoder.decode(value));
+    const chunk = decoder.decode(value, {
+      stream: true,
+    });
+
+    if (chunk) {
+      onChunk(chunk);
+    }
   }
+
+  const finalChunk = decoder.decode();
+
+  if (finalChunk) {
+    onChunk(finalChunk);
+  }
+
+  return {
+    sources,
+    chatId: returnedChatId,
+  };
 }

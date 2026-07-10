@@ -4,6 +4,7 @@ from app.agents.internet import InternetAgent
 from app.agents.router import AgentRouter
 from app.services.rag_service import RAGService
 
+
 class Brain:
     def __init__(self):
         self.rag = RAGService()
@@ -11,9 +12,7 @@ class Brain:
         self.internet = InternetAgent()
         self.router = AgentRouter()
 
-    def chat(self, message):
-        add("user", message)
-
+    def prepare_request(self, message: str) -> dict:
         route = self.router.route(message)
 
         if route == "internet":
@@ -24,88 +23,79 @@ Question:
 {message}
 
 Internet Information:
-{search['answer']}
+{search.get("answer", "")}
 
 Answer naturally using the information above.
 """
 
-            reply = self.ai.generate_reply(prompt)
-
-            add("assistant", reply)
-
             return {
-                "reply": reply,
-                "sources": search["sources"],
+                "route": route,
+                "prompt": prompt,
+                "sources": search.get("sources", []),
             }
 
         if route == "pdf":
-            pdf_context = self.rag.get_context(message)
+            rag_result = self.rag.search(message)
 
             prompt = f"""
 Use the following PDF content to answer the user question.
 
 PDF Content:
-{pdf_context}
+{rag_result["context"]}
 
 User Question:
 {message}
 
-If the answer is not available in the PDF, say that it is not available in the uploaded document.
+Answer only using the uploaded PDF content.
+
+If the answer is not available in the PDF, clearly say:
+"The answer is not available in the uploaded document."
+
+When useful, mention the source PDF name and page number.
 """
 
-            reply = self.ai.generate_reply(prompt)
-
-            add("assistant", reply)
-
             return {
-                "reply": reply,
-                "sources": [],
+                "route": route,
+                "prompt": prompt,
+                "sources": rag_result["sources"],
             }
 
-        reply = self.ai.generate_reply(message)
+        return {
+            "route": "chat",
+            "prompt": message,
+            "sources": [],
+        }
+
+    def chat(self, message: str) -> dict:
+        add("user", message)
+
+        prepared = self.prepare_request(message)
+
+        if prepared["route"] == "chat":
+            reply = self.ai.generate_reply(message)
+        else:
+            reply = self.ai.generate_reply(prepared["prompt"])
 
         add("assistant", reply)
 
         return {
             "reply": reply,
-            "sources": [],
+            "sources": prepared["sources"],
         }
-    def stream_chat(self, message):
-        route = self.router.route(message)
 
-        if route == "internet":
-            search = self.internet.search(message)
+    def stream_chat(self, message: str) -> dict:
+        prepared = self.prepare_request(message)
 
-            prompt = f"""
-Question:
-{message}
+        if prepared["route"] == "chat":
+            stream = self.ai.generate_reply_stream(
+                self.ai.build_prompt(message)
+            )
+        else:
+            stream = self.ai.generate_reply_stream(
+                prepared["prompt"]
+            )
 
-Internet Information:
-{search['answer']}
-
-Answer naturally.
-"""
-
-            return self.ai.generate_reply_stream(prompt)
-
-        if route == "pdf":
-            pdf_context = self.rag.get_context(message)
-
-            prompt = f"""
-Use the following PDF content to answer the user question.
-
-PDF Content:
-{pdf_context}
-
-User Question:
-{message}
-
-If the answer is not available in the PDF, say that it is not available in the uploaded document.
-"""
-
-            return self.ai.generate_reply_stream(prompt)
-
-        # non-internet route
-        return self.ai.generate_reply_stream(
-            self.ai.build_prompt(message)
-        )
+        return {
+            "stream": stream,
+            "sources": prepared["sources"],
+        }

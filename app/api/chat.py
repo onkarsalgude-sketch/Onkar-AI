@@ -1,3 +1,6 @@
+import json
+from urllib.parse import quote
+
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
@@ -15,6 +18,7 @@ from app.services.history_service import (
 )
 from app.memory.memory import clear
 
+
 router = APIRouter()
 brain = Brain()
 
@@ -24,7 +28,11 @@ init_db()
 @router.post("/chats")
 def create_new_chat():
     chat_id = create_chat("New Chat")
-    return {"chat_id": chat_id, "title": "New Chat"}
+
+    return {
+        "chat_id": chat_id,
+        "title": "New Chat",
+    }
 
 
 @router.get("/chats")
@@ -56,18 +64,32 @@ def chat(request: ChatRequest):
     if chat_id is None:
         title = brain.ai.generate_title(request.message)
         chat_id = create_chat(title)
-    if chat_id is not None:
-        messages = get_messages(chat_id)
-        if len(messages) == 0:
-            title = brain.ai.generate_title(request.message)
-            rename_chat(chat_id, title)
-        save_message(chat_id, "user", request.message)
 
-        reply = brain.chat(request.message)
+    messages = get_messages(chat_id)
 
-        save_message(chat_id, "assistant", reply)
+    if len(messages) == 0:
+        title = brain.ai.generate_title(request.message)
+        rename_chat(chat_id, title)
 
-        return ChatResponse(reply=reply)
+    save_message(
+        chat_id,
+        "user",
+        request.message,
+    )
+
+    result = brain.chat(request.message)
+
+    save_message(
+        chat_id,
+        "assistant",
+        result["reply"],
+    )
+
+    return ChatResponse(
+        reply=result["reply"],
+        sources=result["sources"],
+        chat_id=chat_id,
+    )
 
 
 @router.post("/chat/stream")
@@ -84,23 +106,47 @@ def chat_stream(request: ChatRequest):
         title = brain.ai.generate_title(request.message)
         rename_chat(chat_id, title)
 
-    save_message(chat_id, "user", request.message)
+    save_message(
+        chat_id,
+        "user",
+        request.message,
+    )
+
+    stream_result = brain.stream_chat(request.message)
+
+    sources_header = quote(
+        json.dumps(
+            stream_result["sources"],
+            ensure_ascii=False,
+        )
+    )
 
     def stream_generator():
         full_reply = ""
 
         try:
-            for chunk in brain.stream_chat(request.message):
+            for chunk in stream_result["stream"]:
                 full_reply += chunk
                 yield chunk
 
-            save_message(chat_id, "assistant", full_reply)
+            save_message(
+                chat_id,
+                "assistant",
+                full_reply,
+            )
 
-        except Exception as e:
-            print("STREAM ERROR:", e)
+        except Exception as error:
+            print("STREAM ERROR:", error)
             raise
 
-    return StreamingResponse(stream_generator(), media_type="text/plain")
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/plain",
+        headers={
+            "X-Sources": sources_header,
+            "X-Chat-Id": str(chat_id),
+        },
+    )
 
 
 @router.get("/chat/history")
@@ -111,11 +157,17 @@ def chat_history():
         return {"messages": []}
 
     latest_chat_id = chats[0]["id"]
-    return {"messages": get_messages(latest_chat_id)}
+
+    return {
+        "messages": get_messages(latest_chat_id)
+    }
 
 
 @router.delete("/chat/history")
 def delete_history():
     clear_history()
     clear()
-    return {"message": "Chat history cleared"}
+
+    return {
+        "message": "Chat history cleared"
+    }

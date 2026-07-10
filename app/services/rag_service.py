@@ -76,6 +76,7 @@ class RAGService:
             return {
                 "message": "No readable text found in PDF",
                 "filename": file_path.name,
+                "pages": 0,
                 "chunks": 0,
             }
 
@@ -109,6 +110,7 @@ class RAGService:
             return {
                 "message": "No readable text found in PDF",
                 "filename": file_path.name,
+                "pages": len(pages),
                 "chunks": 0,
             }
 
@@ -131,18 +133,16 @@ class RAGService:
             "chunks": len(all_chunks),
         }
 
-    def get_context(
+    def search(
         self,
         query: str | None = None,
         limit: int = 5,
-    ) -> str:
-        if not query:
-            return ""
-
-        total_documents = self.collection.count()
-
-        if total_documents == 0:
-            return ""
+    ) -> dict:
+        if not query or self.collection.count() == 0:
+            return {
+                "context": "",
+                "sources": [],
+            }
 
         query_embedding = self.embedding_model.encode(
             [query],
@@ -151,7 +151,7 @@ class RAGService:
 
         results = self.collection.query(
             query_embeddings=query_embedding,
-            n_results=min(limit, total_documents),
+            n_results=min(limit, self.collection.count()),
             include=["documents", "metadatas", "distances"],
         )
 
@@ -159,9 +159,14 @@ class RAGService:
         metadatas = results.get("metadatas", [])
 
         if not documents or not documents[0]:
-            return ""
+            return {
+                "context": "",
+                "sources": [],
+            }
 
         context_parts = []
+        sources = []
+        added_sources = set()
 
         for index, document in enumerate(documents[0]):
             metadata = {}
@@ -177,4 +182,29 @@ class RAGService:
                 f"Content:\n{document}"
             )
 
-        return "\n\n---\n\n".join(context_parts)
+            source_key = f"{filename}:{page}"
+
+            if source_key not in added_sources:
+                added_sources.add(source_key)
+
+                sources.append(
+                    {
+                        "type": "pdf",
+                        "title": filename,
+                        "filename": filename,
+                        "page": page,
+                    }
+                )
+
+        return {
+            "context": "\n\n---\n\n".join(context_parts),
+            "sources": sources,
+        }
+
+    def get_context(
+        self,
+        query: str | None = None,
+        limit: int = 5,
+    ) -> str:
+        result = self.search(query, limit)
+        return result["context"]
