@@ -200,6 +200,22 @@ class RAGService:
             "context": "\n\n---\n\n".join(context_parts),
             "sources": sources,
         }
+    def delete_pdf(self, filename: str) -> dict:
+        safe_filename = Path(filename).name
+
+        results = self.collection.get(
+            where={"filename": safe_filename}
+        )
+
+        chunk_ids = results.get("ids", [])
+
+        if chunk_ids:
+            self.collection.delete(ids=chunk_ids)
+
+        return {
+            "filename": safe_filename,
+            "deleted_chunks": len(chunk_ids),
+        }
 
     def get_context(
         self,
