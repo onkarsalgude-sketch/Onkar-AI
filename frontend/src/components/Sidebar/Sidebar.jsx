@@ -2,172 +2,333 @@ import { useState } from "react";
 import SettingsModal from "../Common/SettingsModal";
 
 function getGroup(dateString) {
+  if (!dateString) return "Older";
+
   const today = new Date();
   const date = new Date(dateString);
 
-  const diff =
-    Math.floor((today - date) / (1000 * 60 * 60 * 24));
+  today.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+
+  const diff = Math.floor(
+    (today.getTime() - date.getTime()) /
+      (1000 * 60 * 60 * 24)
+  );
 
   if (diff === 0) return "Today";
   if (diff === 1) return "Yesterday";
-  if (diff < 7) return "Last Week";
+  if (diff > 1 && diff < 7) return "Last Week";
 
   return "Older";
-  const [showSettings, setShowSettings] = useState(false);
 }
+
 function Sidebar({
   uploadPDF,
   uploading,
   newChat,
-  documents,
+  documents = [],
   deleteDocument,
-  chats,
+  chats = [],
   activeChatId,
   selectChat,
   renameCurrentChat,
   deleteCurrentChat,
 }) {
-  const [search, setSearch] = useState("");
-const [showSettings, setShowSettings] = useState(false);
+  const [chatSearch, setChatSearch] = useState("");
+  const [documentSearch, setDocumentSearch] =
+    useState("");
+  const [showSettings, setShowSettings] =
+    useState(false);
+  const [deletingDocument, setDeletingDocument] =
+    useState(null);
 
-const filteredChats = chats.filter((chat) =>
-  chat.title.toLowerCase().includes(search.toLowerCase())
-);
+  const filteredDocuments = documents.filter((doc) =>
+    doc.name
+      .toLowerCase()
+      .includes(documentSearch.toLowerCase())
+  );
 
-const groupedChats = filteredChats.reduce((acc, chat) => {
-  const group = getGroup(chat.created_at);
+  const filteredChats = chats.filter((chat) =>
+    (chat.title || "New Chat")
+      .toLowerCase()
+      .includes(chatSearch.toLowerCase())
+  );
 
-  if (!acc[group]) acc[group] = [];
-  acc[group].push(chat);
+  const groupedChats = filteredChats.reduce(
+    (groups, chat) => {
+      const group = getGroup(chat.created_at);
 
-  return acc;
-}, {});
+      if (!groups[group]) {
+        groups[group] = [];
+      }
+
+      groups[group].push(chat);
+      return groups;
+    },
+    {}
+  );
+
+  async function handleDeleteDocument(filename) {
+    const confirmed = window.confirm(
+      `Delete "${filename}"?\n\nThe PDF and its indexed data will be removed.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setDeletingDocument(filename);
+      await deleteDocument(filename);
+    } finally {
+      setDeletingDocument(null);
+    }
+  }
+
   return (
-    <aside className="w-80 h-screen bg-[#0b1220] text-white border-r border-slate-800 flex flex-col">
-      <div className="p-6 border-b border-slate-800">
-        <h1 className="text-2xl font-bold">🤖 Onkar AI</h1>
-        <p className="text-sm text-slate-400 mt-1">Local AI Assistant</p>
-      </div>
+    <>
+      <aside className="flex h-screen w-80 shrink-0 flex-col border-r border-slate-800 bg-[#0b1220] text-white">
+        {/* Logo */}
+        <div className="border-b border-slate-800 p-6">
+          <h1 className="text-2xl font-bold">
+            🤖 Onkar AI
+          </h1>
 
-      <div className="p-4 space-y-3">
-        <button
-          onClick={newChat}
-          className="w-full bg-blue-600 hover:bg-blue-700 transition p-3 rounded-xl font-semibold"
-        >
-          + New Chat
-        </button>
+          <p className="mt-1 text-sm text-slate-400">
+            Personal AI Assistant
+          </p>
+        </div>
 
-        <label className="w-full block bg-emerald-600 hover:bg-emerald-700 transition p-3 rounded-xl text-center cursor-pointer font-semibold">
-          📎 {uploading ? "Uploading..." : "Upload PDF"}
-          <input type="file" accept="application/pdf" hidden onChange={uploadPDF} />
-        </label>
-
-        <button
-  onClick={() => setShowSettings(true)}
-  className="w-full bg-slate-700 hover:bg-slate-600 transition p-3 rounded-xl font-semibold"
->
-  ⚙ Settings
-</button>
-
-        <SettingsModal
-  open={showSettings}
-  onClose={() => setShowSettings(false)}
-/>
-      </div>
-
-      <div className="px-5 mt-4 flex-1">
-        <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-3">
-  Uploaded Files
-</h3>
-
-<div className="space-y-2 mb-6">
-  {documents.length === 0 ? (
-    <p className="text-slate-500 text-sm">No PDF uploaded</p>
-  ) : (
-   documents.map((doc, index) => (
-  <div
-    key={index}
-    className="bg-slate-900 rounded-lg p-3 flex justify-between items-center"
-  >
-    <div>
-      <p className="text-sm text-white">
-        📄 {doc.name}
-      </p>
-
-      <p className="text-xs text-slate-500">
-        {doc.size} KB
-      </p>
-    </div>
-
-    <button
-      onClick={() => deleteDocument(doc.name)}
-      className="text-red-500 hover:text-red-300 text-xl"
-      title="Delete PDF"
-    >
-      🗑️
-    </button>
-  </div>
-))
-  )}
-</div>
-        <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-3">
-          Recent Chats
-        </h3>
-        <input
-  type="text"
-  placeholder="🔍 Search chats..."
-  value={search}
-  onChange={(e) => setSearch(e.target.value)}
-  className="w-full mb-3 p-2 rounded-lg bg-slate-900 text-white outline-none border border-slate-700"
-/>
-
-        <div className="space-y-2">
-          {Object.entries(groupedChats).map(([group, groupChats]) => (
-  <div key={group} className="mb-5">
-    <h4 className="text-xs uppercase text-slate-500 mb-2">
-      {group}
-    </h4>
-
-    <div className="space-y-2">
-      {groupChats.map((chat) => (
-        <div
-          key={chat.id}
-          className={`flex justify-between items-center rounded-lg p-3 cursor-pointer ${
-            activeChatId === chat.id
-              ? "bg-blue-600"
-              : "bg-slate-900 hover:bg-slate-800"
-          }`}
-        >
-          <div
-            className="flex-1 overflow-hidden"
-            onClick={() => selectChat(chat.id)}
+        {/* Main buttons */}
+        <div className="space-y-3 border-b border-slate-800 p-4">
+          <button
+            type="button"
+            onClick={newChat}
+            className="w-full rounded-xl bg-blue-600 p-3 font-semibold transition hover:bg-blue-700"
           >
-            <p className="text-sm font-medium truncate">
-              💬 {chat.title}
-            </p>
+            + New Chat
+          </button>
 
-            <p className="text-xs text-slate-400 truncate mt-1">
-              {chat.last_message || "No messages yet"}
-            </p>
+          <label
+            className={`block w-full rounded-xl p-3 text-center font-semibold transition ${
+              uploading
+                ? "cursor-not-allowed bg-emerald-800 opacity-70"
+                : "cursor-pointer bg-emerald-600 hover:bg-emerald-700"
+            }`}
+          >
+            📎{" "}
+            {uploading
+              ? "Uploading..."
+              : "Upload PDF"}
+
+            <input
+              type="file"
+              accept="application/pdf,.pdf"
+              hidden
+              disabled={uploading}
+              onChange={uploadPDF}
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={() => setShowSettings(true)}
+            className="w-full rounded-xl bg-slate-700 p-3 font-semibold transition hover:bg-slate-600"
+          >
+            ⚙ Settings
+          </button>
+        </div>
+
+        {/* Scrollable sidebar content */}
+        <div className="flex-1 overflow-y-auto px-4 py-5">
+          {/* Documents */}
+          <div className="mb-7">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-xs uppercase tracking-wider text-slate-500">
+                Uploaded Files
+              </h3>
+
+              <span className="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-400">
+                {documents.length}
+              </span>
+            </div>
+
+            {documents.length > 0 && (
+              <input
+                type="text"
+                placeholder="🔍 Search PDFs..."
+                value={documentSearch}
+                onChange={(event) =>
+                  setDocumentSearch(event.target.value)
+                }
+                className="mb-3 w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-sm text-white outline-none focus:border-blue-500"
+              />
+            )}
+
+            <div className="space-y-2">
+              {documents.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-slate-700 p-4 text-center">
+                  <p className="text-2xl">📂</p>
+                  <p className="mt-2 text-sm text-slate-500">
+                    No PDF uploaded
+                  </p>
+                </div>
+              ) : filteredDocuments.length === 0 ? (
+                <p className="py-3 text-center text-sm text-slate-500">
+                  No matching PDF found
+                </p>
+              ) : (
+                filteredDocuments.map((doc) => (
+                  <div
+                    key={doc.name}
+                    className="group flex items-center justify-between gap-3 rounded-lg border border-transparent bg-slate-900 p-3 transition hover:border-slate-700 hover:bg-slate-800"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-500/15 text-xl">
+                        📄
+                      </div>
+
+                      <div className="min-w-0">
+                        <p
+                          className="truncate text-sm font-medium text-slate-100"
+                          title={doc.name}
+                        >
+                          {doc.name}
+                        </p>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                          {doc.size} KB · PDF
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleDeleteDocument(doc.name)
+                      }
+                      disabled={
+                        deletingDocument === doc.name
+                      }
+                      className="shrink-0 rounded-lg p-2 text-slate-500 transition hover:bg-red-500/10 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+                      title={`Delete ${doc.name}`}
+                    >
+                      {deletingDocument === doc.name
+                        ? "⏳"
+                        : "🗑️"}
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
-          <div className="flex gap-2">
-            <button onClick={() => renameCurrentChat(chat.id)}>
-              ✏️
-            </button>
+          {/* Chats */}
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-xs uppercase tracking-wider text-slate-500">
+                Recent Chats
+              </h3>
 
-            <button onClick={() => deleteCurrentChat(chat.id)}>
-              🗑️
-            </button>
+              <span className="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-400">
+                {chats.length}
+              </span>
+            </div>
+
+            <input
+              type="text"
+              placeholder="🔍 Search chats..."
+              value={chatSearch}
+              onChange={(event) =>
+                setChatSearch(event.target.value)
+              }
+              className="mb-4 w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-sm text-white outline-none focus:border-blue-500"
+            />
+
+            {filteredChats.length === 0 ? (
+              <p className="py-3 text-center text-sm text-slate-500">
+                No chats found
+              </p>
+            ) : (
+              <div className="space-y-5">
+                {Object.entries(groupedChats).map(
+                  ([group, groupChats]) => (
+                    <div key={group}>
+                      <h4 className="mb-2 text-xs uppercase text-slate-500">
+                        {group}
+                      </h4>
+
+                      <div className="space-y-2">
+                        {groupChats.map((chat) => (
+                          <div
+                            key={chat.id}
+                            onClick={() =>
+                              selectChat(chat.id)
+                            }
+                            className={`group flex cursor-pointer items-center justify-between gap-2 rounded-lg p-3 transition ${
+                              activeChatId === chat.id
+                                ? "bg-blue-600"
+                                : "bg-slate-900 hover:bg-slate-800"
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium">
+                                💬{" "}
+                                {chat.title || "New Chat"}
+                              </p>
+
+                              <p
+                                className={`mt-1 truncate text-xs ${
+                                  activeChatId === chat.id
+                                    ? "text-blue-100"
+                                    : "text-slate-400"
+                                }`}
+                              >
+                                {chat.last_message ||
+                                  "No messages yet"}
+                              </p>
+                            </div>
+
+                            <div className="flex shrink-0 gap-1 opacity-70 transition group-hover:opacity-100">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  renameCurrentChat(chat.id);
+                                }}
+                                className="rounded p-1 hover:bg-white/10"
+                                title="Rename chat"
+                              >
+                                ✏️
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  deleteCurrentChat(chat.id);
+                                }}
+                                className="rounded p-1 hover:bg-red-500/20"
+                                title="Delete chat"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
           </div>
         </div>
-      ))}
-    </div>
-  </div>
-))}
-        </div>
-      </div>
-    </aside>
+      </aside>
+
+      <SettingsModal
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
+    </>
   );
 }
 
