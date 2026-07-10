@@ -6,7 +6,14 @@ import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import CodeBlock from "./CodeBlock";
 import SourcesCard from "./SourcesCard";
 
-function Message({ role, content, sources = [], regenerateResponse, isLast })  {
+function Message({
+  role,
+  content,
+  imageUrl,
+  fileName,
+  regenerateResponse,
+  isLast,
+}) {
   const isUser = role === "user";
   const [copied, setCopied] = useState(false);
 
@@ -38,6 +45,19 @@ function Message({ role, content, sources = [], regenerateResponse, isLast })  {
             : "bg-slate-800 text-slate-100 rounded-bl-md"
         }`}
       >
+       {imageUrl && (
+  <div className="mb-3">
+    <img
+      src={imageUrl}
+      alt={fileName}
+      className="rounded-xl max-h-80 max-w-full border border-slate-700"
+    />
+
+    <p className="text-xs text-slate-400 mt-2">
+      📷 {fileName}
+    </p>
+  </div>
+)}
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{

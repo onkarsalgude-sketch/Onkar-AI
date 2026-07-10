@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { streamChat, getChats } from "../services/chatService";
 import useChats from "./useChats";
+import { analyzeImage } from "../services/imageService";
 
 const welcomeMessage = {
   role: "assistant",
@@ -66,6 +67,54 @@ export default function useChat() {
 
     setLoading(false);
   }
+
+  async function uploadFile(e) {
+  const file = e.target.files[0];
+
+  if (!file) return;
+
+  // 📄 PDF
+  if (file.type === "application/pdf") {
+    uploadPDF(e);
+    return;
+  }
+
+  // 🖼️ Image
+  if (file.type.startsWith("image/")) {
+    setLoading(true);
+
+    try {
+      const res = await analyzeImage(file);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "user",
+          content: `📷 ${file.name}`,
+        },
+        {
+          role: "assistant",
+          content: res.result,
+        },
+      ]);
+    } catch (err) {
+      console.error(err);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "❌ Image analysis failed.",
+        },
+      ]);
+    }
+
+    setLoading(false);
+    return;
+  }
+
+  alert("Unsupported file type.");
+}
 
   async function regenerateResponse() {
     const lastUserMessage = [...messages]
@@ -133,5 +182,6 @@ export default function useChat() {
     renameCurrentChat,
     deleteCurrentChat,
     regenerateResponse,
+     uploadFile,
   };
 }

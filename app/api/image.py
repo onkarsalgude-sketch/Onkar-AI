@@ -14,10 +14,7 @@ async def analyze_image(file: UploadFile = File(...)):
         image_bytes = await file.read()
 
         image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-
-        image_url = (
-            f"data:{file.content_type};base64,{image_base64}"
-        )
+        image_url = f"data:{file.content_type};base64,{image_base64}"
 
         result = groq.analyze_image(image_url)
 
@@ -27,6 +24,8 @@ async def analyze_image(file: UploadFile = File(...)):
         }
 
     except Exception as e:
+        print("VISION ERROR:", repr(e))
+
         raise HTTPException(
             status_code=500,
             detail=str(e),

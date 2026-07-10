@@ -20,6 +20,7 @@ function App() {
   input,
   setInput,
   loading,
+  uploadFile,
   newChat,
   sendMessage,
 
@@ -121,6 +122,7 @@ function App() {
         sendMessage={sendMessage}
         loading={loading}
         uploadPDF={uploadPDF}
+        uploadFile={uploadFile}
         regenerateResponse={regenerateResponse}
       />
     </div>

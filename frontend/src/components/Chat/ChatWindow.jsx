@@ -13,8 +13,9 @@ function ChatWindow({
   sendMessage,
   loading,
   uploadPDF,
+  uploadFile,
   regenerateResponse,
-}) {
+})  {
   return (
     <main className="flex-1 h-screen bg-[#0f172a] text-white flex flex-col">
       <header className="h-20 px-8 border-b border-slate-800 flex items-center justify-between">
@@ -37,13 +38,15 @@ function ChatWindow({
 {messages.length <= 1 && <WelcomeScreen setInput={setInput} />}
   {messages.map((msg, index) => (
   <Message
-    key={index}
-    role={msg.role}
-    content={msg.content}
-    sources={msg.sources || []}
-    isLast={index === messages.length - 1}
-    regenerateResponse={regenerateResponse}
-  />
+  key={index}
+  role={msg.role}
+  content={msg.content}
+  imageUrl={msg.imageUrl}
+  fileName={msg.fileName}
+  sources={msg.sources || []}
+  isLast={index === messages.length - 1}
+  regenerateResponse={regenerateResponse}
+/>
 ))}
 
          {loading && <Thinking />}
@@ -52,13 +55,13 @@ function ChatWindow({
 
       <div className="px-8 pb-6">
         <div className="max-w-4xl mx-auto">
-          <MessageInput
-            input={input}
-            setInput={setInput}
-            sendMessage={sendMessage}
-            loading={loading}
-            uploadPDF={uploadPDF}
-          />
+         <MessageInput
+  input={input}
+  setInput={setInput}
+  sendMessage={sendMessage}
+  loading={loading}
+  uploadFile={uploadFile}
+/>
         </div>
       </div>
     </main>

@@ -22,9 +22,21 @@ function ImageUpload() {
 
       setResult(res.result);
     } catch (err) {
-      console.log(err);
-      setResult("❌ Image analysis failed.");
-    }
+  const detail =
+    err.response?.data?.detail ||
+    err.message ||
+    "Image analysis failed.";
+
+  console.error("IMAGE ERROR:", detail);
+
+  setMessages((prev) => [
+    ...prev,
+    {
+      role: "assistant",
+      content: `❌ ${detail}`,
+    },
+  ]);
+}
 
     setLoading(false);
   }
