@@ -116,3 +116,5 @@ export async function streamChat(
     chatId: returnedChatId,
   };
 }
+export const togglePinChat = (chatId) =>
+  api.put(`/chats/${chatId}/pin`);

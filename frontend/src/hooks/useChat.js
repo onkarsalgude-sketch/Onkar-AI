@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 
-import { streamChat, getChats } from "../services/chatService";
+import {
+  streamChat,
+  getChats,
+  togglePinChat as togglePinChatRequest,
+} from "../services/chatService";
 import { analyzeImage } from "../services/imageService";
 import { uploadDocument } from "../services/documentService";
 
@@ -380,6 +384,18 @@ export default function useChat() {
     }
   }
 
+  async function toggleChatPin(chatId) {
+  if (!chatId) return;
+
+  try {
+    await togglePinChatRequest(chatId);
+    await loadChats();
+  } catch (error) {
+    console.error("Pin chat error:", error);
+    alert("Chat pin/unpin failed.");
+  }
+}
+
   return {
     messages,
     setMessages,
@@ -402,6 +418,7 @@ export default function useChat() {
     renameCurrentChat,
     deleteCurrentChat,
     regenerateResponse,
+    toggleChatPin,
     uploadFile,
   };
 }

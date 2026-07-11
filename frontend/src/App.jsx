@@ -27,6 +27,7 @@ function App() {
     renameCurrentChat,
     deleteCurrentChat,
     regenerateResponse,
+    toggleChatPin,
   } = useChat();
 
   const [sidebarOpen, setSidebarOpen] =
@@ -68,18 +69,19 @@ function App() {
       }`}
     >
       <Sidebar
-      messages={messages}
-        newChat={newChat}
-        chats={chats}
-        activeChatId={activeChatId}
-        selectChat={selectChat}
-        renameCurrentChat={renameCurrentChat}
-        deleteCurrentChat={deleteCurrentChat}
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        theme={theme}
-        onThemeChange={setTheme}
-      />
+  messages={messages}
+  newChat={newChat}
+  chats={chats}
+  activeChatId={activeChatId}
+  selectChat={selectChat}
+  renameCurrentChat={renameCurrentChat}
+  deleteCurrentChat={deleteCurrentChat}
+  toggleChatPin={toggleChatPin}
+  isOpen={sidebarOpen}
+  onClose={() => setSidebarOpen(false)}
+  theme={theme}
+  onThemeChange={setTheme}
+/>
 
       <ChatWindow
         messages={messages}

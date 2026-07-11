@@ -17,6 +17,7 @@ function getGroup(dateString) {
 
   if (difference === 0) return "Today";
   if (difference === 1) return "Yesterday";
+
   if (difference > 1 && difference < 7) {
     return "Last Week";
   }
@@ -32,6 +33,7 @@ function Sidebar({
   selectChat,
   renameCurrentChat,
   deleteCurrentChat,
+  toggleChatPin,
   isOpen,
   onClose,
   theme = "dark",
@@ -49,7 +51,15 @@ function Sidebar({
       .includes(chatSearch.toLowerCase())
   );
 
-  const groupedChats = filteredChats.reduce(
+  const pinnedChats = filteredChats.filter(
+    (chat) => chat.is_pinned
+  );
+
+  const unpinnedChats = filteredChats.filter(
+    (chat) => !chat.is_pinned
+  );
+
+  const groupedChats = unpinnedChats.reduce(
     (groups, chat) => {
       const group = getGroup(chat.created_at);
 
@@ -58,6 +68,7 @@ function Sidebar({
       }
 
       groups[group].push(chat);
+
       return groups;
     },
     {}
@@ -71,6 +82,95 @@ function Sidebar({
   function handleSelectChat(chatId) {
     selectChat(chatId);
     onClose?.();
+  }
+
+  function renderChatItem(chat) {
+    return (
+      <div
+        key={chat.id}
+        onClick={() =>
+          handleSelectChat(chat.id)
+        }
+        className={`group flex cursor-pointer items-center justify-between gap-2 rounded-lg p-3 transition ${
+          activeChatId === chat.id
+            ? "bg-blue-600 text-white"
+            : isDark
+              ? "bg-slate-900 hover:bg-slate-800"
+              : "bg-slate-100 hover:bg-slate-200"
+        }`}
+      >
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">
+            {chat.is_pinned ? "📌" : "💬"}{" "}
+            {chat.title || "New Chat"}
+          </p>
+
+          <p
+            className={`mt-1 truncate text-xs ${
+              activeChatId === chat.id
+                ? "text-blue-100"
+                : "text-slate-500"
+            }`}
+          >
+            {chat.last_message ||
+              "No messages yet"}
+          </p>
+        </div>
+
+        <div className="flex shrink-0 gap-1 opacity-70 transition group-hover:opacity-100">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleChatPin?.(chat.id);
+            }}
+            className={`rounded p-1 transition ${
+              chat.is_pinned
+                ? "bg-amber-500/20 hover:bg-amber-500/30"
+                : "hover:bg-black/10"
+            }`}
+            title={
+              chat.is_pinned
+                ? "Unpin chat"
+                : "Pin chat"
+            }
+            aria-label={
+              chat.is_pinned
+                ? "Unpin chat"
+                : "Pin chat"
+            }
+          >
+            📌
+          </button>
+
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              renameCurrentChat(chat.id);
+            }}
+            className="rounded p-1 hover:bg-black/10"
+            title="Rename chat"
+            aria-label="Rename chat"
+          >
+            ✏️
+          </button>
+
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              deleteCurrentChat(chat.id);
+            }}
+            className="rounded p-1 hover:bg-red-500/20"
+            title="Delete chat"
+            aria-label="Delete chat"
+          >
+            🗑️
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -87,7 +187,9 @@ function Sidebar({
 
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex h-screen w-80 shrink-0 flex-col border-r transition-all duration-300 md:static md:z-auto md:translate-x-0 ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
+          isOpen
+            ? "translate-x-0"
+            : "-translate-x-full"
         } ${
           isDark
             ? "border-slate-800 bg-[#0b1220] text-white"
@@ -150,7 +252,9 @@ function Sidebar({
 
           <button
             type="button"
-            onClick={() => setShowSettings(true)}
+            onClick={() =>
+              setShowSettings(true)
+            }
             className={`w-full rounded-xl p-3 font-semibold transition ${
               isDark
                 ? "bg-slate-700 text-white hover:bg-slate-600"
@@ -161,7 +265,7 @@ function Sidebar({
           </button>
         </div>
 
-        {/* Recent chats */}
+        {/* Chats */}
         <div className="flex-1 overflow-y-auto px-4 py-5">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-xs uppercase tracking-wider text-slate-500">
@@ -199,6 +303,22 @@ function Sidebar({
             </p>
           ) : (
             <div className="space-y-5">
+              {/* Pinned chats */}
+              {pinnedChats.length > 0 && (
+                <div>
+                  <h4 className="mb-2 text-xs uppercase tracking-wider text-amber-500">
+                    📌 Pinned
+                  </h4>
+
+                  <div className="space-y-2">
+                    {pinnedChats.map(
+                      renderChatItem
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Normal chats */}
               {Object.entries(groupedChats).map(
                 ([group, groupChats]) => (
                   <div key={group}>
@@ -207,65 +327,9 @@ function Sidebar({
                     </h4>
 
                     <div className="space-y-2">
-                      {groupChats.map((chat) => (
-                        <div
-                          key={chat.id}
-                          onClick={() =>
-                            handleSelectChat(chat.id)
-                          }
-                          className={`group flex cursor-pointer items-center justify-between gap-2 rounded-lg p-3 transition ${
-                            activeChatId === chat.id
-                              ? "bg-blue-600 text-white"
-                              : isDark
-                                ? "bg-slate-900 hover:bg-slate-800"
-                                : "bg-slate-100 hover:bg-slate-200"
-                          }`}
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium">
-                              💬{" "}
-                              {chat.title || "New Chat"}
-                            </p>
-
-                            <p
-                              className={`mt-1 truncate text-xs ${
-                                activeChatId === chat.id
-                                  ? "text-blue-100"
-                                  : "text-slate-500"
-                              }`}
-                            >
-                              {chat.last_message ||
-                                "No messages yet"}
-                            </p>
-                          </div>
-
-                          <div className="flex shrink-0 gap-1 opacity-70 transition group-hover:opacity-100">
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                renameCurrentChat(chat.id);
-                              }}
-                              className="rounded p-1 hover:bg-black/10"
-                              title="Rename chat"
-                            >
-                              ✏️
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                deleteCurrentChat(chat.id);
-                              }}
-                              className="rounded p-1 hover:bg-red-500/20"
-                              title="Delete chat"
-                            >
-                              🗑️
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                      {groupChats.map(
+                        renderChatItem
+                      )}
                     </div>
                   </div>
                 )
@@ -275,13 +339,15 @@ function Sidebar({
         </div>
       </aside>
 
-     <SettingsModal
-  open={showSettings}
-  onClose={() => setShowSettings(false)}
-  theme={theme}
-  onThemeChange={onThemeChange}
-  messages={messages}
-/>
+      <SettingsModal
+        open={showSettings}
+        onClose={() =>
+          setShowSettings(false)
+        }
+        theme={theme}
+        onThemeChange={onThemeChange}
+        messages={messages}
+      />
     </>
   );
 }
