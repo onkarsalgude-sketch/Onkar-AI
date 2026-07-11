@@ -118,3 +118,37 @@ export async function streamChat(
 }
 export const togglePinChat = (chatId) =>
   api.put(`/chats/${chatId}/pin`);
+
+export const getFolders = () =>
+  api.get("/folders");
+
+export const createFolder = (name) =>
+  api.post("/folders", null, {
+    params: { name },
+  });
+
+export const renameFolder = (
+  folderId,
+  name
+) =>
+  api.put(`/folders/${folderId}`, null, {
+    params: { name },
+  });
+
+export const deleteFolder = (folderId) =>
+  api.delete(`/folders/${folderId}`);
+
+export const moveChatToFolder = (
+  chatId,
+  folderId = null
+) =>
+  api.put(
+    `/chats/${chatId}/folder`,
+    null,
+    {
+      params:
+        folderId === null
+          ? {}
+          : { folder_id: folderId },
+    }
+  );

@@ -4,6 +4,11 @@ import {
   streamChat,
   getChats,
   togglePinChat as togglePinChatRequest,
+  getFolders,
+  createFolder as createFolderRequest,
+  renameFolder as renameFolderRequest,
+  deleteFolder as deleteFolderRequest,
+  moveChatToFolder as moveChatToFolderRequest,
 } from "../services/chatService";
 import { analyzeImage } from "../services/imageService";
 import { uploadDocument } from "../services/documentService";
@@ -30,6 +35,7 @@ export default function useChat() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [folders, setFolders] = useState([]);
 
   // Send करण्यापूर्वी निवडलेली PDF
   const [pendingFile, setPendingFile] = useState(null);
@@ -47,9 +53,10 @@ export default function useChat() {
     deleteCurrentChat,
   } = useChats(setMessages, setInput);
 
-  useEffect(() => {
-    loadChats();
-  }, []);
+ useEffect(() => {
+  loadChats();
+  loadFolders();
+}, []);
 
   function removePendingFile() {
     setPendingFile(null);
@@ -396,29 +403,172 @@ export default function useChat() {
   }
 }
 
-  return {
-    messages,
-    setMessages,
-    input,
-    setInput,
-    loading,
+async function loadFolders() {
+  try {
+    const response = await getFolders();
 
-    pendingFile,
-    removePendingFile,
+    setFolders(
+      response.data.folders || []
+    );
+  } catch (error) {
+    console.error(
+      "Load folders error:",
+      error
+    );
 
-    chats,
-    setChats,
-    activeChatId,
-    setActiveChatId,
+    setFolders([]);
+  }
+}
 
-    loadChats,
-    selectChat: handleSelectChat,
-    newChat: handleNewChat,
-    sendMessage,
-    renameCurrentChat,
-    deleteCurrentChat,
-    regenerateResponse,
-    toggleChatPin,
-    uploadFile,
-  };
+
+async function createChatFolder(name) {
+  const folderName = name?.trim();
+
+  if (!folderName) return false;
+
+  try {
+    await createFolderRequest(folderName);
+    await loadFolders();
+
+    return true;
+  } catch (error) {
+    console.error(
+      "Create folder error:",
+      error
+    );
+
+    alert(
+      error.response?.data?.detail ||
+        "Folder creation failed."
+    );
+
+    return false;
+  }
+}
+
+
+async function renameChatFolder(
+  folderId,
+  name
+) {
+  const folderName = name?.trim();
+
+  if (!folderName) return false;
+
+  try {
+    await renameFolderRequest(
+      folderId,
+      folderName
+    );
+
+    await Promise.all([
+      loadFolders(),
+      loadChats(),
+    ]);
+
+    return true;
+  } catch (error) {
+    console.error(
+      "Rename folder error:",
+      error
+    );
+
+    alert(
+      error.response?.data?.detail ||
+        "Folder rename failed."
+    );
+
+    return false;
+  }
+}
+
+
+async function deleteChatFolder(folderId) {
+  try {
+    await deleteFolderRequest(folderId);
+
+    await Promise.all([
+      loadFolders(),
+      loadChats(),
+    ]);
+
+    return true;
+  } catch (error) {
+    console.error(
+      "Delete folder error:",
+      error
+    );
+
+    alert(
+      error.response?.data?.detail ||
+        "Folder deletion failed."
+    );
+
+    return false;
+  }
+}
+
+
+async function moveChatToFolder(
+  chatId,
+  folderId = null
+) {
+  try {
+    await moveChatToFolderRequest(
+      chatId,
+      folderId
+    );
+
+    await Promise.all([
+      loadChats(),
+      loadFolders(),
+    ]);
+
+    return true;
+  } catch (error) {
+    console.error(
+      "Move chat error:",
+      error
+    );
+
+    alert(
+      error.response?.data?.detail ||
+        "Moving chat failed."
+    );
+
+    return false;
+  }
+}
+ return {
+  messages,
+  setMessages,
+  input,
+  setInput,
+  loading,
+
+  pendingFile,
+  removePendingFile,
+
+  chats,
+  setChats,
+  activeChatId,
+  setActiveChatId,
+
+  folders,
+  loadFolders,
+
+  loadChats,
+  selectChat: handleSelectChat,
+  newChat: handleNewChat,
+  sendMessage,
+  renameCurrentChat,
+  deleteCurrentChat,
+  regenerateResponse,
+  toggleChatPin,
+  createChatFolder,
+  renameChatFolder,
+  deleteChatFolder,
+  moveChatToFolder,
+  uploadFile,
+};
 }

@@ -9,26 +9,29 @@ import "./App.css";
 
 function App() {
   const {
-    messages,
-    input,
-    setInput,
-    loading,
+  messages,
+  input,
+  setInput,
+  loading,
+  pendingFile,
+  removePendingFile,
+  uploadFile,
+  newChat,
+  sendMessage,
+  chats,
+  activeChatId,
+  selectChat,
+  renameCurrentChat,
+  deleteCurrentChat,
+  regenerateResponse,
+  toggleChatPin,
 
-    pendingFile,
-    removePendingFile,
-
-    uploadFile,
-    newChat,
-    sendMessage,
-
-    chats,
-    activeChatId,
-    selectChat,
-    renameCurrentChat,
-    deleteCurrentChat,
-    regenerateResponse,
-    toggleChatPin,
-  } = useChat();
+  folders,
+  createChatFolder,
+  renameChatFolder,
+  deleteChatFolder,
+  moveChatToFolder,
+} = useChat();
 
   const [sidebarOpen, setSidebarOpen] =
     useState(false);
@@ -77,6 +80,13 @@ function App() {
   renameCurrentChat={renameCurrentChat}
   deleteCurrentChat={deleteCurrentChat}
   toggleChatPin={toggleChatPin}
+
+  folders={folders}
+  createChatFolder={createChatFolder}
+  renameChatFolder={renameChatFolder}
+  deleteChatFolder={deleteChatFolder}
+  moveChatToFolder={moveChatToFolder}
+
   isOpen={sidebarOpen}
   onClose={() => setSidebarOpen(false)}
   theme={theme}
