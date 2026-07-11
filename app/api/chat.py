@@ -2,7 +2,7 @@ import json
 import shutil
 from urllib.parse import quote
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.models.chat import ChatRequest, ChatResponse
@@ -17,6 +17,12 @@ from app.services.history_service import (
     clear_history,
     delete_chat,
     rename_chat,
+    toggle_pin_chat,
+    get_folders,
+    create_folder,
+    rename_folder,
+    delete_folder,
+    move_chat_to_folder,
 )
 from app.memory.memory import clear
 
@@ -83,6 +89,120 @@ def update_chat_title(
 
     return {
         "message": "Chat renamed",
+    }
+
+@router.put("/chats/{chat_id}/pin")
+def pin_or_unpin_chat(chat_id: int):
+    is_pinned = toggle_pin_chat(chat_id)
+
+    if is_pinned is None:
+        return {
+            "message": "Chat not found",
+            "chat_id": chat_id,
+        }
+
+    return {
+        "message": (
+            "Chat pinned"
+            if is_pinned
+            else "Chat unpinned"
+        ),
+        "chat_id": chat_id,
+        "is_pinned": is_pinned,
+    }
+
+@router.get("/folders")
+def list_folders():
+    return {
+        "folders": get_folders(),
+    }
+
+
+@router.post("/folders")
+def add_folder(name: str):
+    folder = create_folder(name)
+
+    if folder is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Folder name is empty or "
+                "folder already exists."
+            ),
+        )
+
+    return {
+        "message": "Folder created",
+        "folder": folder,
+    }
+
+
+@router.put("/folders/{folder_id}")
+def update_folder_name(
+    folder_id: int,
+    name: str,
+):
+    updated = rename_folder(
+        folder_id,
+        name,
+    )
+
+    if not updated:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Folder not found, name is empty, "
+                "or folder name already exists."
+            ),
+        )
+
+    return {
+        "message": "Folder renamed",
+        "folder_id": folder_id,
+        "name": name.strip(),
+    }
+
+
+@router.delete("/folders/{folder_id}")
+def remove_folder(folder_id: int):
+    deleted = delete_folder(folder_id)
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail="Folder not found.",
+        )
+
+    return {
+        "message": "Folder deleted",
+        "folder_id": folder_id,
+    }
+
+
+@router.put("/chats/{chat_id}/folder")
+def update_chat_folder(
+    chat_id: int,
+    folder_id: int | None = None,
+):
+    updated = move_chat_to_folder(
+        chat_id,
+        folder_id,
+    )
+
+    if not updated:
+        raise HTTPException(
+            status_code=404,
+            detail="Chat or folder not found.",
+        )
+
+    return {
+        "message": (
+            "Chat moved to folder"
+            if folder_id is not None
+            else "Chat removed from folder"
+        ),
+        "chat_id": chat_id,
+        "folder_id": folder_id,
     }
 
 
