@@ -12,9 +12,14 @@ class Brain:
         self.internet = InternetAgent()
         self.router = AgentRouter()
 
-    def prepare_request(self, message: str) -> dict:
+    def prepare_request(
+        self,
+        message: str,
+        chat_id: int | None = None,
+    ) -> dict:
         route = self.router.route(message)
 
+        # Internet search
         if route == "internet":
             search = self.internet.search(message)
 
@@ -29,16 +34,31 @@ Answer naturally using the information above.
 """
 
             return {
-                "route": route,
+                "route": "internet",
                 "prompt": prompt,
                 "sources": search.get("sources", []),
             }
 
+        # PDF RAG — फक्त current chat मधील PDFs
         if route == "pdf":
-            rag_result = self.rag.search(message)
+            rag_result = self.rag.search(
+                query=message,
+                chat_id=chat_id,
+            )
 
-            prompt = f"""
-Use the following PDF content to answer the user question.
+            if not rag_result["context"]:
+                prompt = f"""
+User Question:
+{message}
+
+There is no readable PDF content available in this chat.
+
+Tell the user:
+"No PDF information is available in this chat. Please attach a PDF and send it first."
+"""
+            else:
+                prompt = f"""
+Use only the following PDF content from the current chat to answer the question.
 
 PDF Content:
 {rag_result["context"]}
@@ -46,35 +66,45 @@ PDF Content:
 User Question:
 {message}
 
-Answer only using the uploaded PDF content.
-
-If the answer is not available in the PDF, clearly say:
-"The answer is not available in the uploaded document."
-
-When useful, mention the source PDF name and page number.
+Rules:
+1. Answer only using the PDF content provided above.
+2. Do not use information from PDFs uploaded in other chats.
+3. If the answer is not present, clearly say:
+   "The answer is not available in the PDF attached to this chat."
+4. When useful, mention the PDF filename and page number.
 """
 
             return {
-                "route": route,
+                "route": "pdf",
                 "prompt": prompt,
                 "sources": rag_result["sources"],
             }
 
+        # Normal chat
         return {
             "route": "chat",
             "prompt": message,
             "sources": [],
         }
 
-    def chat(self, message: str) -> dict:
+    def chat(
+        self,
+        message: str,
+        chat_id: int | None = None,
+    ) -> dict:
         add("user", message)
 
-        prepared = self.prepare_request(message)
+        prepared = self.prepare_request(
+            message=message,
+            chat_id=chat_id,
+        )
 
         if prepared["route"] == "chat":
             reply = self.ai.generate_reply(message)
         else:
-            reply = self.ai.generate_reply(prepared["prompt"])
+            reply = self.ai.generate_reply(
+                prepared["prompt"]
+            )
 
         add("assistant", reply)
 
@@ -83,8 +113,15 @@ When useful, mention the source PDF name and page number.
             "sources": prepared["sources"],
         }
 
-    def stream_chat(self, message: str) -> dict:
-        prepared = self.prepare_request(message)
+    def stream_chat(
+        self,
+        message: str,
+        chat_id: int | None = None,
+    ) -> dict:
+        prepared = self.prepare_request(
+            message=message,
+            chat_id=chat_id,
+        )
 
         if prepared["route"] == "chat":
             stream = self.ai.generate_reply_stream(

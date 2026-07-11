@@ -5,22 +5,19 @@ import ChatWindow from "./components/Chat/ChatWindow";
 
 import useChat from "./hooks/useChat";
 
-import {
-  uploadDocument,
-  getDocuments,
-  deleteDocumentApi,
-} from "./services/documentService";
-
 import "./App.css";
 
 function App() {
   const {
     messages,
-    setMessages,
     input,
     setInput,
     loading,
-    uploadFile: uploadImageFile,
+
+    pendingFile,
+    removePendingFile,
+
+    uploadFile,
     newChat,
     sendMessage,
 
@@ -32,142 +29,46 @@ function App() {
     regenerateResponse,
   } = useChat();
 
-  const [uploading, setUploading] = useState(false);
-  const [documents, setDocuments] = useState([]);
+  const [sidebarOpen, setSidebarOpen] =
+    useState(false);
 
-  // Mobile sidebar
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [theme, setTheme] = useState(() => {
+    const savedTheme =
+      localStorage.getItem("onkar-ai-theme");
+
+    if (
+      savedTheme === "light" ||
+      savedTheme === "dark"
+    ) {
+      return savedTheme;
+    }
+
+    return "dark";
+  });
 
   useEffect(() => {
-    loadDocuments();
-  }, []);
+    localStorage.setItem(
+      "onkar-ai-theme",
+      theme
+    );
 
-  async function loadDocuments() {
-    try {
-      const response = await getDocuments();
-      setDocuments(response.data.documents || []);
-    } catch (error) {
-      console.error("Load documents error:", error);
-    }
-  }
+    document.documentElement.dataset.theme =
+      theme;
 
-  async function uploadPDF(event) {
-    const file = event.target.files?.[0];
-
-    if (!file) return;
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const fileSize =
-      file.size < 1024 * 1024
-        ? `${(file.size / 1024).toFixed(1)} KB`
-        : `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
-
-    setMessages((previousMessages) => [
-      ...previousMessages,
-      {
-        role: "user",
-        content: "",
-        fileType: "pdf",
-        fileName: file.name,
-        fileSize,
-        sources: [],
-      },
-    ]);
-
-    setUploading(true);
-
-    try {
-      const response = await uploadDocument(formData);
-
-      await loadDocuments();
-
-      setMessages((previousMessages) => [
-        ...previousMessages,
-        {
-          role: "assistant",
-          content: `✅ **${file.name}** uploaded and indexed successfully.\n\nChunks: ${
-            response.data?.chunks ?? 0
-          }`,
-          sources: [],
-        },
-      ]);
-    } catch (error) {
-      console.error("PDF upload error:", error);
-
-      setMessages((previousMessages) => [
-        ...previousMessages,
-        {
-          role: "assistant",
-          content:
-            error.response?.data?.detail ||
-            "❌ PDF upload failed. Please upload a valid PDF.",
-          sources: [],
-        },
-      ]);
-    } finally {
-      setUploading(false);
-
-      if (event.target) {
-        event.target.value = "";
-      }
-    }
-  }
-
-  async function handleUploadFile(event) {
-    const file = event.target.files?.[0];
-
-    if (!file) return;
-
-    if (file.type === "application/pdf") {
-      await uploadPDF(event);
-      return;
-    }
-
-    if (file.type.startsWith("image/")) {
-      await uploadImageFile(event);
-      return;
-    }
-
-    alert("Only PDF and image files are supported.");
-  }
-
-  async function deleteDocument(filename) {
-    try {
-      await deleteDocumentApi(filename);
-      await loadDocuments();
-
-      setMessages((previousMessages) => [
-        ...previousMessages,
-        {
-          role: "assistant",
-          content: `🗑️ **${filename}** deleted successfully.`,
-          sources: [],
-        },
-      ]);
-    } catch (error) {
-      console.error("Delete document error:", error);
-
-      setMessages((previousMessages) => [
-        ...previousMessages,
-        {
-          role: "assistant",
-          content: `❌ Failed to delete **${filename}**.`,
-          sources: [],
-        },
-      ]);
-    }
-  }
+    document.documentElement.style.colorScheme =
+      theme;
+  }, [theme]);
 
   return (
-    <div className="flex min-h-screen">
+    <div
+      className={`flex min-h-screen ${
+        theme === "dark"
+          ? "bg-[#0f172a] text-white"
+          : "bg-slate-100 text-slate-900"
+      }`}
+    >
       <Sidebar
-        uploadPDF={uploadPDF}
-        uploading={uploading}
         newChat={newChat}
-        documents={documents}
-        deleteDocument={deleteDocument}
         chats={chats}
         activeChatId={activeChatId}
         selectChat={selectChat}
@@ -175,6 +76,8 @@ function App() {
         deleteCurrentChat={deleteCurrentChat}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        theme={theme}
+        onThemeChange={setTheme}
       />
 
       <ChatWindow
@@ -182,10 +85,15 @@ function App() {
         input={input}
         setInput={setInput}
         sendMessage={sendMessage}
-        loading={loading || uploading}
-        uploadFile={handleUploadFile}
+        loading={loading}
+        uploadFile={uploadFile}
+        pendingFile={pendingFile}
+        removePendingFile={removePendingFile}
         regenerateResponse={regenerateResponse}
-        onOpenSidebar={() => setSidebarOpen(true)}
+        onOpenSidebar={() =>
+          setSidebarOpen(true)
+        }
+        theme={theme}
       />
     </div>
   );

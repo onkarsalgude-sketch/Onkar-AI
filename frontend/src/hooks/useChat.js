@@ -1,18 +1,34 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+
 import { streamChat, getChats } from "../services/chatService";
-import useChats from "./useChats";
 import { analyzeImage } from "../services/imageService";
 import { uploadDocument } from "../services/documentService";
+
+import useChats from "./useChats";
 
 const welcomeMessage = {
   role: "assistant",
   content: "Hello! How can I help you today?",
+  sources: [],
 };
 
+function formatFileSize(size) {
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function useChat() {
-  const [messages, setMessages] = useState([welcomeMessage]);
+  const [messages, setMessages] = useState([
+    welcomeMessage,
+  ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Send करण्यापूर्वी निवडलेली PDF
+  const [pendingFile, setPendingFile] = useState(null);
 
   const {
     chats,
@@ -31,264 +47,337 @@ export default function useChat() {
     loadChats();
   }, []);
 
-async function sendMessage() {
-  if (!input.trim() || loading) return;
+  function removePendingFile() {
+    setPendingFile(null);
+  }
 
-  const text = input.trim();
-  const currentChatId = await createNewChatIfNeeded();
+  function handleNewChat() {
+    setPendingFile(null);
+    newChat();
+  }
 
-  setMessages((prev) => [
-    ...prev,
-    {
+  async function handleSelectChat(chatId) {
+    setPendingFile(null);
+    await selectChat(chatId);
+  }
+
+  /*
+   * Attachment button वरून file निवडल्यानंतर:
+   * PDF लगेच upload होणार नाही.
+   * ती input जवळ preview म्हणून ठेवली जाईल.
+   */
+  async function uploadFile(event) {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    // Same file पुन्हा निवडता यावी
+    event.target.value = "";
+
+    if (file.type === "application/pdf") {
+      setPendingFile({
+        file,
+        fileType: "pdf",
+        fileName: file.name,
+        fileSize: formatFileSize(file.size),
+      });
+
+      return;
+    }
+
+    // Image flow सध्या पूर्वीसारखाच ठेवला आहे
+    if (file.type.startsWith("image/")) {
+      setLoading(true);
+
+      const imageUrl = URL.createObjectURL(file);
+
+      setMessages((previousMessages) => [
+        ...previousMessages,
+        {
+          role: "user",
+          content: "",
+          imageUrl,
+          fileName: file.name,
+          sources: [],
+        },
+        {
+          role: "assistant",
+          content: "",
+          sources: [],
+        },
+      ]);
+
+      try {
+        const response = await analyzeImage(file);
+
+        setMessages((previousMessages) => {
+          const updatedMessages = [...previousMessages];
+          const lastIndex = updatedMessages.length - 1;
+
+          updatedMessages[lastIndex] = {
+            ...updatedMessages[lastIndex],
+            content:
+              response.result ||
+              "Image analyzed successfully.",
+          };
+
+          return updatedMessages;
+        });
+      } catch (error) {
+        console.error("Image analysis error:", error);
+
+        setMessages((previousMessages) => {
+          const updatedMessages = [...previousMessages];
+          const lastIndex = updatedMessages.length - 1;
+
+          updatedMessages[lastIndex] = {
+            ...updatedMessages[lastIndex],
+            content: "❌ Image analysis failed.",
+          };
+
+          return updatedMessages;
+        });
+      } finally {
+        setLoading(false);
+      }
+
+      return;
+    }
+
+    alert("Only PDF and image files are supported.");
+  }
+
+  async function sendMessage() {
+    const text = input.trim();
+
+    // Text किंवा PDF यापैकी किमान एक असणे आवश्यक
+    if ((!text && !pendingFile) || loading) return;
+
+    const attachedFile = pendingFile;
+    const currentChatId =
+      await createNewChatIfNeeded();
+
+    const userMessage = {
       role: "user",
       content: text,
       sources: [],
-    },
-    {
-      role: "assistant",
-      content: "",
-      sources: [],
-    },
-  ]);
+    };
 
-  setInput("");
-  setLoading(true);
-
-  try {
-    const result = await streamChat(
-      text,
-      currentChatId,
-      (chunk) => {
-        setMessages((prev) => {
-          const updated = [...prev];
-          const lastIndex = updated.length - 1;
-
-          updated[lastIndex] = {
-            ...updated[lastIndex],
-            content: updated[lastIndex].content + chunk,
-          };
-
-          return updated;
-        });
-      }
-    );
-
-    setMessages((prev) => {
-      const updated = [...prev];
-      const lastIndex = updated.length - 1;
-
-      updated[lastIndex] = {
-        ...updated[lastIndex],
-        sources: result?.sources || [],
-      };
-
-      return updated;
-    });
-
-    if (result?.chatId) {
-      setActiveChatId(result.chatId);
+    if (attachedFile?.fileType === "pdf") {
+      userMessage.fileType = "pdf";
+      userMessage.fileName = attachedFile.fileName;
+      userMessage.fileSize = attachedFile.fileSize;
     }
 
-    const chatsRes = await getChats();
-    setChats(chatsRes.data.chats);
-  } catch (error) {
-    console.error("Chat error:", error);
-
-    setMessages((prev) => {
-      const updated = [...prev];
-      const lastIndex = updated.length - 1;
-
-      updated[lastIndex] = {
-        ...updated[lastIndex],
-        content: "❌ Backend connection failed.",
-        sources: [],
-      };
-
-      return updated;
-    });
-  } finally {
-    setLoading(false);
-  }
-}
-
-async function uploadPDF(e) {
-  const file = e.target.files?.[0];
-
-  if (!file) return;
-
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const fileSize =
-    file.size < 1024 * 1024
-      ? `${(file.size / 1024).toFixed(1)} KB`
-      : `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
-
-  setMessages((prev) => [
-    ...prev,
-    {
-      role: "user",
-      content: "",
-      fileType: "pdf",
-      fileName: file.name,
-      fileSize,
-      sources: [],
-    },
-  ]);
-
-  setLoading(true);
-
-  try {
-    const response = await uploadDocument(formData);
-
-    setMessages((prev) => [
-      ...prev,
+    setMessages((previousMessages) => [
+      ...previousMessages,
+      userMessage,
       {
         role: "assistant",
-        content:
-          response.data?.message ||
-          `✅ ${file.name} uploaded and indexed successfully.`,
+        content: "",
         sources: [],
       },
     ]);
-  } catch (error) {
-    console.error("PDF upload error:", error);
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "assistant",
-        content:
-          error.response?.data?.detail ||
-          "❌ PDF upload failed.",
-        sources: [],
-      },
-    ]);
-  } finally {
-    setLoading(false);
-    e.target.value = "";
-  }
-}
-
-  async function uploadFile(e) {
-  const file = e.target.files[0];
-
-  if (!file) return;
-
-  // 📄 PDF
-  if (file.type === "application/pdf") {
-    uploadPDF(e);
-    return;
-  }
-
-  // 🖼️ Image
-  if (file.type.startsWith("image/")) {
+    setInput("");
+    setPendingFile(null);
     setLoading(true);
 
     try {
-      const res = await analyzeImage(file);
+      let requestText = text;
 
-      setMessages((prev) => [
-        ...prev,
-        {
-  role: "user",
-  content: "",
-  imageUrl: URL.createObjectURL(file),
-  fileName: file.name,
-},
-        {
-          role: "assistant",
-          content: res.result,
-        },
-      ]);
-    } catch (err) {
-      console.error(err);
+      /*
+       * PDF असेल तर Send दाबल्यावरच upload.
+       * chat_id पुढे backend मध्ये PDF scope करण्यासाठी वापरणार.
+       */
+      if (attachedFile?.fileType === "pdf") {
+        const formData = new FormData();
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "❌ Image analysis failed.",
-        },
-      ]);
+        formData.append("file", attachedFile.file);
+        formData.append(
+          "chat_id",
+          String(currentChatId)
+        );
+
+        await uploadDocument(formData);
+
+        requestText = text
+          ? `Use the PDF uploaded in this chat to answer this question:\n${text}`
+          : `Summarize the PDF "${attachedFile.fileName}" uploaded in this chat.`;
+      }
+
+      const result = await streamChat(
+        requestText,
+        currentChatId,
+        (chunk) => {
+          setMessages((previousMessages) => {
+            const updatedMessages = [
+              ...previousMessages,
+            ];
+            const lastIndex =
+              updatedMessages.length - 1;
+
+            updatedMessages[lastIndex] = {
+              ...updatedMessages[lastIndex],
+              content:
+                updatedMessages[lastIndex].content +
+                chunk,
+            };
+
+            return updatedMessages;
+          });
+        }
+      );
+
+      setMessages((previousMessages) => {
+        const updatedMessages = [
+          ...previousMessages,
+        ];
+        const lastIndex =
+          updatedMessages.length - 1;
+
+        updatedMessages[lastIndex] = {
+          ...updatedMessages[lastIndex],
+          sources: result?.sources || [],
+        };
+
+        return updatedMessages;
+      });
+
+      if (result?.chatId) {
+        setActiveChatId(result.chatId);
+      }
+
+      const chatsResponse = await getChats();
+      setChats(chatsResponse.data.chats || []);
+    } catch (error) {
+      console.error("Chat or PDF error:", error);
+
+      setMessages((previousMessages) => {
+        const updatedMessages = [
+          ...previousMessages,
+        ];
+        const lastIndex =
+          updatedMessages.length - 1;
+
+        updatedMessages[lastIndex] = {
+          ...updatedMessages[lastIndex],
+          content:
+            error.response?.data?.detail ||
+            "❌ Message or PDF processing failed.",
+          sources: [],
+        };
+
+        return updatedMessages;
+      });
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
-    return;
   }
-
-  alert("Unsupported file type.");
-}
 
   async function regenerateResponse() {
     const lastUserMessage = [...messages]
       .reverse()
-      .find((msg) => msg.role === "user");
+      .find(
+        (message) =>
+          message.role === "user" &&
+          message.content?.trim()
+      );
 
-    if (!lastUserMessage || loading || !activeChatId) return;
+    if (
+      !lastUserMessage ||
+      loading ||
+      !activeChatId
+    ) {
+      return;
+    }
 
     setLoading(true);
 
-    setMessages((prev) => {
-      const updated = [...prev];
+    setMessages((previousMessages) => {
+      const updatedMessages = [
+        ...previousMessages,
+      ];
 
-      if (updated[updated.length - 1]?.role === "assistant") {
-        updated.pop();
+      if (
+        updatedMessages[
+          updatedMessages.length - 1
+        ]?.role === "assistant"
+      ) {
+        updatedMessages.pop();
       }
 
-      updated.push({
+      updatedMessages.push({
         role: "assistant",
         content: "",
         sources: [],
       });
 
-      return updated;
+      return updatedMessages;
     });
 
     try {
       const result = await streamChat(
-  lastUserMessage.content,
-  activeChatId,
-  (chunk) => {
-    setMessages((prev) => {
-      const updated = [...prev];
+        lastUserMessage.content,
+        activeChatId,
+        (chunk) => {
+          setMessages((previousMessages) => {
+            const updatedMessages = [
+              ...previousMessages,
+            ];
+            const lastIndex =
+              updatedMessages.length - 1;
 
-      const lastMessage = {
-        ...updated[updated.length - 1],
-      };
+            updatedMessages[lastIndex] = {
+              ...updatedMessages[lastIndex],
+              content:
+                updatedMessages[lastIndex].content +
+                chunk,
+            };
 
-      lastMessage.content += chunk;
-      updated[updated.length - 1] = lastMessage;
+            return updatedMessages;
+          });
+        }
+      );
 
-      return updated;
-    });
-  }
-);
+      setMessages((previousMessages) => {
+        const updatedMessages = [
+          ...previousMessages,
+        ];
+        const lastIndex =
+          updatedMessages.length - 1;
 
-setMessages((prev) => {
-  const updated = [...prev];
+        updatedMessages[lastIndex] = {
+          ...updatedMessages[lastIndex],
+          sources: result?.sources || [],
+        };
 
-  const lastMessage = {
-    ...updated[updated.length - 1],
-    sources: result.sources || [],
-  };
-
-  updated[updated.length - 1] = lastMessage;
-
-  return updated;
-});
-
-      const chatsRes = await getChats();
-      setChats(chatsRes.data.chats);
-    } catch (err) {
-      setMessages((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1].content = "❌ Regenerate failed.";
-        return updated;
+        return updatedMessages;
       });
-    }
 
-    setLoading(false);
+      const chatsResponse = await getChats();
+      setChats(chatsResponse.data.chats || []);
+    } catch (error) {
+      console.error("Regenerate error:", error);
+
+      setMessages((previousMessages) => {
+        const updatedMessages = [
+          ...previousMessages,
+        ];
+        const lastIndex =
+          updatedMessages.length - 1;
+
+        updatedMessages[lastIndex] = {
+          ...updatedMessages[lastIndex],
+          content: "❌ Regenerate failed.",
+          sources: [],
+        };
+
+        return updatedMessages;
+      });
+    } finally {
+      setLoading(false);
+    }
   }
 
   return {
@@ -298,18 +387,21 @@ setMessages((prev) => {
     setInput,
     loading,
 
+    pendingFile,
+    removePendingFile,
+
     chats,
     setChats,
     activeChatId,
     setActiveChatId,
 
     loadChats,
-    selectChat,
-    newChat,
+    selectChat: handleSelectChat,
+    newChat: handleNewChat,
     sendMessage,
     renameCurrentChat,
     deleteCurrentChat,
     regenerateResponse,
-     uploadFile,
+    uploadFile,
   };
 }

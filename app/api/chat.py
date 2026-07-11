@@ -1,4 +1,5 @@
 import json
+import shutil
 from urllib.parse import quote
 
 from fastapi import APIRouter
@@ -6,6 +7,7 @@ from fastapi.responses import StreamingResponse
 
 from app.models.chat import ChatRequest, ChatResponse
 from app.agents.brain import Brain
+from app.config.settings import UPLOAD_DIR
 from app.services.history_service import (
     init_db,
     create_chat,
@@ -37,38 +39,74 @@ def create_new_chat():
 
 @router.get("/chats")
 def list_chats():
-    return {"chats": get_chats()}
+    return {
+        "chats": get_chats(),
+    }
 
 
 @router.get("/chats/{chat_id}/messages")
 def chat_messages(chat_id: int):
-    return {"messages": get_messages(chat_id)}
+    return {
+        "messages": get_messages(chat_id),
+    }
 
 
 @router.delete("/chats/{chat_id}")
 def remove_chat(chat_id: int):
+    # त्या chat चे ChromaDB chunks delete करणे
+    vector_result = brain.rag.delete_chat(chat_id)
+
+    # त्या chat चा uploaded PDF folder delete करणे
+    chat_directory = UPLOAD_DIR / f"chat_{chat_id}"
+
+    if chat_directory.exists():
+        shutil.rmtree(chat_directory)
+
+    # SQLite मधून chat आणि messages delete करणे
     delete_chat(chat_id)
-    return {"message": "Chat deleted"}
+
+    return {
+        "message": "Chat deleted successfully",
+        "chat_id": chat_id,
+        "deleted_pdf_chunks": vector_result[
+            "deleted_chunks"
+        ],
+    }
 
 
 @router.put("/chats/{chat_id}")
-def update_chat_title(chat_id: int, title: str):
+def update_chat_title(
+    chat_id: int,
+    title: str,
+):
     rename_chat(chat_id, title)
-    return {"message": "Chat renamed"}
+
+    return {
+        "message": "Chat renamed",
+    }
 
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post(
+    "/chat",
+    response_model=ChatResponse,
+)
 def chat(request: ChatRequest):
     chat_id = request.chat_id
 
     if chat_id is None:
-        title = brain.ai.generate_title(request.message)
+        title = brain.ai.generate_title(
+            request.message
+        )
+
         chat_id = create_chat(title)
 
     messages = get_messages(chat_id)
 
     if len(messages) == 0:
-        title = brain.ai.generate_title(request.message)
+        title = brain.ai.generate_title(
+            request.message
+        )
+
         rename_chat(chat_id, title)
 
     save_message(
@@ -77,7 +115,11 @@ def chat(request: ChatRequest):
         request.message,
     )
 
-    result = brain.chat(request.message)
+    # Current chat ID Brain ला pass करणे
+    result = brain.chat(
+        request.message,
+        chat_id=chat_id,
+    )
 
     save_message(
         chat_id,
@@ -97,13 +139,19 @@ def chat_stream(request: ChatRequest):
     chat_id = request.chat_id
 
     if chat_id is None:
-        title = brain.ai.generate_title(request.message)
+        title = brain.ai.generate_title(
+            request.message
+        )
+
         chat_id = create_chat(title)
 
     messages = get_messages(chat_id)
 
     if len(messages) == 0:
-        title = brain.ai.generate_title(request.message)
+        title = brain.ai.generate_title(
+            request.message
+        )
+
         rename_chat(chat_id, title)
 
     save_message(
@@ -112,7 +160,11 @@ def chat_stream(request: ChatRequest):
         request.message,
     )
 
-    stream_result = brain.stream_chat(request.message)
+    # Current chat ID Brain ला pass करणे
+    stream_result = brain.stream_chat(
+        request.message,
+        chat_id=chat_id,
+    )
 
     sources_header = quote(
         json.dumps(
@@ -154,12 +206,16 @@ def chat_history():
     chats = get_chats()
 
     if not chats:
-        return {"messages": []}
+        return {
+            "messages": [],
+        }
 
     latest_chat_id = chats[0]["id"]
 
     return {
-        "messages": get_messages(latest_chat_id)
+        "messages": get_messages(
+            latest_chat_id
+        ),
     }
 
 
@@ -169,5 +225,5 @@ def delete_history():
     clear()
 
     return {
-        "message": "Chat history cleared"
+        "message": "Chat history cleared",
     }

@@ -1,12 +1,13 @@
-import ReactMarkdown from "react-markdown";
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+
 import CodeBlock from "./CodeBlock";
 import SourcesCard from "./SourcesCard";
 
 function Message({
   role,
-  content,
+  content = "",
   imageUrl,
   fileName,
   fileType,
@@ -14,12 +15,18 @@ function Message({
   sources = [],
   regenerateResponse,
   isLast,
+  theme = "dark",
 }) {
   const isUser = role === "user";
+  const isDark = theme === "dark";
+
   const [copied, setCopied] = useState(false);
 
   function speak() {
+    if (!content.trim()) return;
+
     const speech = new SpeechSynthesisUtterance(content);
+
     speech.lang = "en-IN";
     speech.rate = 1;
     speech.pitch = 1;
@@ -29,116 +36,232 @@ function Message({
   }
 
   async function copyText() {
-    await navigator.clipboard.writeText(content);
-    setCopied(true);
+    if (!content.trim()) return;
 
-    setTimeout(() => {
-      setCopied(false);
-    }, 2000);
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+
+      setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    } catch (error) {
+      console.error("Copy failed:", error);
+    }
   }
 
   return (
-    <div className={`flex mb-5 ${isUser ? "justify-end" : "justify-start"}`}>
+    <div
+      className={`mb-5 flex ${
+        isUser ? "justify-end" : "justify-start"
+      }`}
+    >
       <div
-        className={`max-w-3xl px-5 py-4 rounded-2xl leading-relaxed ${
+        className={`max-w-[90%] rounded-2xl px-4 py-3 leading-relaxed sm:max-w-3xl sm:px-5 sm:py-4 ${
           isUser
-            ? "bg-blue-600 text-white rounded-br-md"
-            : "bg-slate-800 text-slate-100 rounded-bl-md"
+            ? "rounded-br-md bg-blue-600 text-white"
+            : isDark
+              ? "rounded-bl-md border border-slate-700 bg-slate-800 text-slate-100"
+              : "rounded-bl-md border border-slate-200 bg-white text-slate-900 shadow-sm"
         }`}
       >
-       {imageUrl && (
-  <div className="mb-3">
-    <img
-      src={imageUrl}
-      alt={fileName}
-      className="rounded-xl max-h-80 max-w-full border border-slate-700"
-    />
+        {/* Image preview */}
+        {imageUrl && (
+          <div className="mb-3">
+            <img
+              src={imageUrl}
+              alt={fileName || "Uploaded image"}
+              className={`max-h-80 max-w-full rounded-xl border ${
+                isDark
+                  ? "border-slate-700"
+                  : "border-slate-200"
+              }`}
+            />
 
-    <p className="text-xs text-slate-400 mt-2">
-      📷 {fileName}
-    </p>
-  </div>
-)}
-{fileType === "pdf" && (
-  <div className="mb-3 flex items-center gap-3 rounded-xl border border-slate-600 bg-slate-900 p-3">
-    <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-red-500/20 text-2xl">
-      📄
-    </div>
+            <p
+              className={`mt-2 text-xs ${
+                isUser
+                  ? "text-blue-100"
+                  : isDark
+                    ? "text-slate-400"
+                    : "text-slate-500"
+              }`}
+            >
+              📷 {fileName || "Uploaded image"}
+            </p>
+          </div>
+        )}
 
-    <div className="min-w-0">
-      <p className="max-w-64 truncate font-medium text-slate-100">
-        {fileName || "Uploaded PDF"}
-      </p>
+        {/* PDF preview */}
+        {fileType === "pdf" && (
+          <div
+            className={`mb-3 flex items-center gap-3 rounded-xl border p-3 ${
+              isUser
+                ? "border-blue-400/50 bg-blue-700/40"
+                : isDark
+                  ? "border-slate-600 bg-slate-900"
+                  : "border-slate-200 bg-slate-100"
+            }`}
+          >
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-red-500/20 text-2xl">
+              📄
+            </div>
 
-      <p className="text-xs text-slate-400">
-        PDF document
-        {fileSize ? ` • ${fileSize}` : ""}
-      </p>
-    </div>
-  </div>
-)}
+            <div className="min-w-0">
+              <p
+                className={`max-w-64 truncate font-medium ${
+                  isUser
+                    ? "text-white"
+                    : isDark
+                      ? "text-slate-100"
+                      : "text-slate-900"
+                }`}
+              >
+                {fileName || "Uploaded PDF"}
+              </p>
+
+              <p
+                className={`text-xs ${
+                  isUser
+                    ? "text-blue-100"
+                    : isDark
+                      ? "text-slate-400"
+                      : "text-slate-500"
+                }`}
+              >
+                PDF document
+                {fileSize ? ` • ${fileSize}` : ""}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Message content */}
         {content && (
-  <ReactMarkdown
-    remarkPlugins={[remarkGfm]}
-    components={{
-      code({ inline, className, children }) {
-        const match = /language-(\w+)/.exec(className || "");
+          <div className="break-words">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                code({
+                  inline,
+                  className,
+                  children,
+                  ...props
+                }) {
+                  const match = /language-(\w+)/.exec(
+                    className || ""
+                  );
 
-        return !inline && match ? (
-          <CodeBlock
-            language={match[1]}
-            value={String(children).replace(/\n$/, "")}
-          />
-        ) : (
-          <code className="bg-slate-900 px-1 py-0.5 rounded">
-            {children}
-          </code>
-        );
-      },
-    }}
-  >
-    {content}
-  </ReactMarkdown>
-)}
-        {!isUser && <SourcesCard sources={sources} />}
+                  return !inline && match ? (
+                    <CodeBlock
+                      language={match[1]}
+                      value={String(children).replace(
+                        /\n$/,
+                        ""
+                      )}
+                    />
+                  ) : (
+                    <code
+                      className={`rounded px-1 py-0.5 ${
+                        isUser
+                          ? "bg-blue-800/50"
+                          : isDark
+                            ? "bg-slate-950"
+                            : "bg-slate-200"
+                      }`}
+                      {...props}
+                    >
+                      {children}
+                    </code>
+                  );
+                },
+
+                a({ children, href }) {
+                  return (
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={
+                        isUser
+                          ? "text-white underline"
+                          : "text-blue-500 underline"
+                      }
+                    >
+                      {children}
+                    </a>
+                  );
+                },
+              }}
+            >
+              {content}
+            </ReactMarkdown>
+          </div>
+        )}
 
         {!isUser && (
-          <div className="flex gap-2 mt-4">
+          <SourcesCard
+            sources={sources}
+            theme={theme}
+          />
+        )}
 
+        {/* Assistant actions */}
+        {!isUser && content && (
+          <div className="mt-4 flex flex-wrap gap-2">
             <button
+              type="button"
               onClick={copyText}
-              className="bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded-lg text-sm"
+              className={`rounded-lg px-3 py-1 text-sm transition ${
+                isDark
+                  ? "bg-slate-700 hover:bg-slate-600"
+                  : "bg-slate-200 hover:bg-slate-300"
+              }`}
             >
               {copied ? "✅ Copied" : "📋 Copy"}
             </button>
 
             <button
+              type="button"
               onClick={speak}
-              className="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded-lg text-sm"
+              className="rounded-lg bg-purple-600 px-3 py-1 text-sm text-white transition hover:bg-purple-500"
             >
               🔊 Speak
             </button>
 
             <button
-              className="bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded-lg"
+              type="button"
+              className={`rounded-lg px-3 py-1 transition ${
+                isDark
+                  ? "bg-slate-700 hover:bg-slate-600"
+                  : "bg-slate-200 hover:bg-slate-300"
+              }`}
+              title="Helpful"
             >
               👍
             </button>
 
             <button
-              className="bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded-lg"
+              type="button"
+              className={`rounded-lg px-3 py-1 transition ${
+                isDark
+                  ? "bg-slate-700 hover:bg-slate-600"
+                  : "bg-slate-200 hover:bg-slate-300"
+              }`}
+              title="Not helpful"
             >
               👎
             </button>
-            {isLast && (
-  <button
-    onClick={regenerateResponse}
-    className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-lg text-sm"
-  >
-    🔄 Regenerate
-  </button>
-)}
 
+            {isLast && (
+              <button
+                type="button"
+                onClick={regenerateResponse}
+                className="rounded-lg bg-blue-600 px-3 py-1 text-sm text-white transition hover:bg-blue-500"
+              >
+                🔄 Regenerate
+              </button>
+            )}
           </div>
         )}
       </div>
