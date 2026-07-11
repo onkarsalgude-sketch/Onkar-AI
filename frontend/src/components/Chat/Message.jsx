@@ -154,12 +154,13 @@ function Message({
 
                   return !inline && match ? (
                     <CodeBlock
-                      language={match[1]}
-                      value={String(children).replace(
-                        /\n$/,
-                        ""
-                      )}
-                    />
+  language={match[1]}
+  value={String(children).replace(
+    /\n$/,
+    ""
+  )}
+  theme={theme}
+/>
                   ) : (
                     <code
                       className={`rounded px-1 py-0.5 ${
