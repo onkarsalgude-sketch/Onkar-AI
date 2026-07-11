@@ -33,6 +33,8 @@ function Sidebar({
   selectChat,
   renameCurrentChat,
   deleteCurrentChat,
+  isOpen,
+  onClose,
 }) {
   const [chatSearch, setChatSearch] = useState("");
   const [documentSearch, setDocumentSearch] =
@@ -83,25 +85,60 @@ function Sidebar({
     }
   }
 
+  function handleNewChat() {
+    newChat();
+    onClose();
+  }
+
+  function handleSelectChat(chatId) {
+    selectChat(chatId);
+    onClose();
+  }
+
   return (
     <>
-      <aside className="flex h-screen w-80 shrink-0 flex-col border-r border-slate-800 bg-[#0b1220] text-white">
-        {/* Logo */}
-        <div className="border-b border-slate-800 p-6">
-          <h1 className="text-2xl font-bold">
-            🤖 Onkar AI
-          </h1>
+      {/* Mobile background overlay */}
+      {isOpen && (
+        <button
+          type="button"
+          aria-label="Close sidebar"
+          onClick={onClose}
+          className="fixed inset-0 z-40 bg-black/60 md:hidden"
+        />
+      )}
 
-          <p className="mt-1 text-sm text-slate-400">
-            Personal AI Assistant
-          </p>
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex h-screen w-80 shrink-0 flex-col border-r border-slate-800 bg-[#0b1220] text-white transition-transform duration-300 md:static md:z-auto md:translate-x-0 ${
+          isOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        {/* Logo */}
+        <div className="flex items-center justify-between border-b border-slate-800 p-6">
+          <div>
+            <h1 className="text-2xl font-bold">
+              🤖 Onkar AI
+            </h1>
+
+            <p className="mt-1 text-sm text-slate-400">
+              Personal AI Assistant
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-xl hover:bg-slate-800 md:hidden"
+            aria-label="Close sidebar"
+          >
+            ✕
+          </button>
         </div>
 
         {/* Main buttons */}
         <div className="space-y-3 border-b border-slate-800 p-4">
           <button
             type="button"
-            onClick={newChat}
+            onClick={handleNewChat}
             className="w-full rounded-xl bg-blue-600 p-3 font-semibold transition hover:bg-blue-700"
           >
             + New Chat
@@ -137,9 +174,9 @@ function Sidebar({
           </button>
         </div>
 
-        {/* Scrollable sidebar content */}
+        {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto px-4 py-5">
-          {/* Documents */}
+          {/* Uploaded files */}
           <div className="mb-7">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-xs uppercase tracking-wider text-slate-500">
@@ -167,6 +204,7 @@ function Sidebar({
               {documents.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-slate-700 p-4 text-center">
                   <p className="text-2xl">📂</p>
+
                   <p className="mt-2 text-sm text-slate-500">
                     No PDF uploaded
                   </p>
@@ -221,7 +259,7 @@ function Sidebar({
             </div>
           </div>
 
-          {/* Chats */}
+          {/* Recent chats */}
           <div>
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-xs uppercase tracking-wider text-slate-500">
@@ -261,7 +299,7 @@ function Sidebar({
                           <div
                             key={chat.id}
                             onClick={() =>
-                              selectChat(chat.id)
+                              handleSelectChat(chat.id)
                             }
                             className={`group flex cursor-pointer items-center justify-between gap-2 rounded-lg p-3 transition ${
                               activeChatId === chat.id

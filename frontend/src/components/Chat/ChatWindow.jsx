@@ -13,6 +13,7 @@ function ChatWindow({
   loading,
   uploadFile,
   regenerateResponse,
+  onOpenSidebar,
 }) {
   const [isDragging, setIsDragging] = useState(false);
 
@@ -90,18 +91,19 @@ function ChatWindow({
 
   return (
     <main
-      className="relative flex h-screen flex-1 flex-col bg-[#0f172a] text-white"
+      className="relative flex h-screen min-w-0 flex-1 flex-col bg-[#0f172a] text-white"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {/* Drag and drop overlay */}
       {isDragging && (
-        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
-          <div className="rounded-2xl border-2 border-dashed border-blue-400 bg-slate-900 px-12 py-10 text-center shadow-2xl">
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border-2 border-dashed border-blue-400 bg-slate-900 px-6 py-10 text-center shadow-2xl sm:px-12">
             <div className="mb-4 text-5xl">📎</div>
 
-            <h3 className="text-xl font-semibold text-white">
+            <h3 className="text-xl font-semibold">
               Drop your file here
             </h3>
 
@@ -112,38 +114,52 @@ function ChatWindow({
         </div>
       )}
 
-      <header className="flex h-20 items-center justify-between border-b border-slate-800 px-8">
-        <div>
-          <h2 className="text-xl font-bold">
-            Onkar Personal AI
-          </h2>
+      {/* Header */}
+      <header className="flex h-20 shrink-0 items-center justify-between border-b border-slate-800 px-3 sm:px-5 md:px-8">
+        <div className="flex min-w-0 items-center gap-3">
+          {/* Mobile hamburger button */}
+          <button
+            type="button"
+            onClick={onOpenSidebar}
+            className="shrink-0 rounded-lg bg-slate-800 p-2 text-xl transition hover:bg-slate-700 md:hidden"
+            aria-label="Open sidebar"
+          >
+            ☰
+          </button>
 
-          <p className="text-sm text-slate-400">
-            PDF RAG • Vision • Voice • Internet Search
-          </p>
+          <div className="min-w-0">
+            <h2 className="truncate text-base font-bold sm:text-lg md:text-xl">
+              Onkar Personal AI
+            </h2>
+
+            <p className="hidden truncate text-sm text-slate-400 sm:block">
+              PDF RAG • Vision • Voice • Internet Search
+            </p>
+          </div>
         </div>
 
-        <div className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-300">
+        <div className="ml-2 shrink-0 rounded-full bg-slate-800 px-3 py-2 text-xs text-slate-300 md:px-4 md:text-sm">
           Online
         </div>
       </header>
 
-      <section className="flex-1 overflow-y-auto px-8 py-6">
+      {/* Messages */}
+      <section className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 md:px-8 md:py-6">
         <div className="mx-auto max-w-4xl">
           {messages.length <= 1 && (
             <WelcomeScreen setInput={setInput} />
           )}
 
-          {messages.map((msg, index) => (
+          {messages.map((message, index) => (
             <Message
               key={index}
-              role={msg.role}
-              content={msg.content}
-              imageUrl={msg.imageUrl}
-              fileName={msg.fileName}
-              fileType={msg.fileType}
-              fileSize={msg.fileSize}
-              sources={msg.sources || []}
+              role={message.role}
+              content={message.content}
+              imageUrl={message.imageUrl}
+              fileName={message.fileName}
+              fileType={message.fileType}
+              fileSize={message.fileSize}
+              sources={message.sources || []}
               isLast={index === messages.length - 1}
               regenerateResponse={regenerateResponse}
             />
@@ -151,12 +167,12 @@ function ChatWindow({
 
           {loading && <Thinking />}
 
-          {/* Auto-scroll target */}
           <div ref={messagesEndRef} />
         </div>
       </section>
 
-      <div className="px-8 pb-6">
+      {/* Message input */}
+      <div className="shrink-0 px-3 pb-4 sm:px-5 md:px-8 md:pb-6">
         <div className="mx-auto max-w-4xl">
           <MessageInput
             input={input}
