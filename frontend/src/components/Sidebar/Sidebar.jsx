@@ -25,6 +25,7 @@ function getGroup(dateString) {
 }
 
 function Sidebar({
+  messages = [],
   newChat,
   chats = [],
   activeChatId,
@@ -274,12 +275,13 @@ function Sidebar({
         </div>
       </aside>
 
-      <SettingsModal
-        open={showSettings}
-        onClose={() => setShowSettings(false)}
-        theme={theme}
-        onThemeChange={onThemeChange}
-      />
+     <SettingsModal
+  open={showSettings}
+  onClose={() => setShowSettings(false)}
+  theme={theme}
+  onThemeChange={onThemeChange}
+  messages={messages}
+/>
     </>
   );
 }

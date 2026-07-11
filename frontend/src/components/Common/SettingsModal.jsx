@@ -1,15 +1,405 @@
+import { jsPDF } from "jspdf";
+
 function SettingsModal({
   open,
   onClose,
   theme = "dark",
   onThemeChange,
+  messages = [],
 }) {
   if (!open) return null;
 
   const isDark = theme === "dark";
 
+  const exportableMessages = messages.filter(
+    (message) =>
+      message?.content?.trim() ||
+      message?.fileName
+  );
+
+  const hasMessages =
+    exportableMessages.length > 0;
+
+  function getFileName() {
+    const now = new Date();
+
+    const date = now
+      .toISOString()
+      .slice(0, 19)
+      .replace("T", "-")
+      .replaceAll(":", "-");
+
+    return `onkar-ai-chat-${date}`;
+  }
+
+  function getRoleName(role) {
+    return role === "user"
+      ? "You"
+      : "Onkar AI";
+  }
+
+  function getSourceText(source) {
+    if (typeof source === "string") {
+      return source;
+    }
+
+    if (source?.filename) {
+      return `${source.filename}${
+        source.page
+          ? ` — Page ${source.page}`
+          : ""
+      }`;
+    }
+
+    if (source?.url) {
+      return `${
+        source.title ||
+        source.domain ||
+        "Web source"
+      } — ${source.url}`;
+    }
+
+    return source?.title || "Source";
+  }
+
+  function createMarkdown() {
+    const lines = [
+      "# Onkar AI Chat Export",
+      "",
+      `Exported: ${new Date().toLocaleString()}`,
+      "",
+      "---",
+      "",
+    ];
+
+    exportableMessages.forEach(
+      (message) => {
+        lines.push(
+          `## ${getRoleName(message.role)}`,
+          ""
+        );
+
+        if (message.fileName) {
+          lines.push(
+            `**Attachment:** ${message.fileName}${
+              message.fileSize
+                ? ` (${message.fileSize})`
+                : ""
+            }`,
+            ""
+          );
+        }
+
+        if (message.content?.trim()) {
+          lines.push(
+            message.content.trim(),
+            ""
+          );
+        }
+
+        if (
+          Array.isArray(message.sources) &&
+          message.sources.length > 0
+        ) {
+          lines.push("### Sources", "");
+
+          message.sources.forEach(
+            (source) => {
+              if (
+                typeof source !== "string" &&
+                source?.url
+              ) {
+                lines.push(
+                  `- [${
+                    source.title ||
+                    source.domain ||
+                    "Web source"
+                  }](${source.url})`
+                );
+              } else {
+                lines.push(
+                  `- ${getSourceText(source)}`
+                );
+              }
+            }
+          );
+
+          lines.push("");
+        }
+
+        lines.push("---", "");
+      }
+    );
+
+    return lines.join("\n");
+  }
+
+  function exportMarkdown() {
+    if (!hasMessages) {
+      alert("There is no chat to export.");
+      return;
+    }
+
+    const markdown = createMarkdown();
+
+    const blob = new Blob([markdown], {
+      type: "text/markdown;charset=utf-8",
+    });
+
+    const downloadUrl =
+      URL.createObjectURL(blob);
+
+    const link =
+      document.createElement("a");
+
+    link.href = downloadUrl;
+    link.download = `${getFileName()}.md`;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    URL.revokeObjectURL(downloadUrl);
+  }
+
+  function cleanTextForPDF(text) {
+    return String(text || "")
+      .replace(
+        /```[\w-]*\n?([\s\S]*?)```/g,
+        "$1"
+      )
+      .replace(
+        /\[([^\]]+)\]\(([^)]+)\)/g,
+        "$1 ($2)"
+      )
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/^#{1,6}\s+/gm, "")
+      .replace(/[*_~]/g, "")
+      .replace(/\r/g, "");
+  }
+
+  function exportPDF() {
+    if (!hasMessages) {
+      alert("There is no chat to export.");
+      return;
+    }
+
+    const pdf = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+      compress: true,
+    });
+
+    const pageWidth =
+      pdf.internal.pageSize.getWidth();
+
+    const pageHeight =
+      pdf.internal.pageSize.getHeight();
+
+    const margin = 15;
+    const usableWidth =
+      pageWidth - margin * 2;
+
+    let yPosition = 18;
+
+    function addNewPage() {
+      pdf.addPage();
+      yPosition = margin;
+    }
+
+    function ensureSpace(
+      requiredHeight = 8
+    ) {
+      if (
+        yPosition + requiredHeight >
+        pageHeight - margin
+      ) {
+        addNewPage();
+      }
+    }
+
+    function addWrappedText(
+      text,
+      {
+        fontSize = 10,
+        fontStyle = "normal",
+        color = [30, 41, 59],
+        lineHeight = 5,
+        spaceAfter = 3,
+      } = {}
+    ) {
+      const cleanedText =
+        cleanTextForPDF(text);
+
+      if (!cleanedText.trim()) return;
+
+      pdf.setFont(
+        "helvetica",
+        fontStyle
+      );
+
+      pdf.setFontSize(fontSize);
+      pdf.setTextColor(...color);
+
+      const lines = pdf.splitTextToSize(
+        cleanedText,
+        usableWidth
+      );
+
+      lines.forEach((line) => {
+        ensureSpace(lineHeight);
+
+        pdf.text(
+          String(line),
+          margin,
+          yPosition
+        );
+
+        yPosition += lineHeight;
+      });
+
+      yPosition += spaceAfter;
+    }
+
+    pdf.setProperties({
+      title: "Onkar AI Chat Export",
+      subject:
+        "Exported conversation from Onkar AI",
+      author: "Onkar AI",
+      creator: "Onkar AI",
+    });
+
+    addWrappedText(
+      "Onkar AI Chat Export",
+      {
+        fontSize: 18,
+        fontStyle: "bold",
+        color: [37, 99, 235],
+        lineHeight: 8,
+        spaceAfter: 2,
+      }
+    );
+
+    addWrappedText(
+      `Exported: ${new Date().toLocaleString()}`,
+      {
+        fontSize: 9,
+        color: [100, 116, 139],
+        spaceAfter: 7,
+      }
+    );
+
+    exportableMessages.forEach(
+      (message) => {
+        ensureSpace(15);
+
+        const isUser =
+          message.role === "user";
+
+        addWrappedText(
+          getRoleName(message.role),
+          {
+            fontSize: 11,
+            fontStyle: "bold",
+            color: isUser
+              ? [37, 99, 235]
+              : [79, 70, 229],
+            lineHeight: 6,
+            spaceAfter: 1,
+          }
+        );
+
+        if (message.fileName) {
+          addWrappedText(
+            `Attachment: ${
+              message.fileName
+            }${
+              message.fileSize
+                ? ` (${message.fileSize})`
+                : ""
+            }`,
+            {
+              fontSize: 9,
+              color: [100, 116, 139],
+              spaceAfter: 3,
+            }
+          );
+        }
+
+        if (message.content?.trim()) {
+          addWrappedText(
+            message.content.trim(),
+            {
+              fontSize: 10,
+              color: [30, 41, 59],
+              lineHeight: 5,
+              spaceAfter: 4,
+            }
+          );
+        }
+
+        if (
+          Array.isArray(
+            message.sources
+          ) &&
+          message.sources.length > 0
+        ) {
+          addWrappedText("Sources:", {
+            fontSize: 9,
+            fontStyle: "bold",
+            color: [71, 85, 105],
+            spaceAfter: 1,
+          });
+
+          message.sources.forEach(
+            (source) => {
+              addWrappedText(
+                `- ${getSourceText(source)}`,
+                {
+                  fontSize: 8,
+                  color: [
+                    100,
+                    116,
+                    139,
+                  ],
+                  lineHeight: 4.5,
+                  spaceAfter: 1,
+                }
+              );
+            }
+          );
+        }
+
+        ensureSpace(8);
+
+        pdf.setDrawColor(
+          203,
+          213,
+          225
+        );
+
+        pdf.setLineWidth(0.2);
+
+        pdf.line(
+          margin,
+          yPosition,
+          pageWidth - margin,
+          yPosition
+        );
+
+        yPosition += 7;
+      }
+    );
+
+    pdf.save(`${getFileName()}.pdf`);
+  }
+
   function handleOverlayClick(event) {
-    if (event.target === event.currentTarget) {
+    if (
+      event.target ===
+      event.currentTarget
+    ) {
       onClose();
     }
   }
@@ -46,7 +436,7 @@ function SettingsModal({
                   : "text-slate-500"
               }`}
             >
-              Customize your Onkar AI experience
+              Customize your Onkar AI
             </p>
           </div>
 
@@ -64,8 +454,8 @@ function SettingsModal({
           </button>
         </div>
 
-        <div className="space-y-5 p-5">
-          {/* Theme */}
+        <div className="max-h-[75vh] space-y-5 overflow-y-auto p-5">
+          {/* Appearance */}
           <section>
             <h3 className="mb-3 text-sm font-semibold">
               🎨 Appearance
@@ -74,7 +464,9 @@ function SettingsModal({
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => onThemeChange?.("dark")}
+                onClick={() =>
+                  onThemeChange?.("dark")
+                }
                 className={`rounded-xl border p-4 text-left transition ${
                   theme === "dark"
                     ? "border-blue-500 bg-blue-500/15"
@@ -83,26 +475,20 @@ function SettingsModal({
                       : "border-slate-200 bg-slate-50 hover:bg-slate-100"
                 }`}
               >
-                <div className="text-2xl">🌙</div>
+                <div className="text-2xl">
+                  🌙
+                </div>
 
                 <p className="mt-2 font-semibold">
                   Dark
-                </p>
-
-                <p
-                  className={`mt-1 text-xs ${
-                    isDark
-                      ? "text-slate-400"
-                      : "text-slate-500"
-                  }`}
-                >
-                  Easier on the eyes
                 </p>
               </button>
 
               <button
                 type="button"
-                onClick={() => onThemeChange?.("light")}
+                onClick={() =>
+                  onThemeChange?.("light")
+                }
                 className={`rounded-xl border p-4 text-left transition ${
                   theme === "light"
                     ? "border-blue-500 bg-blue-500/15"
@@ -111,29 +497,93 @@ function SettingsModal({
                       : "border-slate-200 bg-slate-50 hover:bg-slate-100"
                 }`}
               >
-                <div className="text-2xl">☀️</div>
+                <div className="text-2xl">
+                  ☀️
+                </div>
 
                 <p className="mt-2 font-semibold">
                   Light
-                </p>
-
-                <p
-                  className={`mt-1 text-xs ${
-                    isDark
-                      ? "text-slate-400"
-                      : "text-slate-500"
-                  }`}
-                >
-                  Bright and clean
                 </p>
               </button>
             </div>
           </section>
 
-          {/* Other settings */}
+          {/* Export */}
+          <section>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">
+                📤 Export Current Chat
+              </h3>
+
+              <span
+                className={`text-xs ${
+                  isDark
+                    ? "text-slate-400"
+                    : "text-slate-500"
+                }`}
+              >
+                {exportableMessages.length} messages
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={exportMarkdown}
+                disabled={!hasMessages}
+                className={`rounded-xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                  isDark
+                    ? "border-slate-700 bg-slate-800 hover:bg-slate-700"
+                    : "border-slate-200 bg-slate-100 hover:bg-slate-200"
+                }`}
+              >
+                <div className="text-2xl">
+                  📝
+                </div>
+
+                <p className="mt-2 font-semibold">
+                  Markdown
+                </p>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Editable .md file
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={exportPDF}
+                disabled={!hasMessages}
+                className={`rounded-xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                  isDark
+                    ? "border-slate-700 bg-slate-800 hover:bg-slate-700"
+                    : "border-slate-200 bg-slate-100 hover:bg-slate-200"
+                }`}
+              >
+                <div className="text-2xl">
+                  📄
+                </div>
+
+                <p className="mt-2 font-semibold">
+                  PDF
+                </p>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Multi-page document
+                </p>
+              </button>
+            </div>
+          </section>
+
+          {/* Other options */}
           <section className="space-y-2">
             <button
               type="button"
+              onClick={() =>
+                alert(
+                  "Clear Memory feature will be added next."
+                )
+              }
               className={`w-full rounded-xl p-4 text-left transition ${
                 isDark
                   ? "bg-slate-800 hover:bg-slate-700"
@@ -145,17 +595,11 @@ function SettingsModal({
 
             <button
               type="button"
-              className={`w-full rounded-xl p-4 text-left transition ${
-                isDark
-                  ? "bg-slate-800 hover:bg-slate-700"
-                  : "bg-slate-100 hover:bg-slate-200"
-              }`}
-            >
-              📤 Export Chat
-            </button>
-
-            <button
-              type="button"
+              onClick={() =>
+                alert(
+                  "Onkar AI — Personal AI Assistant"
+                )
+              }
               className={`w-full rounded-xl p-4 text-left transition ${
                 isDark
                   ? "bg-slate-800 hover:bg-slate-700"

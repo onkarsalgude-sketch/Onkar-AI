@@ -68,6 +68,7 @@ function App() {
       }`}
     >
       <Sidebar
+      messages={messages}
         newChat={newChat}
         chats={chats}
         activeChatId={activeChatId}
