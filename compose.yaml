@@ -1,0 +1,39 @@
+name: onkar-ai
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: onkar-ai-backend:v2.4
+    container_name: onkar-ai-backend
+
+    env_file:
+      - .env
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      - onkar_ai_database:/app/app/database
+      - onkar_ai_storage:/app/storage
+
+    restart: unless-stopped
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/docs')"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  onkar_ai_database:
+  onkar_ai_storage:

@@ -1,0 +1,42 @@
+# Git
+.git
+.gitignore
+
+# Python
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Frontend is deployed separately
+frontend
+
+# IDE / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Runtime-generated files
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+uploads
+data
+chroma
+chroma_db
+
+# Documentation and local files
+README*.md
+docs
+screenshots
