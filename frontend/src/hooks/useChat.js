@@ -1,4 +1,8 @@
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import {
   streamChat,
@@ -37,32 +41,142 @@ function formatFileSize(size) {
 }
 
 
+function createErrorDetails(error) {
+  const status =
+    error?.response?.status;
+
+  const backendMessage =
+    error?.response?.data?.detail;
+
+  const errorMessage =
+    backendMessage ||
+    error?.message ||
+    "The request could not be completed.";
+
+  if (
+    typeof navigator !== "undefined" &&
+    !navigator.onLine
+  ) {
+    return {
+      title: "You are offline",
+      message:
+        "Reconnect to the internet and try again.",
+      canRetry: true,
+    };
+  }
+
+  if (
+    status === 429 ||
+    errorMessage.includes("429")
+  ) {
+    return {
+      title: "Too many requests",
+      message:
+        "The AI service rate limit was reached. Wait briefly and retry.",
+      canRetry: true,
+    };
+  }
+
+  if (
+    status === 401 ||
+    status === 403
+  ) {
+    return {
+      title: "AI service authorization failed",
+      message:
+        "The API key may be missing, invalid, or not permitted to use this model.",
+      canRetry: false,
+    };
+  }
+
+  if (
+    status === 404
+  ) {
+    return {
+      title: "Resource not found",
+      message: errorMessage,
+      canRetry: false,
+    };
+  }
+
+  if (
+    status >= 500
+  ) {
+    return {
+      title: "Server error",
+      message:
+        "The backend or AI service encountered an error. Please retry.",
+      canRetry: true,
+    };
+  }
+
+  if (
+    errorMessage
+      .toLowerCase()
+      .includes("failed to fetch") ||
+    errorMessage
+      .toLowerCase()
+      .includes("networkerror") ||
+    errorMessage
+      .toLowerCase()
+      .includes("network error")
+  ) {
+    return {
+      title: "Backend unavailable",
+      message:
+        "Onkar AI could not connect to the backend. Check whether the server is running.",
+      canRetry: true,
+    };
+  }
+
+  return {
+    title: "Request failed",
+    message: errorMessage,
+    canRetry: true,
+  };
+}
+
+
 export default function useChat() {
-  const [messages, setMessages] = useState([
-    welcomeMessage,
-  ]);
+  const [messages, setMessages] =
+    useState([welcomeMessage]);
 
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const [folders, setFolders] = useState([]);
-
-  const [models, setModels] = useState([]);
-  const [defaultModel, setDefaultModel] =
+  const [input, setInput] =
     useState("");
 
-  const [selectedModel, setSelectedModel] =
-    useState(() => {
-      return (
-        localStorage.getItem(
-          "onkar-ai-selected-model"
-        ) || ""
-      );
-    });
+  const [loading, setLoading] =
+    useState(false);
 
-  // Send करण्यापूर्वी निवडलेली PDF
+  const [folders, setFolders] =
+    useState([]);
+
+  const [models, setModels] =
+    useState([]);
+
+  const [
+    defaultModel,
+    setDefaultModel,
+  ] = useState("");
+
+  const [
+    selectedModel,
+    setSelectedModel,
+  ] = useState(() => {
+    return (
+      localStorage.getItem(
+        "onkar-ai-selected-model"
+      ) || ""
+    );
+  });
+
   const [pendingFile, setPendingFile] =
     useState(null);
+
+  const [chatError, setChatError] =
+    useState(null);
+
+  const lastFailedRequestRef =
+    useRef(null);
 
   const {
     chats,
@@ -90,7 +204,8 @@ export default function useChat() {
 
   async function loadAvailableModels() {
     try {
-      const response = await getModels();
+      const response =
+        await getModels();
 
       const availableModels =
         response.data.models || [];
@@ -99,6 +214,7 @@ export default function useChat() {
         response.data.default_model || "";
 
       setModels(availableModels);
+
       setDefaultModel(
         backendDefaultModel
       );
@@ -140,7 +256,9 @@ export default function useChat() {
   }
 
 
-  function changeSelectedModel(modelId) {
+  function changeSelectedModel(
+    modelId
+  ) {
     if (!modelId) return;
 
     setSelectedModel(modelId);
@@ -152,6 +270,29 @@ export default function useChat() {
   }
 
 
+  function dismissChatError() {
+    setChatError(null);
+  }
+
+
+  async function retryLastRequest() {
+    const failedRequest =
+      lastFailedRequestRef.current;
+
+    if (
+      !failedRequest ||
+      loading
+    ) {
+      return;
+    }
+
+    await sendMessage({
+      ...failedRequest,
+      isRetry: true,
+    });
+  }
+
+
   function removePendingFile() {
     setPendingFile(null);
   }
@@ -159,12 +300,24 @@ export default function useChat() {
 
   function handleNewChat() {
     setPendingFile(null);
+    setChatError(null);
+
+    lastFailedRequestRef.current =
+      null;
+
     newChat();
   }
 
 
-  async function handleSelectChat(chatId) {
+  async function handleSelectChat(
+    chatId
+  ) {
     setPendingFile(null);
+    setChatError(null);
+
+    lastFailedRequestRef.current =
+      null;
+
     await selectChat(chatId);
   }
 
@@ -175,7 +328,6 @@ export default function useChat() {
 
     if (!file) return;
 
-    // Same file पुन्हा निवडता यावी
     event.target.value = "";
 
     if (
@@ -198,6 +350,7 @@ export default function useChat() {
       file.type.startsWith("image/")
     ) {
       setLoading(true);
+      setChatError(null);
 
       const imageUrl =
         URL.createObjectURL(file);
@@ -254,25 +407,29 @@ export default function useChat() {
           error
         );
 
+        setChatError(
+          createErrorDetails(error)
+        );
+
         setMessages(
           (previousMessages) => {
             const updatedMessages = [
               ...previousMessages,
             ];
 
-            const lastIndex =
-              updatedMessages.length -
-              1;
+            const lastMessage =
+              updatedMessages[
+                updatedMessages.length -
+                  1
+              ];
 
-            updatedMessages[
-              lastIndex
-            ] = {
-              ...updatedMessages[
-                lastIndex
-              ],
-              content:
-                "❌ Image analysis failed.",
-            };
+            if (
+              lastMessage?.role ===
+                "assistant" &&
+              !lastMessage.content?.trim()
+            ) {
+              updatedMessages.pop();
+            }
 
             return updatedMessages;
           }
@@ -290,56 +447,134 @@ export default function useChat() {
   }
 
 
-  async function sendMessage() {
-    const text = input.trim();
+  async function sendMessage(
+    requestOverride = null
+  ) {
+    const isRetry =
+      requestOverride?.isRetry ===
+      true;
+
+    const text = isRetry
+      ? String(
+          requestOverride.text || ""
+        ).trim()
+      : input.trim();
+
+    const attachedFile = isRetry
+      ? requestOverride.attachedFile ||
+        null
+      : pendingFile;
 
     if (
-      (!text && !pendingFile) ||
+      (!text && !attachedFile) ||
       loading
     ) {
       return;
     }
 
-    const attachedFile =
-      pendingFile;
+    const requestModelId = isRetry
+      ? requestOverride.modelId ||
+        selectedModel ||
+        null
+      : selectedModel || null;
 
-    const currentChatId =
-      await createNewChatIfNeeded();
-
-    const userMessage = {
-      role: "user",
-      content: text,
-      sources: [],
+    const requestPayload = {
+      text,
+      attachedFile,
+      chatId: isRetry
+        ? requestOverride.chatId ||
+          null
+        : null,
+      modelId: requestModelId,
+      userMessageAdded: isRetry
+        ? Boolean(
+            requestOverride.userMessageAdded
+          )
+        : false,
     };
 
-    if (
-      attachedFile?.fileType ===
-      "pdf"
-    ) {
-      userMessage.fileType = "pdf";
-      userMessage.fileName =
-        attachedFile.fileName;
-      userMessage.fileSize =
-        attachedFile.fileSize;
-    }
-
-    setMessages(
-      (previousMessages) => [
-        ...previousMessages,
-        userMessage,
-        {
-          role: "assistant",
-          content: "",
-          sources: [],
-        },
-      ]
-    );
-
-    setInput("");
-    setPendingFile(null);
+    setChatError(null);
     setLoading(true);
 
     try {
+      let currentChatId =
+        requestPayload.chatId;
+
+      if (!currentChatId) {
+        currentChatId =
+          await createNewChatIfNeeded();
+
+        requestPayload.chatId =
+          currentChatId;
+      }
+
+      const userMessage = {
+        role: "user",
+        content: text,
+        sources: [],
+      };
+
+      if (
+        attachedFile?.fileType ===
+        "pdf"
+      ) {
+        userMessage.fileType =
+          "pdf";
+
+        userMessage.fileName =
+          attachedFile.fileName;
+
+        userMessage.fileSize =
+          attachedFile.fileSize;
+      }
+
+      if (
+        requestPayload.userMessageAdded
+      ) {
+        setMessages(
+          (previousMessages) => {
+            const updatedMessages = [
+              ...previousMessages,
+            ];
+
+            if (
+              updatedMessages[
+                updatedMessages.length -
+                  1
+              ]?.role === "assistant"
+            ) {
+              updatedMessages.pop();
+            }
+
+            updatedMessages.push({
+              role: "assistant",
+              content: "",
+              sources: [],
+            });
+
+            return updatedMessages;
+          }
+        );
+      } else {
+        setMessages(
+          (previousMessages) => [
+            ...previousMessages,
+            userMessage,
+            {
+              role: "assistant",
+              content: "",
+              sources: [],
+            },
+          ]
+        );
+
+        requestPayload.userMessageAdded =
+          true;
+
+        setInput("");
+        setPendingFile(null);
+      }
+
       let requestText = text;
 
       if (
@@ -402,7 +637,7 @@ export default function useChat() {
               }
             );
           },
-          selectedModel || null
+          requestModelId
         );
 
       setMessages(
@@ -424,7 +659,7 @@ export default function useChat() {
               result?.sources || [],
             modelId:
               result?.modelId ||
-              selectedModel,
+              requestModelId,
           };
 
           return updatedMessages;
@@ -444,10 +679,22 @@ export default function useChat() {
         chatsResponse.data.chats ||
           []
       );
+
+      lastFailedRequestRef.current =
+        null;
+
+      setChatError(null);
     } catch (error) {
       console.error(
         "Chat or PDF error:",
         error
+      );
+
+      lastFailedRequestRef.current =
+        requestPayload;
+
+      setChatError(
+        createErrorDetails(error)
       );
 
       setMessages(
@@ -456,22 +703,19 @@ export default function useChat() {
             ...previousMessages,
           ];
 
-          const lastIndex =
-            updatedMessages.length - 1;
+          const lastMessage =
+            updatedMessages[
+              updatedMessages.length -
+                1
+            ];
 
-          updatedMessages[
-            lastIndex
-          ] = {
-            ...updatedMessages[
-              lastIndex
-            ],
-            content:
-              error.response?.data
-                ?.detail ||
-              error.message ||
-              "❌ Message or PDF processing failed.",
-            sources: [],
-          };
+          if (
+            lastMessage?.role ===
+              "assistant" &&
+            !lastMessage.content?.trim()
+          ) {
+            updatedMessages.pop();
+          }
 
           return updatedMessages;
         }
@@ -502,6 +746,17 @@ export default function useChat() {
       return;
     }
 
+    const retryPayload = {
+      text:
+        lastUserMessage.content,
+      attachedFile: null,
+      chatId: activeChatId,
+      modelId:
+        selectedModel || null,
+      userMessageAdded: true,
+    };
+
+    setChatError(null);
     setLoading(true);
 
     setMessages(
@@ -600,10 +855,22 @@ export default function useChat() {
         chatsResponse.data.chats ||
           []
       );
+
+      lastFailedRequestRef.current =
+        null;
+
+      setChatError(null);
     } catch (error) {
       console.error(
         "Regenerate error:",
         error
+      );
+
+      lastFailedRequestRef.current =
+        retryPayload;
+
+      setChatError(
+        createErrorDetails(error)
       );
 
       setMessages(
@@ -612,20 +879,19 @@ export default function useChat() {
             ...previousMessages,
           ];
 
-          const lastIndex =
-            updatedMessages.length - 1;
+          const lastMessage =
+            updatedMessages[
+              updatedMessages.length -
+                1
+            ];
 
-          updatedMessages[
-            lastIndex
-          ] = {
-            ...updatedMessages[
-              lastIndex
-            ],
-            content:
-              error.message ||
-              "❌ Regenerate failed.",
-            sources: [],
-          };
+          if (
+            lastMessage?.role ===
+              "assistant" &&
+            !lastMessage.content?.trim()
+          ) {
+            updatedMessages.pop();
+          }
 
           return updatedMessages;
         }
@@ -823,6 +1089,10 @@ export default function useChat() {
     setInput,
 
     loading,
+
+    chatError,
+    retryLastRequest,
+    dismissChatError,
 
     pendingFile,
     removePendingFile,

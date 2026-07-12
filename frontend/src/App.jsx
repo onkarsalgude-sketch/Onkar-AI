@@ -17,6 +17,10 @@ function App() {
 
     loading,
 
+    chatError,
+retryLastRequest,
+dismissChatError,
+
     pendingFile,
     removePendingFile,
     uploadFile,
@@ -131,25 +135,24 @@ function App() {
         onThemeChange={setTheme}
       />
 
-      <ChatWindow
-        messages={messages}
-        input={input}
-        setInput={setInput}
-        sendMessage={sendMessage}
-        loading={loading}
-        uploadFile={uploadFile}
-        pendingFile={pendingFile}
-        removePendingFile={
-          removePendingFile
-        }
-        regenerateResponse={
-          regenerateResponse
-        }
-        onOpenSidebar={() =>
-          setSidebarOpen(true)
-        }
-        theme={theme}
-      />
+     <ChatWindow
+  messages={messages}
+  input={input}
+  setInput={setInput}
+  sendMessage={sendMessage}
+  loading={loading}
+  uploadFile={uploadFile}
+  pendingFile={pendingFile}
+  removePendingFile={removePendingFile}
+  regenerateResponse={regenerateResponse}
+  chatError={chatError}
+  retryLastRequest={retryLastRequest}
+  dismissChatError={dismissChatError}
+  onOpenSidebar={() =>
+    setSidebarOpen(true)
+  }
+  theme={theme}
+/>
     </div>
   );
 }
