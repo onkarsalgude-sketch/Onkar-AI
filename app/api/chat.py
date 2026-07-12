@@ -5,26 +5,26 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from app.models.chat import ChatRequest, ChatResponse
 from app.agents.brain import Brain
 from app.config.settings import UPLOAD_DIR
-from app.services.history_service import (
-    init_db,
-    create_chat,
-    get_chats,
-    save_message,
-    get_messages,
-    clear_history,
-    delete_chat,
-    rename_chat,
-    toggle_pin_chat,
-    get_folders,
-    create_folder,
-    rename_folder,
-    delete_folder,
-    move_chat_to_folder,
-)
 from app.memory.memory import clear
+from app.models.chat import ChatRequest, ChatResponse
+from app.services.history_service import (
+    clear_history,
+    create_chat,
+    create_folder,
+    delete_chat,
+    delete_folder,
+    get_chats,
+    get_folders,
+    get_messages,
+    init_db,
+    move_chat_to_folder,
+    rename_chat,
+    rename_folder,
+    save_message,
+    toggle_pin_chat,
+)
 
 
 router = APIRouter()
@@ -32,6 +32,22 @@ brain = Brain()
 
 init_db()
 
+
+# -------------------------
+# Available AI models
+# -------------------------
+
+@router.get("/models")
+def list_models():
+    return {
+        "models": brain.ai.get_available_models(),
+        "default_model": brain.ai.default_model,
+    }
+
+
+# -------------------------
+# Chat management
+# -------------------------
 
 @router.post("/chats")
 def create_new_chat():
@@ -63,7 +79,9 @@ def remove_chat(chat_id: int):
     vector_result = brain.rag.delete_chat(chat_id)
 
     # त्या chat चा uploaded PDF folder delete करणे
-    chat_directory = UPLOAD_DIR / f"chat_{chat_id}"
+    chat_directory = (
+        UPLOAD_DIR / f"chat_{chat_id}"
+    )
 
     if chat_directory.exists():
         shutil.rmtree(chat_directory)
@@ -91,15 +109,16 @@ def update_chat_title(
         "message": "Chat renamed",
     }
 
+
 @router.put("/chats/{chat_id}/pin")
 def pin_or_unpin_chat(chat_id: int):
     is_pinned = toggle_pin_chat(chat_id)
 
     if is_pinned is None:
-        return {
-            "message": "Chat not found",
-            "chat_id": chat_id,
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Chat not found.",
+        )
 
     return {
         "message": (
@@ -110,6 +129,11 @@ def pin_or_unpin_chat(chat_id: int):
         "chat_id": chat_id,
         "is_pinned": is_pinned,
     }
+
+
+# -------------------------
+# Folder management
+# -------------------------
 
 @router.get("/folders")
 def list_folders():
@@ -206,6 +230,10 @@ def update_chat_folder(
     }
 
 
+# -------------------------
+# Normal chat
+# -------------------------
+
 @router.post(
     "/chat",
     response_model=ChatResponse,
@@ -215,7 +243,8 @@ def chat(request: ChatRequest):
 
     if chat_id is None:
         title = brain.ai.generate_title(
-            request.message
+            request.message,
+            model_id=request.model_id,
         )
 
         chat_id = create_chat(title)
@@ -224,7 +253,8 @@ def chat(request: ChatRequest):
 
     if len(messages) == 0:
         title = brain.ai.generate_title(
-            request.message
+            request.message,
+            model_id=request.model_id,
         )
 
         rename_chat(chat_id, title)
@@ -235,10 +265,10 @@ def chat(request: ChatRequest):
         request.message,
     )
 
-    # Current chat ID Brain ला pass करणे
     result = brain.chat(
         request.message,
         chat_id=chat_id,
+        model_id=request.model_id,
     )
 
     save_message(
@@ -254,13 +284,18 @@ def chat(request: ChatRequest):
     )
 
 
+# -------------------------
+# Streaming chat
+# -------------------------
+
 @router.post("/chat/stream")
 def chat_stream(request: ChatRequest):
     chat_id = request.chat_id
 
     if chat_id is None:
         title = brain.ai.generate_title(
-            request.message
+            request.message,
+            model_id=request.model_id,
         )
 
         chat_id = create_chat(title)
@@ -269,7 +304,8 @@ def chat_stream(request: ChatRequest):
 
     if len(messages) == 0:
         title = brain.ai.generate_title(
-            request.message
+            request.message,
+            model_id=request.model_id,
         )
 
         rename_chat(chat_id, title)
@@ -280,10 +316,10 @@ def chat_stream(request: ChatRequest):
         request.message,
     )
 
-    # Current chat ID Brain ला pass करणे
     stream_result = brain.stream_chat(
         request.message,
         chat_id=chat_id,
+        model_id=request.model_id,
     )
 
     sources_header = quote(
@@ -317,9 +353,16 @@ def chat_stream(request: ChatRequest):
         headers={
             "X-Sources": sources_header,
             "X-Chat-Id": str(chat_id),
+            "X-Model-Id": stream_result[
+                "model_id"
+            ],
         },
     )
 
+
+# -------------------------
+# History
+# -------------------------
 
 @router.get("/chat/history")
 def chat_history():

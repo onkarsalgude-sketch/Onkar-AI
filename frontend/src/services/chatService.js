@@ -1,59 +1,87 @@
 import api from "./api";
 
 const API_URL = (
-  api.defaults.baseURL || "http://127.0.0.1:8000"
+  api.defaults.baseURL ||
+  "http://127.0.0.1:8000"
 ).replace(/\/$/, "");
 
-export const sendChat = (message, chatId) =>
+
+export const getModels = () =>
+  api.get("/models");
+
+
+export const sendChat = (
+  message,
+  chatId,
+  modelId = null
+) =>
   api.post("/chat", {
     message,
     chat_id: chatId,
+    model_id: modelId,
   });
+
 
 export const getHistory = () =>
   api.get("/chat/history");
 
+
 export const clearHistory = () =>
   api.delete("/chat/history");
+
 
 export const createChat = () =>
   api.post("/chats");
 
+
 export const getChats = () =>
   api.get("/chats");
+
 
 export const getChatMessages = (chatId) =>
   api.get(`/chats/${chatId}/messages`);
 
+
 export const deleteChat = (chatId) =>
   api.delete(`/chats/${chatId}`);
 
-export const renameChat = (chatId, title) =>
+
+export const renameChat = (
+  chatId,
+  title
+) =>
   api.put(
-    `/chats/${chatId}?title=${encodeURIComponent(title)}`
+    `/chats/${chatId}?title=${encodeURIComponent(
+      title
+    )}`
   );
+
 
 export async function streamChat(
   message,
   chatId,
-  onChunk
+  onChunk,
+  modelId = null
 ) {
   const response = await fetch(
     `${API_URL}/chat/stream`,
     {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type":
+          "application/json",
       },
       body: JSON.stringify({
         message,
         chat_id: chatId,
+        model_id: modelId,
       }),
     }
   );
 
   if (!response.ok) {
-    const errorText = await response.text();
+    const errorText =
+      await response.text();
 
     throw new Error(
       `Chat request failed: ${response.status} ${errorText}`
@@ -68,7 +96,9 @@ export async function streamChat(
   if (encodedSources) {
     try {
       sources = JSON.parse(
-        decodeURIComponent(encodedSources)
+        decodeURIComponent(
+          encodedSources
+        )
       );
     } catch (error) {
       console.error(
@@ -79,8 +109,16 @@ export async function streamChat(
   }
 
   const returnedChatId =
-    Number(response.headers.get("X-Chat-Id")) ||
-    chatId;
+    Number(
+      response.headers.get(
+        "X-Chat-Id"
+      )
+    ) || chatId;
+
+  const returnedModelId =
+    response.headers.get(
+      "X-Model-Id"
+    ) || modelId;
 
   if (!response.body) {
     throw new Error(
@@ -88,24 +126,32 @@ export async function streamChat(
     );
   }
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder("utf-8");
+  const reader =
+    response.body.getReader();
+
+  const decoder =
+    new TextDecoder("utf-8");
 
   while (true) {
-    const { value, done } = await reader.read();
+    const { value, done } =
+      await reader.read();
 
     if (done) break;
 
-    const chunk = decoder.decode(value, {
-      stream: true,
-    });
+    const chunk = decoder.decode(
+      value,
+      {
+        stream: true,
+      }
+    );
 
     if (chunk) {
       onChunk(chunk);
     }
   }
 
-  const finalChunk = decoder.decode();
+  const finalChunk =
+    decoder.decode();
 
   if (finalChunk) {
     onChunk(finalChunk);
@@ -114,29 +160,51 @@ export async function streamChat(
   return {
     sources,
     chatId: returnedChatId,
+    modelId: returnedModelId,
   };
 }
-export const togglePinChat = (chatId) =>
-  api.put(`/chats/${chatId}/pin`);
+
+
+export const togglePinChat = (
+  chatId
+) =>
+  api.put(
+    `/chats/${chatId}/pin`
+  );
+
 
 export const getFolders = () =>
   api.get("/folders");
 
-export const createFolder = (name) =>
+
+export const createFolder = (
+  name
+) =>
   api.post("/folders", null, {
     params: { name },
   });
+
 
 export const renameFolder = (
   folderId,
   name
 ) =>
-  api.put(`/folders/${folderId}`, null, {
-    params: { name },
-  });
+  api.put(
+    `/folders/${folderId}`,
+    null,
+    {
+      params: { name },
+    }
+  );
 
-export const deleteFolder = (folderId) =>
-  api.delete(`/folders/${folderId}`);
+
+export const deleteFolder = (
+  folderId
+) =>
+  api.delete(
+    `/folders/${folderId}`
+  );
+
 
 export const moveChatToFolder = (
   chatId,
@@ -149,6 +217,9 @@ export const moveChatToFolder = (
       params:
         folderId === null
           ? {}
-          : { folder_id: folderId },
+          : {
+              folder_id:
+                folderId,
+            },
     }
   );

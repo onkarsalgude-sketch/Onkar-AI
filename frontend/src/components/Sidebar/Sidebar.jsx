@@ -39,7 +39,12 @@ function Sidebar({
   createChatFolder,
   renameChatFolder,
   deleteChatFolder,
-  moveChatToFolder,
+   moveChatToFolder,
+
+  models = [],
+  defaultModel = "",
+  selectedModel = "",
+  onModelChange,
 
   isOpen,
   onClose,
@@ -662,14 +667,18 @@ function Sidebar({
       </aside>
 
       <SettingsModal
-        open={showSettings}
-        onClose={() =>
-          setShowSettings(false)
-        }
-        theme={theme}
-        onThemeChange={onThemeChange}
-        messages={messages}
-      />
+  open={showSettings}
+  onClose={() =>
+    setShowSettings(false)
+  }
+  theme={theme}
+  onThemeChange={onThemeChange}
+  messages={messages}
+  models={models}
+  defaultModel={defaultModel}
+  selectedModel={selectedModel}
+  onModelChange={onModelChange}
+/>
     </>
   );
 }

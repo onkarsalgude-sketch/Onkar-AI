@@ -6,10 +6,22 @@ function SettingsModal({
   theme = "dark",
   onThemeChange,
   messages = [],
+
+  models = [],
+  defaultModel = "",
+  selectedModel = "",
+  onModelChange,
 }) {
   if (!open) return null;
 
   const isDark = theme === "dark";
+
+  const activeModelId =
+    selectedModel || defaultModel || "";
+
+  const activeModel = models.find(
+    (model) => model.id === activeModelId
+  );
 
   const exportableMessages = messages.filter(
     (message) =>
@@ -19,6 +31,14 @@ function SettingsModal({
 
   const hasMessages =
     exportableMessages.length > 0;
+
+  function handleModelChange(event) {
+    const modelId = event.target.value;
+
+    if (!modelId) return;
+
+    onModelChange?.(modelId);
+  }
 
   function getFileName() {
     const now = new Date();
@@ -505,6 +525,88 @@ function SettingsModal({
                   Light
                 </p>
               </button>
+            </div>
+          </section>
+
+          {/* Model selector */}
+          <section>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold">
+                🤖 AI Model
+              </h3>
+
+              {activeModelId ===
+                defaultModel &&
+                defaultModel && (
+                  <span className="rounded-full bg-blue-500/15 px-2 py-1 text-xs text-blue-500">
+                    Default
+                  </span>
+                )}
+            </div>
+
+            <select
+              value={activeModelId}
+              onChange={handleModelChange}
+              disabled={models.length === 0}
+              className={`w-full rounded-xl border px-3 py-3 text-sm outline-none transition focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50 ${
+                isDark
+                  ? "border-slate-700 bg-slate-800 text-white"
+                  : "border-slate-300 bg-slate-50 text-slate-900"
+              }`}
+            >
+              {models.length === 0 && (
+                <option value="">
+                  Loading models...
+                </option>
+              )}
+
+              {models.map((model) => (
+                <option
+                  key={model.id}
+                  value={model.id}
+                >
+                  {model.name}
+                  {model.id === defaultModel
+                    ? " — Default"
+                    : ""}
+                </option>
+              ))}
+            </select>
+
+            <div
+              className={`mt-3 rounded-xl border p-3 ${
+                isDark
+                  ? "border-slate-700 bg-slate-800/70"
+                  : "border-slate-200 bg-slate-50"
+              }`}
+            >
+              <p className="text-sm font-semibold">
+                {activeModel?.name ||
+                  "No model selected"}
+              </p>
+
+              <p
+                className={`mt-1 text-xs ${
+                  isDark
+                    ? "text-slate-400"
+                    : "text-slate-500"
+                }`}
+              >
+                {activeModel?.description ||
+                  "Select an AI model for chat responses."}
+              </p>
+
+              {activeModelId && (
+                <p
+                  className={`mt-2 break-all text-[11px] ${
+                    isDark
+                      ? "text-slate-500"
+                      : "text-slate-400"
+                  }`}
+                >
+                  Model ID: {activeModelId}
+                </p>
+              )}
             </div>
           </section>
 

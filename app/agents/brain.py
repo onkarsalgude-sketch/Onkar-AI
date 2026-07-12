@@ -80,7 +80,6 @@ Rules:
                 "sources": rag_result["sources"],
             }
 
-        # Normal chat
         return {
             "route": "chat",
             "prompt": message,
@@ -91,6 +90,7 @@ Rules:
         self,
         message: str,
         chat_id: int | None = None,
+        model_id: str | None = None,
     ) -> dict:
         add("user", message)
 
@@ -100,10 +100,14 @@ Rules:
         )
 
         if prepared["route"] == "chat":
-            reply = self.ai.generate_reply(message)
+            reply = self.ai.generate_reply(
+                message,
+                model_id=model_id,
+            )
         else:
             reply = self.ai.generate_reply(
-                prepared["prompt"]
+                prepared["prompt"],
+                model_id=model_id,
             )
 
         add("assistant", reply)
@@ -111,12 +115,14 @@ Rules:
         return {
             "reply": reply,
             "sources": prepared["sources"],
+            "model_id": self.ai.resolve_model(model_id),
         }
 
     def stream_chat(
         self,
         message: str,
         chat_id: int | None = None,
+        model_id: str | None = None,
     ) -> dict:
         prepared = self.prepare_request(
             message=message,
@@ -124,15 +130,17 @@ Rules:
         )
 
         if prepared["route"] == "chat":
-            stream = self.ai.generate_reply_stream(
-                self.ai.build_prompt(message)
-            )
+            prompt = self.ai.build_prompt(message)
         else:
-            stream = self.ai.generate_reply_stream(
-                prepared["prompt"]
-            )
+            prompt = prepared["prompt"]
+
+        stream = self.ai.generate_reply_stream(
+            prompt,
+            model_id=model_id,
+        )
 
         return {
             "stream": stream,
             "sources": prepared["sources"],
+            "model_id": self.ai.resolve_model(model_id),
         }

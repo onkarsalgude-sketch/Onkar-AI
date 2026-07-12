@@ -7,38 +7,53 @@ import useChat from "./hooks/useChat";
 
 import "./App.css";
 
+
 function App() {
   const {
-  messages,
-  input,
-  setInput,
-  loading,
-  pendingFile,
-  removePendingFile,
-  uploadFile,
-  newChat,
-  sendMessage,
-  chats,
-  activeChatId,
-  selectChat,
-  renameCurrentChat,
-  deleteCurrentChat,
-  regenerateResponse,
-  toggleChatPin,
+    messages,
 
-  folders,
-  createChatFolder,
-  renameChatFolder,
-  deleteChatFolder,
-  moveChatToFolder,
-} = useChat();
+    input,
+    setInput,
+
+    loading,
+
+    pendingFile,
+    removePendingFile,
+    uploadFile,
+
+    newChat,
+    sendMessage,
+
+    chats,
+    activeChatId,
+    selectChat,
+    renameCurrentChat,
+    deleteCurrentChat,
+    regenerateResponse,
+    toggleChatPin,
+
+    folders,
+    createChatFolder,
+    renameChatFolder,
+    deleteChatFolder,
+    moveChatToFolder,
+
+    models,
+    defaultModel,
+    selectedModel,
+    changeSelectedModel,
+  } = useChat();
+
 
   const [sidebarOpen, setSidebarOpen] =
     useState(false);
 
+
   const [theme, setTheme] = useState(() => {
     const savedTheme =
-      localStorage.getItem("onkar-ai-theme");
+      localStorage.getItem(
+        "onkar-ai-theme"
+      );
 
     if (
       savedTheme === "light" ||
@@ -49,6 +64,7 @@ function App() {
 
     return "dark";
   });
+
 
   useEffect(() => {
     localStorage.setItem(
@@ -63,6 +79,7 @@ function App() {
       theme;
   }, [theme]);
 
+
   return (
     <div
       className={`flex min-h-screen ${
@@ -72,26 +89,47 @@ function App() {
       }`}
     >
       <Sidebar
-  messages={messages}
-  newChat={newChat}
-  chats={chats}
-  activeChatId={activeChatId}
-  selectChat={selectChat}
-  renameCurrentChat={renameCurrentChat}
-  deleteCurrentChat={deleteCurrentChat}
-  toggleChatPin={toggleChatPin}
+        messages={messages}
+        newChat={newChat}
+        chats={chats}
+        activeChatId={activeChatId}
+        selectChat={selectChat}
+        renameCurrentChat={
+          renameCurrentChat
+        }
+        deleteCurrentChat={
+          deleteCurrentChat
+        }
+        toggleChatPin={toggleChatPin}
 
-  folders={folders}
-  createChatFolder={createChatFolder}
-  renameChatFolder={renameChatFolder}
-  deleteChatFolder={deleteChatFolder}
-  moveChatToFolder={moveChatToFolder}
+        folders={folders}
+        createChatFolder={
+          createChatFolder
+        }
+        renameChatFolder={
+          renameChatFolder
+        }
+        deleteChatFolder={
+          deleteChatFolder
+        }
+        moveChatToFolder={
+          moveChatToFolder
+        }
 
-  isOpen={sidebarOpen}
-  onClose={() => setSidebarOpen(false)}
-  theme={theme}
-  onThemeChange={setTheme}
-/>
+        models={models}
+        defaultModel={defaultModel}
+        selectedModel={selectedModel}
+        onModelChange={
+          changeSelectedModel
+        }
+
+        isOpen={sidebarOpen}
+        onClose={() =>
+          setSidebarOpen(false)
+        }
+        theme={theme}
+        onThemeChange={setTheme}
+      />
 
       <ChatWindow
         messages={messages}
@@ -101,8 +139,12 @@ function App() {
         loading={loading}
         uploadFile={uploadFile}
         pendingFile={pendingFile}
-        removePendingFile={removePendingFile}
-        regenerateResponse={regenerateResponse}
+        removePendingFile={
+          removePendingFile
+        }
+        regenerateResponse={
+          regenerateResponse
+        }
         onOpenSidebar={() =>
           setSidebarOpen(true)
         }
@@ -111,5 +153,6 @@ function App() {
     </div>
   );
 }
+
 
 export default App;
