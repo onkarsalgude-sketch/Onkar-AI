@@ -73,6 +73,10 @@ class AgentRouter:
             "this file",
             "this document",
             "this pdf",
+            "certificate",
+            "certification",
+            "course",
+            "resume",
         ]
 
         document_actions = [
@@ -93,6 +97,13 @@ class AgentRouter:
             "skills",
             "education",
             "experience",
+            "mention",
+            "mentioned",
+            "complete",
+            "completed",
+            "earned",
+            "awarded",
+            "issued",
         ]
 
         has_document_term = any(

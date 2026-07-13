@@ -9,15 +9,16 @@ from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",
         "https://onkar-ai.vercel.app",
     ],
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1):\d+$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=[
         "X-Sources",
         "X-Chat-Id",
+        "X-Model-Id",
     ],
 )
 

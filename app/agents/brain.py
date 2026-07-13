@@ -1,5 +1,6 @@
 from app.services.groq_service import GroqService
 from app.memory.memory import add
+from app.services.document_service import get_selected_document_filenames
 from app.agents.internet import InternetAgent
 from app.agents.router import AgentRouter
 from app.services.rag_service import RAGService
@@ -39,11 +40,36 @@ Answer naturally using the information above.
                 "sources": search.get("sources", []),
             }
 
-        # PDF RAG — फक्त current chat मधील PDFs
+               # PDF RAG - only selected PDFs from current chat
         if route == "pdf":
+            selected_filenames = []
+
+            if chat_id is not None and chat_id > 0:
+                selected_filenames = (
+                    get_selected_document_filenames(
+                        chat_id
+                    )
+                )
+
+            if not selected_filenames:
+                return {
+                    "route": "pdf",
+                    "prompt": f"""
+User Question:
+{message}
+
+There are no selected PDF documents available in this chat.
+
+Tell the user:
+"No PDF is selected in this chat. Please upload or select a PDF first."
+""",
+                    "sources": [],
+                }
+
             rag_result = self.rag.search(
                 query=message,
                 chat_id=chat_id,
+                filenames=selected_filenames,
             )
 
             if not rag_result["context"]:
@@ -51,14 +77,14 @@ Answer naturally using the information above.
 User Question:
 {message}
 
-There is no readable PDF content available in this chat.
+The selected PDFs do not contain readable information for this question.
 
 Tell the user:
-"No PDF information is available in this chat. Please attach a PDF and send it first."
+"The answer is not available in the selected PDFs."
 """
             else:
                 prompt = f"""
-Use only the following PDF content from the current chat to answer the question.
+Use only the following content from the selected PDFs in the current chat.
 
 PDF Content:
 {rag_result["context"]}
@@ -67,11 +93,12 @@ User Question:
 {message}
 
 Rules:
-1. Answer only using the PDF content provided above.
-2. Do not use information from PDFs uploaded in other chats.
-3. If the answer is not present, clearly say:
-   "The answer is not available in the PDF attached to this chat."
-4. When useful, mention the PDF filename and page number.
+1. Answer only using the selected PDF content.
+2. Do not use unselected PDFs.
+3. Do not use PDFs uploaded in other chats.
+4. If the answer is missing, clearly say:
+   "The answer is not available in the selected PDFs."
+5. Mention the PDF filename and page number when useful.
 """
 
             return {

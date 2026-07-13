@@ -21,6 +21,7 @@ def init_db():
         )
     """)
 
+    # Chats
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS chats (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,6 +32,7 @@ def init_db():
         )
     """)
 
+    # Chat messages
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,7 +43,26 @@ def init_db():
         )
     """)
 
-    # जुन्या chats table मध्ये नवीन columns सुरक्षितपणे add करणे
+    # Uploaded PDF documents
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS documents (
+            document_id TEXT PRIMARY KEY,
+            chat_id INTEGER NOT NULL,
+            filename TEXT NOT NULL COLLATE NOCASE,
+            file_path TEXT NOT NULL,
+            file_hash TEXT NOT NULL,
+            file_size INTEGER NOT NULL DEFAULT 0,
+            page_count INTEGER NOT NULL DEFAULT 0,
+            chunk_count INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'processing',
+            is_selected INTEGER NOT NULL DEFAULT 1,
+            uploaded_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(chat_id, filename)
+        )
+    """)
+
+    # Add missing columns to old chats table
     cursor.execute("PRAGMA table_info(chats)")
 
     chat_columns = {
@@ -61,6 +82,7 @@ def init_db():
             ADD COLUMN folder_id INTEGER DEFAULT NULL
         """)
 
+    # Indexes
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_chats_folder_id
         ON chats(folder_id)
@@ -69,6 +91,21 @@ def init_db():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_messages_chat_id
         ON messages(chat_id)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_documents_chat_id
+        ON documents(chat_id)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_documents_selected
+        ON documents(chat_id, is_selected)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_documents_hash
+        ON documents(chat_id, file_hash)
     """)
 
     conn.commit()

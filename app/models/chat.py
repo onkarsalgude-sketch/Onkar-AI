@@ -10,8 +10,12 @@ class ChatRequest(BaseModel):
 
 
 class Source(BaseModel):
+    type: Optional[str] = None
     title: str
-    url: str
+    url: Optional[str] = None
+    filename: Optional[str] = None
+    page: Optional[int] = None
+    chat_id: Optional[int] = None
 
 
 class ChatResponse(BaseModel):

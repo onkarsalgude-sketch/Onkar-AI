@@ -136,6 +136,7 @@ dismissChatError,
       />
 
      <ChatWindow
+     activeChatId={activeChatId}
   messages={messages}
   input={input}
   setInput={setInput}

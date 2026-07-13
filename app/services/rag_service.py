@@ -73,6 +73,7 @@ class RAGService:
         self,
         file_path: str | Path,
         chat_id: int,
+        document_id: str | None = None,
     ) -> dict:
         if chat_id <= 0:
             raise ValueError("Invalid chat ID")
@@ -89,7 +90,7 @@ class RAGService:
                 "chunks": 0,
             }
 
-        document_id = uuid4().hex
+        document_id = document_id or uuid4().hex
 
         all_chunks = []
         all_ids = []
@@ -151,6 +152,7 @@ class RAGService:
         self,
         chat_id: int,
         filename: str | None = None,
+        filenames: list[str] | None = None,
     ) -> dict:
         if filename:
             safe_filename = Path(filename).name
@@ -170,6 +172,28 @@ class RAGService:
                 ]
             }
 
+        if filenames:
+            safe_filenames = [
+                Path(item).name
+                for item in filenames
+                if item
+            ]
+
+            return {
+                "$and": [
+                    {
+                        "chat_id": {
+                            "$eq": chat_id,
+                        }
+                    },
+                    {
+                        "filename": {
+                            "$in": safe_filenames,
+                        }
+                    },
+                ]
+            }
+
         return {
             "chat_id": {
                 "$eq": chat_id,
@@ -182,6 +206,7 @@ class RAGService:
         limit: int = 5,
         chat_id: int | None = None,
         filename: str | None = None,
+        filenames: list[str] | None = None,
     ) -> dict:
         # chat_id नसल्यास कोणत्याही PDF मधून
         # search करू नये. यामुळे cross-chat leak थांबतो.
@@ -199,6 +224,7 @@ class RAGService:
         where_filter = self._build_where_filter(
             chat_id=chat_id,
             filename=filename,
+            filenames=filenames,
         )
 
         matching_records = self.collection.get(

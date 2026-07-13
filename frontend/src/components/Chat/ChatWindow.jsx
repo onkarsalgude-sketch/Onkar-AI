@@ -8,9 +8,11 @@ import Message from "./Message";
 import MessageInput from "./MessageInput";
 import Thinking from "./Thinking";
 import WelcomeScreen from "../Common/WelcomeScreen";
+import DocumentLibrary from "../Documents/DocumentLibrary";
 
 
 function ChatWindow({
+  activeChatId,
   messages,
   input,
   setInput,
@@ -260,6 +262,10 @@ function ChatWindow({
             : "border-slate-200 bg-white"
         }`}
       >
+        <DocumentLibrary
+  activeChatId={activeChatId}
+  theme={theme}
+/>
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
