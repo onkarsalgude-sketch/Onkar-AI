@@ -13,6 +13,7 @@ import {
 
 function DocumentLibrary({
   activeChatId,
+  refreshKey = 0,
   theme = "dark",
 }) {
   const [documents, setDocuments] =
@@ -67,7 +68,7 @@ function DocumentLibrary({
 
   useEffect(() => {
     loadDocuments();
-  }, [loadDocuments]);
+  }, [loadDocuments, refreshKey]);
 
 
   async function handleSelectionChange(

@@ -13,6 +13,7 @@ import DocumentLibrary from "../Documents/DocumentLibrary";
 
 function ChatWindow({
   activeChatId,
+  documentRefreshKey,
   messages,
   input,
   setInput,
@@ -264,6 +265,7 @@ function ChatWindow({
       >
         <DocumentLibrary
   activeChatId={activeChatId}
+  refreshKey={documentRefreshKey}
   theme={theme}
 />
         <div className="flex min-w-0 items-center gap-3">

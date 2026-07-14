@@ -30,6 +30,7 @@ dismissChatError,
 
     chats,
     activeChatId,
+    documentRefreshKey,
     selectChat,
     renameCurrentChat,
     deleteCurrentChat,
@@ -97,6 +98,7 @@ dismissChatError,
         newChat={newChat}
         chats={chats}
         activeChatId={activeChatId}
+        documentRefreshKey={documentRefreshKey}
         selectChat={selectChat}
         renameCurrentChat={
           renameCurrentChat

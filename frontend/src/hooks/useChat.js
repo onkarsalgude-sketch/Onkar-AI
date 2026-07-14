@@ -175,6 +175,11 @@ export default function useChat() {
   const [chatError, setChatError] =
     useState(null);
 
+  const [
+    documentRefreshKey,
+    setDocumentRefreshKey,
+  ] = useState(0);
+
   const lastFailedRequestRef =
     useRef(null);
 
@@ -596,6 +601,10 @@ export default function useChat() {
 
         await uploadDocument(
           formData
+        );
+
+        setDocumentRefreshKey(
+          (currentKey) => currentKey + 1
         );
 
         requestText = text
@@ -1101,6 +1110,7 @@ export default function useChat() {
     setChats,
     activeChatId,
     setActiveChatId,
+      documentRefreshKey,
 
     folders,
     loadFolders,
