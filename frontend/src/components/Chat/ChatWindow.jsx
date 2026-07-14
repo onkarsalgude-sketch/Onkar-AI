@@ -264,11 +264,6 @@ function ChatWindow({
             : "border-slate-200 bg-white"
         }`}
       >
-        <DocumentLibrary
-  activeChatId={activeChatId}
-  refreshKey={documentRefreshKey}
-  theme={theme}
-/>
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
@@ -319,6 +314,13 @@ function ChatWindow({
             : "Offline"}
         </div>
       </header>
+
+      {/* Document Library */}
+      <DocumentLibrary
+        activeChatId={activeChatId}
+        refreshKey={documentRefreshKey}
+        theme={theme}
+      />
 
       {/* Messages */}
       <section className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 md:px-8 md:py-6">

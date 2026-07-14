@@ -28,12 +28,25 @@ function DocumentLibrary({
   const [error, setError] =
     useState("");
 
+  const [bulkAction, setBulkAction] =
+    useState(null);
+
+  const [searchQuery, setSearchQuery] =
+    useState("");
+
   const isDark = theme === "dark";
 
   const selectedDocumentCount =
     documents.filter(
       (document) => document.is_selected
     ).length;
+
+  const filteredDocuments = documents.filter(
+    (doc) =>
+      doc.filename
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase())
+  );
 
 
   const loadDocuments = useCallback(
@@ -45,6 +58,7 @@ function DocumentLibrary({
 
       setLoading(true);
       setError("");
+      setSearchQuery("");
 
       try {
         const response = await getDocuments(
@@ -79,6 +93,7 @@ function DocumentLibrary({
   async function handleSelectionChange(
     document
   ) {
+    if (bulkAction !== null) return;
     setActionId(document.document_id);
     setError("");
 
@@ -140,6 +155,7 @@ function DocumentLibrary({
 
 
   async function handleDelete(document) {
+    if (bulkAction !== null) return;
     const confirmed = window.confirm(
       `Delete "${document.filename}"?`
     );
@@ -178,6 +194,128 @@ function DocumentLibrary({
     }
   }
 
+  async function handleBulkSelection() {
+    if (
+      loading ||
+      actionId !== null ||
+      bulkAction !== null ||
+      documents.length === 0
+    ) {
+      return;
+    }
+
+    const currentChatId = activeChatId;
+    const allSelected = documents.every(
+      (doc) => doc.is_selected
+    );
+    const targetValue = !allSelected;
+    const nextBulkAction = targetValue
+      ? "selecting"
+      : "deselecting";
+
+    setBulkAction(nextBulkAction);
+    setError("");
+
+    const docsToUpdate = documents.filter(
+      (doc) => doc.is_selected !== targetValue
+    );
+
+    if (docsToUpdate.length === 0) {
+      setBulkAction(null);
+      return;
+    }
+
+    const previousDocuments = documents;
+
+    setDocuments((currentDocuments) =>
+      currentDocuments.map((item) => ({
+        ...item,
+        is_selected: targetValue,
+      }))
+    );
+
+    try {
+      const promises = docsToUpdate.map((doc) =>
+        updateDocumentSelection(
+          doc.document_id,
+          currentChatId,
+          targetValue
+        )
+      );
+
+      const results = await Promise.allSettled(promises);
+
+      const failedDocs = [];
+      const succeededDocs = [];
+      const updatedDocsMap = {};
+
+      results.forEach((result, idx) => {
+        const doc = docsToUpdate[idx];
+        if (result.status === "fulfilled") {
+          succeededDocs.push(doc);
+          const updatedDoc = result.value?.data?.document;
+          if (updatedDoc) {
+            updatedDocsMap[updatedDoc.document_id] = updatedDoc;
+          }
+        } else {
+          failedDocs.push(doc);
+        }
+      });
+
+      if (failedDocs.length > 0) {
+        let rollbackSucceeded = true;
+
+        if (succeededDocs.length > 0) {
+          try {
+            const rollbackPromises = succeededDocs.map((doc) =>
+              updateDocumentSelection(
+                doc.document_id,
+                currentChatId,
+                !targetValue
+              )
+            );
+            const rollbackResults = await Promise.allSettled(rollbackPromises);
+            const anyRollbackFailed = rollbackResults.some(
+              (r) => r.status === "rejected"
+            );
+            if (anyRollbackFailed) {
+              rollbackSucceeded = false;
+            }
+          } catch (rollbackError) {
+            console.error(
+              "Failed to rollback some backend updates:",
+              rollbackError
+            );
+            rollbackSucceeded = false;
+          }
+        }
+
+        if (rollbackSucceeded) {
+          setDocuments(previousDocuments);
+          setError("Unable to update all PDF selections. Changes were restored.");
+        } else {
+          await loadDocuments();
+          setError("Some PDF selections could not be restored. The current server state was refreshed.");
+        }
+      } else {
+        setDocuments((currentDocuments) =>
+          currentDocuments.map((item) =>
+            updatedDocsMap[item.document_id] || item
+          )
+        );
+      }
+    } catch (requestError) {
+      console.error(
+        "Bulk selection update failed:",
+        requestError
+      );
+      setDocuments(previousDocuments);
+      setError("Unable to update bulk selection.");
+    } finally {
+      setBulkAction(null);
+    }
+  }
+
 
   if (!activeChatId) {
     return null;
@@ -192,9 +330,9 @@ function DocumentLibrary({
           : "border-slate-200 bg-white"
       }`}
     >
-      <div className="mx-auto max-w-5xl">
-        <div className="flex items-center justify-between gap-3">
-          <div>
+      <div className="mx-auto max-w-5xl overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div className="min-w-0">
             <h3 className="text-sm font-semibold">
               PDF Documents
             </h3>
@@ -206,19 +344,90 @@ function DocumentLibrary({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={loadDocuments}
-            disabled={loading}
-            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
-              isDark
-                ? "border-slate-700 hover:bg-slate-800"
-                : "border-slate-300 hover:bg-slate-100"
-            } disabled:cursor-not-allowed disabled:opacity-50`}
-          >
-            {loading ? "Loading..." : "Refresh"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {documents.length > 0 && (
+              <button
+                type="button"
+                onClick={handleBulkSelection}
+                disabled={
+                  loading ||
+                  actionId !== null ||
+                  bulkAction !== null
+                }
+                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                  isDark
+                    ? "border-slate-700 hover:bg-slate-800"
+                    : "border-slate-300 hover:bg-slate-100"
+                } disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                {bulkAction === "selecting"
+                  ? "Selecting..."
+                  : bulkAction === "deselecting"
+                  ? "Deselecting..."
+                  : documents.every(
+                      (doc) => doc.is_selected
+                    )
+                  ? "Deselect All"
+                  : "Select All"}
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={loadDocuments}
+              disabled={
+                loading || bulkAction !== null
+              }
+              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                isDark
+                  ? "border-slate-700 hover:bg-slate-800"
+                  : "border-slate-300 hover:bg-slate-100"
+              } disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              {loading ? "Loading..." : "Refresh"}
+            </button>
+          </div>
         </div>
+
+        {documents.length > 0 && (
+          <div className="mt-3 relative flex items-center max-w-xs">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search PDFs..."
+              disabled={loading || bulkAction !== null}
+              className={`w-full rounded-lg border px-3 py-1.5 pr-8 text-xs outline-none transition ${
+                isDark
+                  ? "border-slate-800 bg-slate-900 text-slate-100 placeholder-slate-500 focus:border-slate-700"
+                  : "border-slate-200 bg-slate-50 text-slate-800 placeholder-slate-400 focus:border-slate-300"
+              }`}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                disabled={loading || bulkAction !== null}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:text-slate-600 focus:outline-none"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
 
         {error && (
           <p className="mt-3 text-xs text-red-500">
@@ -234,12 +443,21 @@ function DocumentLibrary({
             </p>
           )}
 
-        {documents.length > 0 && (
+        {!loading &&
+          documents.length > 0 &&
+          filteredDocuments.length === 0 && (
+            <p className="mt-3 text-xs text-slate-500">
+              No PDFs match your search.
+            </p>
+          )}
+
+        {documents.length > 0 && filteredDocuments.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
-            {documents.map((document) => {
+            {filteredDocuments.map((document) => {
               const isBusy =
                 actionId ===
-                document.document_id;
+                document.document_id ||
+                bulkAction !== null;
 
               return (
                 <div
