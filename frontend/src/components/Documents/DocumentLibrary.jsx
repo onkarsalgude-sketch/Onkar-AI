@@ -31,12 +31,22 @@ function DocumentLibrary({
   const [bulkAction, setBulkAction] =
     useState(null);
 
+  const [searchQuery, setSearchQuery] =
+    useState("");
+
   const isDark = theme === "dark";
 
   const selectedDocumentCount =
     documents.filter(
       (document) => document.is_selected
     ).length;
+
+  const filteredDocuments = documents.filter(
+    (doc) =>
+      doc.filename
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase())
+  );
 
 
   const loadDocuments = useCallback(
@@ -48,6 +58,7 @@ function DocumentLibrary({
 
       setLoading(true);
       setError("");
+      setSearchQuery("");
 
       try {
         const response = await getDocuments(
@@ -319,9 +330,9 @@ function DocumentLibrary({
           : "border-slate-200 bg-white"
       }`}
     >
-      <div className="mx-auto max-w-5xl">
-        <div className="flex items-center justify-between gap-3">
-          <div>
+      <div className="mx-auto max-w-5xl overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div className="min-w-0">
             <h3 className="text-sm font-semibold">
               PDF Documents
             </h3>
@@ -333,7 +344,7 @@ function DocumentLibrary({
             </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {documents.length > 0 && (
               <button
                 type="button"
@@ -378,6 +389,46 @@ function DocumentLibrary({
           </div>
         </div>
 
+        {documents.length > 0 && (
+          <div className="mt-3 relative flex items-center max-w-xs">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search PDFs..."
+              disabled={loading || bulkAction !== null}
+              className={`w-full rounded-lg border px-3 py-1.5 pr-8 text-xs outline-none transition ${
+                isDark
+                  ? "border-slate-800 bg-slate-900 text-slate-100 placeholder-slate-500 focus:border-slate-700"
+                  : "border-slate-200 bg-slate-50 text-slate-800 placeholder-slate-400 focus:border-slate-300"
+              }`}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                disabled={loading || bulkAction !== null}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:text-slate-600 focus:outline-none"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
+
         {error && (
           <p className="mt-3 text-xs text-red-500">
             {error}
@@ -392,9 +443,17 @@ function DocumentLibrary({
             </p>
           )}
 
-        {documents.length > 0 && (
+        {!loading &&
+          documents.length > 0 &&
+          filteredDocuments.length === 0 && (
+            <p className="mt-3 text-xs text-slate-500">
+              No PDFs match your search.
+            </p>
+          )}
+
+        {documents.length > 0 && filteredDocuments.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
-            {documents.map((document) => {
+            {filteredDocuments.map((document) => {
               const isBusy =
                 actionId ===
                 document.document_id ||
