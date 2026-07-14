@@ -5,18 +5,22 @@ function MessageInput({
   setInput,
   sendMessage,
   loading,
-  uploadingPdf,
+  uploadProgress,
+  uploadSummary,
+  dismissUploadSummary,
   uploadFile,
-  pendingFile,
-  removePendingFile,
+  pendingFiles,
+  removePendingFileAt,
+  clearAllPendingFiles,
   theme = "dark",
 }) {
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef(null);
 
   const isDark = theme === "dark";
+  const isBusy = loading || uploadProgress !== null;
   const canSend =
-    !loading && (input.trim() || pendingFile);
+    !isBusy && (input.trim() || pendingFiles.length > 0);
 
   function startListening() {
     const SpeechRecognition =
@@ -85,56 +89,130 @@ function MessageInput({
           : "border-slate-300 bg-white shadow-sm"
       }`}
     >
-      {/* Send करण्यापूर्वी निवडलेली PDF */}
-      {pendingFile && (
+      {/* Upload summary banner */}
+      {uploadSummary && (
         <div
-          className={`mb-2 flex items-center justify-between gap-3 rounded-xl border p-3 ${
+          className={`mb-2 rounded-xl border px-3 py-2 text-xs ${
             isDark
-              ? "border-slate-700 bg-slate-900"
-              : "border-slate-200 bg-slate-100"
+              ? "border-slate-700 bg-slate-900 text-slate-200"
+              : "border-slate-200 bg-slate-50 text-slate-800"
           }`}
         >
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-red-500/15 text-2xl">
-              📄
-            </div>
-
+          <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p
-                className={`truncate text-sm font-medium ${
-                  isDark
-                    ? "text-slate-100"
-                    : "text-slate-900"
-                }`}
-                title={pendingFile.fileName}
-              >
-                {pendingFile.fileName}
-              </p>
-
-              <p className="mt-1 text-xs text-slate-500">
-                PDF · {pendingFile.fileSize}
-              </p>
+              <p className="font-semibold mb-1">Upload summary</p>
+              {uploadSummary.succeeded.length > 0 && (
+                <p className="text-emerald-500">
+                  ✓ {uploadSummary.succeeded.length} uploaded
+                  {uploadSummary.succeeded.length <= 3
+                    ? `: ${uploadSummary.succeeded.join(", ")}`
+                    : ""}
+                </p>
+              )}
+              {uploadSummary.duplicates.length > 0 && (
+                <p className={isDark ? "text-amber-400" : "text-amber-600"}>
+                  ⊘ {uploadSummary.duplicates.length} duplicate
+                  {uploadSummary.duplicates.length <= 3
+                    ? `: ${uploadSummary.duplicates.join(", ")}`
+                    : ""}
+                </p>
+              )}
+              {uploadSummary.failed.length > 0 && (
+                <p className="text-red-500">
+                  ✗ {uploadSummary.failed.length} failed
+                  {uploadSummary.failed.length <= 3
+                    ? `: ${uploadSummary.failed.join(", ")}`
+                    : ""}
+                </p>
+              )}
             </div>
+            <button
+              type="button"
+              onClick={dismissUploadSummary}
+              className={`shrink-0 rounded p-1 text-base leading-none transition ${
+                isDark
+                  ? "text-slate-400 hover:text-white"
+                  : "text-slate-500 hover:text-slate-900"
+              }`}
+              aria-label="Dismiss upload summary"
+            >
+              ✕
+            </button>
           </div>
-
-          <button
-            type="button"
-            onClick={removePendingFile}
-            disabled={loading}
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-lg transition ${
-              isDark
-                ? "text-slate-400 hover:bg-slate-800 hover:text-white"
-                : "text-slate-500 hover:bg-slate-200 hover:text-slate-900"
-            }`}
-            title="Remove PDF"
-            aria-label="Remove PDF"
-          >
-            ✕
-          </button>
         </div>
       )}
 
-      {uploadingPdf && (
+      {/* Pending PDFs list */}
+      {pendingFiles.length > 0 && (
+        <div className="mb-2 space-y-1">
+          {pendingFiles.length > 1 && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={clearAllPendingFiles}
+                disabled={isBusy}
+                className={`text-xs px-2 py-0.5 rounded transition disabled:opacity-50 ${
+                  isDark
+                    ? "text-slate-400 hover:text-white"
+                    : "text-slate-500 hover:text-slate-900"
+                }`}
+              >
+                Clear all
+              </button>
+            </div>
+          )}
+          {pendingFiles.map((pf, idx) => (
+            <div
+              key={`${pf.fileName}__${pf.file.size}__${idx}`}
+              className={`flex items-center justify-between gap-3 rounded-xl border p-3 ${
+                isDark
+                  ? "border-slate-700 bg-slate-900"
+                  : "border-slate-200 bg-slate-100"
+              }`}
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-500/15 text-xl">
+                  📄
+                </div>
+
+                <div className="min-w-0">
+                  <p
+                    className={`truncate text-sm font-medium ${
+                      isDark
+                        ? "text-slate-100"
+                        : "text-slate-900"
+                    }`}
+                    title={pf.fileName}
+                  >
+                    {pf.fileName}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    PDF · {pf.fileSize}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => removePendingFileAt(idx)}
+                disabled={isBusy}
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-lg transition disabled:opacity-50 ${
+                  isDark
+                    ? "text-slate-400 hover:bg-slate-800 hover:text-white"
+                    : "text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+                }`}
+                title="Remove PDF"
+                aria-label={`Remove ${pf.fileName}`}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Upload progress banner */}
+      {uploadProgress && (
         <div
           className={`mb-2 flex items-center gap-2 rounded-xl border px-3 py-2 text-sm ${
             isDark
@@ -143,9 +221,12 @@ function MessageInput({
           }`}
         >
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-
           <span>
-            Uploading and processing PDF...
+            Uploading PDF {uploadProgress.current} of{" "}
+            {uploadProgress.total}
+            {uploadProgress.total <= 5
+              ? `: ${uploadProgress.fileName}`
+              : "..."}
           </span>
         </div>
       )}
@@ -157,14 +238,15 @@ function MessageInput({
           hidden
           onChange={uploadFile}
           accept=".pdf,image/*"
-          disabled={loading}
+          multiple
+          disabled={isBusy}
         />
 
         {/* Attachment */}
         <label
           htmlFor="fileUpload"
           className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg transition sm:h-11 sm:w-11 ${
-            loading
+            isBusy
               ? "cursor-not-allowed opacity-50"
               : "cursor-pointer"
           } ${
@@ -186,8 +268,8 @@ function MessageInput({
               : "border-slate-300 bg-slate-50 text-slate-900 placeholder:text-slate-400"
           }`}
           placeholder={
-            pendingFile
-              ? "Ask something about this PDF..."
+            pendingFiles.length > 0
+              ? "Ask something about these PDFs..."
               : "Ask anything..."
           }
           value={input}
@@ -195,7 +277,7 @@ function MessageInput({
             setInput(event.target.value)
           }
           onKeyDown={handleKeyDown}
-          disabled={loading}
+          disabled={isBusy}
         />
 
         {/* Microphone */}
@@ -204,7 +286,7 @@ function MessageInput({
           onClick={
             listening ? stopListening : startListening
           }
-          disabled={loading}
+          disabled={isBusy}
           className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg text-white transition disabled:cursor-not-allowed disabled:opacity-50 sm:h-11 sm:w-11 ${
             listening
               ? "animate-pulse bg-red-600 hover:bg-red-700"

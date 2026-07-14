@@ -21,8 +21,12 @@ function App() {
 retryLastRequest,
 dismissChatError,
 
-    pendingFile,
-    removePendingFile,
+    pendingFiles,
+    removePendingFileAt,
+    clearAllPendingFiles,
+    uploadProgress,
+    uploadSummary,
+    dismissUploadSummary,
     uploadFile,
 
     newChat,
@@ -31,7 +35,6 @@ dismissChatError,
     chats,
     activeChatId,
     documentRefreshKey,
-    uploadingPdf,
     selectChat,
     renameCurrentChat,
     deleteCurrentChat,
@@ -100,7 +103,6 @@ dismissChatError,
         chats={chats}
         activeChatId={activeChatId}
         documentRefreshKey={documentRefreshKey}
-        uploadingPdf={uploadingPdf}
         selectChat={selectChat}
         renameCurrentChat={
           renameCurrentChat
@@ -141,14 +143,19 @@ dismissChatError,
 
      <ChatWindow
      activeChatId={activeChatId}
+  documentRefreshKey={documentRefreshKey}
   messages={messages}
   input={input}
   setInput={setInput}
   sendMessage={sendMessage}
   loading={loading}
   uploadFile={uploadFile}
-  pendingFile={pendingFile}
-  removePendingFile={removePendingFile}
+  pendingFiles={pendingFiles}
+  removePendingFileAt={removePendingFileAt}
+  clearAllPendingFiles={clearAllPendingFiles}
+  uploadProgress={uploadProgress}
+  uploadSummary={uploadSummary}
+  dismissUploadSummary={dismissUploadSummary}
   regenerateResponse={regenerateResponse}
   chatError={chatError}
   retryLastRequest={retryLastRequest}
