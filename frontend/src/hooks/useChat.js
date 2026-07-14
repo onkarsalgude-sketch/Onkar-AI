@@ -169,7 +169,16 @@ export default function useChat() {
     );
   });
 
-  const [pendingFile, setPendingFile] =
+  // Array of { file, fileType, fileName, fileSize }
+  const [pendingFiles, setPendingFiles] =
+    useState([]);
+
+  // null | { current: number, total: number, fileName: string }
+  const [uploadProgress, setUploadProgress] =
+    useState(null);
+
+  // null | { succeeded: string[], duplicates: string[], failed: string[] }
+  const [uploadSummary, setUploadSummary] =
     useState(null);
 
   const [chatError, setChatError] =
@@ -179,9 +188,6 @@ export default function useChat() {
     documentRefreshKey,
     setDocumentRefreshKey,
   ] = useState(0);
-
-  const [uploadingPdf, setUploadingPdf] =
-    useState(false);
 
   const lastFailedRequestRef =
     useRef(null);
@@ -301,13 +307,24 @@ export default function useChat() {
   }
 
 
-  function removePendingFile() {
-    setPendingFile(null);
+  function removePendingFileAt(index) {
+    setPendingFiles((prev) =>
+      prev.filter((_, i) => i !== index)
+    );
+  }
+
+  function clearAllPendingFiles() {
+    setPendingFiles([]);
+  }
+
+  function dismissUploadSummary() {
+    setUploadSummary(null);
   }
 
 
   function handleNewChat() {
-    setPendingFile(null);
+    setPendingFiles([]);
+    setUploadSummary(null);
     setChatError(null);
 
     lastFailedRequestRef.current =
@@ -320,7 +337,8 @@ export default function useChat() {
   async function handleSelectChat(
     chatId
   ) {
-    setPendingFile(null);
+    setPendingFiles([]);
+    setUploadSummary(null);
     setChatError(null);
 
     lastFailedRequestRef.current =
@@ -331,32 +349,73 @@ export default function useChat() {
 
 
   async function uploadFile(event) {
-    const file =
-      event.target.files?.[0];
+    const allFiles = Array.from(
+      event.target.files || []
+    );
 
-    if (!file) return;
+    if (allFiles.length === 0) return;
 
     event.target.value = "";
 
-    if (
-      file.type ===
-      "application/pdf"
-    ) {
-      setPendingFile({
-        file,
-        fileType: "pdf",
-        fileName: file.name,
-        fileSize: formatFileSize(
-          file.size
-        ),
+    const pdfFiles = allFiles.filter(
+      (f) => f.type === "application/pdf"
+    );
+
+    const imageFiles = allFiles.filter(
+      (f) => f.type.startsWith("image/")
+    );
+
+    const otherFiles = allFiles.filter(
+      (f) =>
+        f.type !== "application/pdf" &&
+        !f.type.startsWith("image/")
+    );
+
+    // Mixed PDF + image in one pick is not supported
+    if (pdfFiles.length > 0 && imageFiles.length > 0) {
+      alert(
+        "Please select either PDF files or a single image, not both at once."
+      );
+      return;
+    }
+
+    if (otherFiles.length > 0 && pdfFiles.length === 0 && imageFiles.length === 0) {
+      alert("Only PDF and image files are supported.");
+      return;
+    }
+
+    // --- PDF batch ---
+    if (pdfFiles.length > 0) {
+      const MAX_PDFS = 10;
+
+      setPendingFiles((prev) => {
+        const existingKeys = new Set(
+          prev.map((p) => `${p.fileName}__${p.file.size}`)
+        );
+
+        const newEntries = pdfFiles
+          .filter(
+            (f) =>
+              !existingKeys.has(`${f.name}__${f.size}`)
+          )
+          .map((f) => ({
+            file: f,
+            fileType: "pdf",
+            fileName: f.name,
+            fileSize: formatFileSize(f.size),
+          }));
+
+        return [...prev, ...newEntries].slice(0, MAX_PDFS);
       });
 
       return;
     }
 
+    // --- Image (single file, unchanged flow) ---
     if (
-      file.type.startsWith("image/")
+      imageFiles.length > 0
     ) {
+      const file = imageFiles[0];
       setLoading(true);
       setChatError(null);
 
@@ -459,22 +518,24 @@ export default function useChat() {
     requestOverride = null
   ) {
     const isRetry =
-      requestOverride?.isRetry ===
-      true;
+      requestOverride?.isRetry === true;
 
     const text = isRetry
-      ? String(
-          requestOverride.text || ""
-        ).trim()
+      ? String(requestOverride.text || "").trim()
       : input.trim();
 
+    // On retry, attachedFile is always null —
+    // PDFs were already uploaded; we only replay the chat request.
     const attachedFile = isRetry
-      ? requestOverride.attachedFile ||
-        null
-      : pendingFile;
+      ? null
+      : null; // kept for structural clarity; batch uses pendingFiles
+
+    // For a retry, hasPendingPdfs is always false
+    const hasPendingPdfs =
+      !isRetry && pendingFiles.length > 0;
 
     if (
-      (!text && !attachedFile) ||
+      (!text && !hasPendingPdfs) ||
       loading
     ) {
       return;
@@ -486,22 +547,22 @@ export default function useChat() {
         null
       : selectedModel || null;
 
+    // requestPayload intentionally carries NO file references —
+    // it is only used for chat-level retry after uploads are done.
     const requestPayload = {
       text,
-      attachedFile,
+      attachedFile: null,
       chatId: isRetry
-        ? requestOverride.chatId ||
-          null
+        ? requestOverride.chatId || null
         : null,
       modelId: requestModelId,
       userMessageAdded: isRetry
-        ? Boolean(
-            requestOverride.userMessageAdded
-          )
+        ? Boolean(requestOverride.userMessageAdded)
         : false,
     };
 
     setChatError(null);
+    setUploadSummary(null);
     setLoading(true);
 
     try {
@@ -516,194 +577,208 @@ export default function useChat() {
           currentChatId;
       }
 
+      // --- Build user message ---
       const userMessage = {
         role: "user",
         content: text,
         sources: [],
       };
 
-      if (
-        attachedFile?.fileType ===
-        "pdf"
-      ) {
-        userMessage.fileType =
-          "pdf";
-
+      if (hasPendingPdfs) {
+        // Annotate with count of PDFs being attached
+        userMessage.fileType = "pdf";
         userMessage.fileName =
-          attachedFile.fileName;
-
+          pendingFiles.length === 1
+            ? pendingFiles[0].fileName
+            : `${pendingFiles.length} PDFs`;
         userMessage.fileSize =
-          attachedFile.fileSize;
+          pendingFiles.length === 1
+            ? pendingFiles[0].fileSize
+            : "";
       }
 
-      if (
-        requestPayload.userMessageAdded
-      ) {
-        setMessages(
-          (previousMessages) => {
-            const updatedMessages = [
-              ...previousMessages,
-            ];
-
-            if (
-              updatedMessages[
-                updatedMessages.length -
-                  1
-              ]?.role === "assistant"
-            ) {
-              updatedMessages.pop();
-            }
-
-            updatedMessages.push({
-              role: "assistant",
-              content: "",
-              sources: [],
-            });
-
-            return updatedMessages;
-          }
-        );
-      } else {
-        setMessages(
-          (previousMessages) => [
-            ...previousMessages,
-            userMessage,
-            {
-              role: "assistant",
-              content: "",
-              sources: [],
-            },
-          ]
-        );
-
-        requestPayload.userMessageAdded =
-          true;
-
-        setInput("");
-        setPendingFile(null);
-      }
-
-      let requestText = text;
-
-      if (
-        attachedFile?.fileType ===
-        "pdf"
-      ) {
-        const formData =
-          new FormData();
-
-        formData.append(
-          "file",
-          attachedFile.file
-        );
-
-        formData.append(
-          "chat_id",
-          String(currentChatId)
-        );
-
-        setUploadingPdf(true);
-
-        try {
-          await uploadDocument(
-            formData
-          );
-
-          setDocumentRefreshKey(
-            (currentKey) => currentKey + 1
-          );
-        } finally {
-          await new Promise(
-            (resolve) => setTimeout(resolve, 1000)
-          );
-
-          setUploadingPdf(false);
-        }
-
-        requestText = text
-          ? `Use the PDF uploaded in this chat to answer this question:\n${text}`
-          : `Summarize the PDF "${attachedFile.fileName}" uploaded in this chat.`;
-      }
-
-      const result =
-        await streamChat(
-          requestText,
-          currentChatId,
-          (chunk) => {
-            setMessages(
-              (
-                previousMessages
-              ) => {
-                const updatedMessages =
-                  [
-                    ...previousMessages,
-                  ];
-
-                const lastIndex =
-                  updatedMessages.length -
-                  1;
-
-                updatedMessages[
-                  lastIndex
-                ] = {
-                  ...updatedMessages[
-                    lastIndex
-                  ],
-                  content:
-                    updatedMessages[
-                      lastIndex
-                    ].content + chunk,
-                };
-
-                return updatedMessages;
-              }
-            );
-          },
-          requestModelId
-        );
-
-      setMessages(
-        (previousMessages) => {
+      if (requestPayload.userMessageAdded) {
+        setMessages((previousMessages) => {
           const updatedMessages = [
             ...previousMessages,
           ];
 
-          const lastIndex =
-            updatedMessages.length - 1;
+          if (
+            updatedMessages[
+              updatedMessages.length - 1
+            ]?.role === "assistant"
+          ) {
+            updatedMessages.pop();
+          }
 
-          updatedMessages[
-            lastIndex
-          ] = {
-            ...updatedMessages[
-              lastIndex
-            ],
-            sources:
-              result?.sources || [],
-            modelId:
-              result?.modelId ||
-              requestModelId,
-          };
+          updatedMessages.push({
+            role: "assistant",
+            content: "",
+            sources: [],
+          });
 
           return updatedMessages;
-        }
-      );
+        });
+      } else {
+        setMessages((previousMessages) => [
+          ...previousMessages,
+          userMessage,
+          {
+            role: "assistant",
+            content: "",
+            sources: [],
+          },
+        ]);
 
-      if (result?.chatId) {
-        setActiveChatId(
-          result.chatId
-        );
+        requestPayload.userMessageAdded = true;
+
+        setInput("");
+        setPendingFiles([]);
       }
 
-      const chatsResponse =
-        await getChats();
+      // --- Sequential PDF batch upload ---
+      let requestText = text;
 
-      setChats(
-        chatsResponse.data.chats ||
-          []
+      if (hasPendingPdfs) {
+        const batchFiles = [...pendingFiles];
+        const succeeded = [];
+        const duplicates = [];
+        const failed = [];
+
+        for (let i = 0; i < batchFiles.length; i++) {
+          const pf = batchFiles[i];
+
+          setUploadProgress({
+            current: i + 1,
+            total: batchFiles.length,
+            fileName: pf.fileName,
+          });
+
+          const formData = new FormData();
+          formData.append("file", pf.file);
+          formData.append(
+            "chat_id",
+            String(currentChatId)
+          );
+
+          try {
+            await uploadDocument(formData);
+            succeeded.push(pf.fileName);
+          } catch (uploadError) {
+            if (
+              uploadError?.response?.status === 409
+            ) {
+              duplicates.push(pf.fileName);
+            } else {
+              failed.push(pf.fileName);
+              console.error(
+                `Upload failed for ${pf.fileName}:`,
+                uploadError
+              );
+            }
+          }
+        }
+
+        setUploadProgress(null);
+
+        // Refresh Document Library once after entire batch
+        if (succeeded.length > 0) {
+          setDocumentRefreshKey(
+            (currentKey) => currentKey + 1
+          );
+        }
+
+        // Record summary for UI
+        setUploadSummary({ succeeded, duplicates, failed });
+
+        const usable =
+          succeeded.length + duplicates.length;
+
+        // If nothing is usable and no text → abort, no chat request
+        if (usable === 0 && !text) {
+          setChatError({
+            title: "Upload failed",
+            message:
+              failed.length > 0
+                ? `All PDFs failed to upload: ${failed.join(", ")}.`
+                : "No PDFs could be uploaded.",
+            canRetry: false,
+          });
+          setLoading(false);
+          return;
+        }
+
+        // Build request text based on batch result
+        // requestPayload.attachedFile stays null — retry will only replay chat
+        if (text) {
+          requestText =
+            `Use the PDFs uploaded in this chat to answer this question:\n${text}`;
+        } else if (succeeded.length === 1) {
+          requestText =
+            `Summarize the PDF "${succeeded[0]}" uploaded in this chat.`;
+        } else {
+          requestText =
+            `Summarize the PDFs uploaded in this chat.`;
+        }
+
+        // Strip file refs from payload so retry never re-uploads
+        requestPayload.attachedFile = null;
+      }
+
+      const result = await streamChat(
+        requestText,
+        currentChatId,
+        (chunk) => {
+          setMessages((previousMessages) => {
+            const updatedMessages = [
+              ...previousMessages,
+            ];
+
+            const lastIndex =
+              updatedMessages.length - 1;
+
+            updatedMessages[lastIndex] = {
+              ...updatedMessages[lastIndex],
+              content:
+                updatedMessages[lastIndex].content +
+                chunk,
+            };
+
+            return updatedMessages;
+          });
+        },
+        requestModelId
       );
 
-      lastFailedRequestRef.current =
-        null;
+      setMessages((previousMessages) => {
+        const updatedMessages = [
+          ...previousMessages,
+        ];
+
+        const lastIndex =
+          updatedMessages.length - 1;
+
+        updatedMessages[lastIndex] = {
+          ...updatedMessages[lastIndex],
+          sources: result?.sources || [],
+          modelId:
+            result?.modelId || requestModelId,
+        };
+
+        return updatedMessages;
+      });
+
+      if (result?.chatId) {
+        setActiveChatId(result.chatId);
+      }
+
+      const chatsResponse = await getChats();
+
+      setChats(
+        chatsResponse.data.chats || []
+      );
+
+      lastFailedRequestRef.current = null;
 
       setChatError(null);
     } catch (error) {
@@ -712,37 +787,35 @@ export default function useChat() {
         error
       );
 
-      lastFailedRequestRef.current =
-        requestPayload;
+      // Store only chat-level details — no File objects
+      lastFailedRequestRef.current = {
+        ...requestPayload,
+        attachedFile: null,
+      };
 
-      setChatError(
-        createErrorDetails(error)
-      );
+      setChatError(createErrorDetails(error));
 
-      setMessages(
-        (previousMessages) => {
-          const updatedMessages = [
-            ...previousMessages,
+      setMessages((previousMessages) => {
+        const updatedMessages = [
+          ...previousMessages,
+        ];
+
+        const lastMessage =
+          updatedMessages[
+            updatedMessages.length - 1
           ];
 
-          const lastMessage =
-            updatedMessages[
-              updatedMessages.length -
-                1
-            ];
-
-          if (
-            lastMessage?.role ===
-              "assistant" &&
-            !lastMessage.content?.trim()
-          ) {
-            updatedMessages.pop();
-          }
-
-          return updatedMessages;
+        if (
+          lastMessage?.role === "assistant" &&
+          !lastMessage.content?.trim()
+        ) {
+          updatedMessages.pop();
         }
-      );
+
+        return updatedMessages;
+      });
     } finally {
+      setUploadProgress(null);
       setLoading(false);
     }
   }
@@ -1116,15 +1189,19 @@ export default function useChat() {
     retryLastRequest,
     dismissChatError,
 
-    pendingFile,
-    removePendingFile,
+    pendingFiles,
+    removePendingFileAt,
+    clearAllPendingFiles,
+
+    uploadProgress,
+    uploadSummary,
+    dismissUploadSummary,
 
     chats,
     setChats,
     activeChatId,
     setActiveChatId,
-      documentRefreshKey,
-      uploadingPdf,
+    documentRefreshKey,
 
     folders,
     loadFolders,

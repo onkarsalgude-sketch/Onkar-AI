@@ -14,15 +14,18 @@ import DocumentLibrary from "../Documents/DocumentLibrary";
 function ChatWindow({
   activeChatId,
   documentRefreshKey,
-  uploadingPdf,
   messages,
   input,
   setInput,
   sendMessage,
   loading,
   uploadFile,
-  pendingFile,
-  removePendingFile,
+  pendingFiles,
+  removePendingFileAt,
+  clearAllPendingFiles,
+  uploadProgress,
+  uploadSummary,
+  dismissUploadSummary,
   regenerateResponse,
   onOpenSidebar,
   theme = "dark",
@@ -157,25 +160,7 @@ function ChatWindow({
       return;
     }
 
-    const file = files[0];
-
-    const isPDF =
-      file.type ===
-      "application/pdf";
-
-    const isImage =
-      file.type.startsWith(
-        "image/"
-      );
-
-    if (!isPDF && !isImage) {
-      alert(
-        "Only PDF and image files are supported."
-      );
-
-      return;
-    }
-
+    // Pass all dropped files — uploadFile handles type filtering
     await uploadFile({
       target: {
         files,
@@ -512,12 +497,13 @@ function ChatWindow({
                     )
             }
             loading={loading}
-            uploadingPdf={uploadingPdf}
+            uploadProgress={uploadProgress}
+            uploadSummary={uploadSummary}
+            dismissUploadSummary={dismissUploadSummary}
             uploadFile={uploadFile}
-            pendingFile={pendingFile}
-            removePendingFile={
-              removePendingFile
-            }
+            pendingFiles={pendingFiles}
+            removePendingFileAt={removePendingFileAt}
+            clearAllPendingFiles={clearAllPendingFiles}
             theme={theme}
           />
         </div>
