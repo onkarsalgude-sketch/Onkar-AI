@@ -28,6 +28,9 @@ function DocumentLibrary({
   const [error, setError] =
     useState("");
 
+  const [bulkAction, setBulkAction] =
+    useState(null);
+
   const isDark = theme === "dark";
 
   const selectedDocumentCount =
@@ -79,6 +82,7 @@ function DocumentLibrary({
   async function handleSelectionChange(
     document
   ) {
+    if (bulkAction !== null) return;
     setActionId(document.document_id);
     setError("");
 
@@ -140,6 +144,7 @@ function DocumentLibrary({
 
 
   async function handleDelete(document) {
+    if (bulkAction !== null) return;
     const confirmed = window.confirm(
       `Delete "${document.filename}"?`
     );
@@ -178,6 +183,128 @@ function DocumentLibrary({
     }
   }
 
+  async function handleBulkSelection() {
+    if (
+      loading ||
+      actionId !== null ||
+      bulkAction !== null ||
+      documents.length === 0
+    ) {
+      return;
+    }
+
+    const currentChatId = activeChatId;
+    const allSelected = documents.every(
+      (doc) => doc.is_selected
+    );
+    const targetValue = !allSelected;
+    const nextBulkAction = targetValue
+      ? "selecting"
+      : "deselecting";
+
+    setBulkAction(nextBulkAction);
+    setError("");
+
+    const docsToUpdate = documents.filter(
+      (doc) => doc.is_selected !== targetValue
+    );
+
+    if (docsToUpdate.length === 0) {
+      setBulkAction(null);
+      return;
+    }
+
+    const previousDocuments = documents;
+
+    setDocuments((currentDocuments) =>
+      currentDocuments.map((item) => ({
+        ...item,
+        is_selected: targetValue,
+      }))
+    );
+
+    try {
+      const promises = docsToUpdate.map((doc) =>
+        updateDocumentSelection(
+          doc.document_id,
+          currentChatId,
+          targetValue
+        )
+      );
+
+      const results = await Promise.allSettled(promises);
+
+      const failedDocs = [];
+      const succeededDocs = [];
+      const updatedDocsMap = {};
+
+      results.forEach((result, idx) => {
+        const doc = docsToUpdate[idx];
+        if (result.status === "fulfilled") {
+          succeededDocs.push(doc);
+          const updatedDoc = result.value?.data?.document;
+          if (updatedDoc) {
+            updatedDocsMap[updatedDoc.document_id] = updatedDoc;
+          }
+        } else {
+          failedDocs.push(doc);
+        }
+      });
+
+      if (failedDocs.length > 0) {
+        let rollbackSucceeded = true;
+
+        if (succeededDocs.length > 0) {
+          try {
+            const rollbackPromises = succeededDocs.map((doc) =>
+              updateDocumentSelection(
+                doc.document_id,
+                currentChatId,
+                !targetValue
+              )
+            );
+            const rollbackResults = await Promise.allSettled(rollbackPromises);
+            const anyRollbackFailed = rollbackResults.some(
+              (r) => r.status === "rejected"
+            );
+            if (anyRollbackFailed) {
+              rollbackSucceeded = false;
+            }
+          } catch (rollbackError) {
+            console.error(
+              "Failed to rollback some backend updates:",
+              rollbackError
+            );
+            rollbackSucceeded = false;
+          }
+        }
+
+        if (rollbackSucceeded) {
+          setDocuments(previousDocuments);
+          setError("Unable to update all PDF selections. Changes were restored.");
+        } else {
+          await loadDocuments();
+          setError("Some PDF selections could not be restored. The current server state was refreshed.");
+        }
+      } else {
+        setDocuments((currentDocuments) =>
+          currentDocuments.map((item) =>
+            updatedDocsMap[item.document_id] || item
+          )
+        );
+      }
+    } catch (requestError) {
+      console.error(
+        "Bulk selection update failed:",
+        requestError
+      );
+      setDocuments(previousDocuments);
+      setError("Unable to update bulk selection.");
+    } finally {
+      setBulkAction(null);
+    }
+  }
+
 
   if (!activeChatId) {
     return null;
@@ -206,18 +333,49 @@ function DocumentLibrary({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={loadDocuments}
-            disabled={loading}
-            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
-              isDark
-                ? "border-slate-700 hover:bg-slate-800"
-                : "border-slate-300 hover:bg-slate-100"
-            } disabled:cursor-not-allowed disabled:opacity-50`}
-          >
-            {loading ? "Loading..." : "Refresh"}
-          </button>
+          <div className="flex gap-2">
+            {documents.length > 0 && (
+              <button
+                type="button"
+                onClick={handleBulkSelection}
+                disabled={
+                  loading ||
+                  actionId !== null ||
+                  bulkAction !== null
+                }
+                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                  isDark
+                    ? "border-slate-700 hover:bg-slate-800"
+                    : "border-slate-300 hover:bg-slate-100"
+                } disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                {bulkAction === "selecting"
+                  ? "Selecting..."
+                  : bulkAction === "deselecting"
+                  ? "Deselecting..."
+                  : documents.every(
+                      (doc) => doc.is_selected
+                    )
+                  ? "Deselect All"
+                  : "Select All"}
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={loadDocuments}
+              disabled={
+                loading || bulkAction !== null
+              }
+              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                isDark
+                  ? "border-slate-700 hover:bg-slate-800"
+                  : "border-slate-300 hover:bg-slate-100"
+              } disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              {loading ? "Loading..." : "Refresh"}
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -239,7 +397,8 @@ function DocumentLibrary({
             {documents.map((document) => {
               const isBusy =
                 actionId ===
-                document.document_id;
+                document.document_id ||
+                bulkAction !== null;
 
               return (
                 <div
