@@ -11,6 +11,8 @@ import {
 } from "../../services/documentService";
 
 
+const PAGE_SIZE = 6;
+
 function DocumentLibrary({
   activeChatId,
   refreshKey = 0,
@@ -46,6 +48,9 @@ function DocumentLibrary({
         return "newest";
       }
     });
+
+  const [currentPage, setCurrentPage] =
+    useState(1);
 
   const [isCollapsed, setIsCollapsed] =
     useState(() => {
@@ -107,6 +112,22 @@ function DocumentLibrary({
     )
   );
 
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredDocuments.length / PAGE_SIZE)
+  );
+
+  // Clamp currentPage whenever filteredDocuments shrinks
+  const safePage = Math.min(currentPage, totalPages);
+
+  const pagedDocuments = filteredDocuments.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE
+  );
+
+  const showPagination =
+    filteredDocuments.length > PAGE_SIZE;
+
 
   const loadDocuments = useCallback(
     async () => {
@@ -118,6 +139,7 @@ function DocumentLibrary({
       setLoading(true);
       setError("");
       setSearchQuery("");
+      setCurrentPage(1);
 
       try {
         const response = await getDocuments(
@@ -147,6 +169,11 @@ function DocumentLibrary({
   useEffect(() => {
     loadDocuments();
   }, [loadDocuments, refreshKey]);
+
+  // Reset to page 1 when search or sort changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, sortOption]);
 
 
   async function handleSelectionChange(
@@ -578,7 +605,7 @@ function DocumentLibrary({
 
             {documents.length > 0 && filteredDocuments.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
-                {filteredDocuments.map((document) => {
+                {pagedDocuments.map((document) => {
                   const isBusy =
                     actionId ===
                     document.document_id ||
@@ -643,6 +670,50 @@ function DocumentLibrary({
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Pagination controls */}
+            {!loading && showPagination && (
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCurrentPage((p) => Math.max(1, p - 1))
+                  }
+                  disabled={safePage === 1 || bulkAction !== null}
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                    isDark
+                      ? "border-slate-700 hover:bg-slate-800"
+                      : "border-slate-300 hover:bg-slate-100"
+                  } disabled:cursor-not-allowed disabled:opacity-40`}
+                >
+                  Previous
+                </button>
+
+                <span className="text-xs text-slate-500">
+                  Page {safePage} of {totalPages}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCurrentPage((p) =>
+                      Math.min(totalPages, p + 1)
+                    )
+                  }
+                  disabled={
+                    safePage === totalPages ||
+                    bulkAction !== null
+                  }
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                    isDark
+                      ? "border-slate-700 hover:bg-slate-800"
+                      : "border-slate-300 hover:bg-slate-100"
+                  } disabled:cursor-not-allowed disabled:opacity-40`}
+                >
+                  Next
+                </button>
               </div>
             )}
           </>
