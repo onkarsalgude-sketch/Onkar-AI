@@ -34,6 +34,19 @@ function DocumentLibrary({
   const [searchQuery, setSearchQuery] =
     useState("");
 
+  const [sortOption, setSortOption] =
+    useState(() => {
+      try {
+        return (
+          localStorage.getItem(
+            "onkar-ai-document-sort"
+          ) || "newest"
+        );
+      } catch {
+        return "newest";
+      }
+    });
+
   const [isCollapsed, setIsCollapsed] =
     useState(() => {
       try {
@@ -52,11 +65,46 @@ function DocumentLibrary({
       (document) => document.is_selected
     ).length;
 
-  const filteredDocuments = documents.filter(
-    (doc) =>
+  function sortDocuments(docs) {
+    const sorted = [...docs];
+    if (sortOption === "name-asc") {
+      sorted.sort((a, b) =>
+        a.filename.localeCompare(b.filename)
+      );
+    } else if (sortOption === "name-desc") {
+      sorted.sort((a, b) =>
+        b.filename.localeCompare(a.filename)
+      );
+    } else if (sortOption === "selected") {
+      sorted.sort((a, b) =>
+        b.is_selected - a.is_selected
+      );
+    } else {
+      // newest: parse uploaded_at, fall back to filename
+      sorted.sort((a, b) => {
+        const ta = a.uploaded_at
+          ? new Date(a.uploaded_at).getTime()
+          : NaN;
+        const tb = b.uploaded_at
+          ? new Date(b.uploaded_at).getTime()
+          : NaN;
+        const validA = !isNaN(ta);
+        const validB = !isNaN(tb);
+        if (validA && validB) return tb - ta;
+        if (validA) return -1;
+        if (validB) return 1;
+        return a.filename.localeCompare(b.filename);
+      });
+    }
+    return sorted;
+  }
+
+  const filteredDocuments = sortDocuments(
+    documents.filter((doc) =>
       doc.filename
         .toLowerCase()
         .includes(searchQuery.toLowerCase())
+    )
   );
 
 
@@ -436,42 +484,73 @@ function DocumentLibrary({
         {!isCollapsed && (
           <>
             {documents.length > 0 && (
-              <div className="mt-3 relative flex items-center max-w-xs">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search PDFs..."
-                  disabled={loading || bulkAction !== null}
-                  className={`w-full rounded-lg border px-3 py-1.5 pr-8 text-xs outline-none transition ${
-                    isDark
-                      ? "border-slate-800 bg-slate-900 text-slate-100 placeholder-slate-500 focus:border-slate-700"
-                      : "border-slate-200 bg-slate-50 text-slate-800 placeholder-slate-400 focus:border-slate-300"
-                  }`}
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery("")}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {/* Search input */}
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search PDFs..."
                     disabled={loading || bulkAction !== null}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:text-slate-600 focus:outline-none"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-3.5 w-3.5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
+                    className={`w-44 rounded-lg border px-3 py-1.5 pr-8 text-xs outline-none transition sm:w-56 ${
+                      isDark
+                        ? "border-slate-800 bg-slate-900 text-slate-100 placeholder-slate-500 focus:border-slate-700"
+                        : "border-slate-200 bg-slate-50 text-slate-800 placeholder-slate-400 focus:border-slate-300"
+                    }`}
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      disabled={loading || bulkAction !== null}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:text-slate-600 focus:outline-none"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
-                )}
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+
+                {/* Sort dropdown */}
+                <select
+                  value={sortOption}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSortOption(val);
+                    try {
+                      localStorage.setItem(
+                        "onkar-ai-document-sort",
+                        val
+                      );
+                    } catch {
+                      // ignore storage errors
+                    }
+                  }}
+                  disabled={loading || bulkAction !== null}
+                  className={`rounded-lg border px-2 py-1.5 text-xs outline-none transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    isDark
+                      ? "border-slate-800 bg-slate-900 text-slate-100 focus:border-slate-700"
+                      : "border-slate-200 bg-slate-50 text-slate-800 focus:border-slate-300"
+                  }`}
+                >
+                  <option value="newest">Newest first</option>
+                  <option value="name-asc">Name A–Z</option>
+                  <option value="name-desc">Name Z–A</option>
+                  <option value="selected">Selected first</option>
+                </select>
               </div>
             )}
 
