@@ -31,6 +31,7 @@ dismissChatError,
     chats,
     activeChatId,
     documentRefreshKey,
+    uploadingPdf,
     selectChat,
     renameCurrentChat,
     deleteCurrentChat,
@@ -99,6 +100,7 @@ dismissChatError,
         chats={chats}
         activeChatId={activeChatId}
         documentRefreshKey={documentRefreshKey}
+        uploadingPdf={uploadingPdf}
         selectChat={selectChat}
         renameCurrentChat={
           renameCurrentChat

@@ -5,6 +5,7 @@ function MessageInput({
   setInput,
   sendMessage,
   loading,
+  uploadingPdf,
   uploadFile,
   pendingFile,
   removePendingFile,
@@ -130,6 +131,22 @@ function MessageInput({
           >
             ✕
           </button>
+        </div>
+      )}
+
+      {uploadingPdf && (
+        <div
+          className={`mb-2 flex items-center gap-2 rounded-xl border px-3 py-2 text-sm ${
+            isDark
+              ? "border-blue-500/30 bg-blue-500/10 text-blue-300"
+              : "border-blue-200 bg-blue-50 text-blue-700"
+          }`}
+        >
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+
+          <span>
+            Uploading and processing PDF...
+          </span>
         </div>
       )}
 

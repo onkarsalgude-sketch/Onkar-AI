@@ -14,6 +14,7 @@ import DocumentLibrary from "../Documents/DocumentLibrary";
 function ChatWindow({
   activeChatId,
   documentRefreshKey,
+  uploadingPdf,
   messages,
   input,
   setInput,
@@ -509,6 +510,7 @@ function ChatWindow({
                     )
             }
             loading={loading}
+            uploadingPdf={uploadingPdf}
             uploadFile={uploadFile}
             pendingFile={pendingFile}
             removePendingFile={

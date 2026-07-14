@@ -180,6 +180,9 @@ export default function useChat() {
     setDocumentRefreshKey,
   ] = useState(0);
 
+  const [uploadingPdf, setUploadingPdf] =
+    useState(false);
+
   const lastFailedRequestRef =
     useRef(null);
 
@@ -599,13 +602,23 @@ export default function useChat() {
           String(currentChatId)
         );
 
-        await uploadDocument(
-          formData
-        );
+        setUploadingPdf(true);
 
-        setDocumentRefreshKey(
-          (currentKey) => currentKey + 1
-        );
+        try {
+          await uploadDocument(
+            formData
+          );
+
+          setDocumentRefreshKey(
+            (currentKey) => currentKey + 1
+          );
+        } finally {
+          await new Promise(
+            (resolve) => setTimeout(resolve, 1000)
+          );
+
+          setUploadingPdf(false);
+        }
 
         requestText = text
           ? `Use the PDF uploaded in this chat to answer this question:\n${text}`
@@ -1111,6 +1124,7 @@ export default function useChat() {
     activeChatId,
     setActiveChatId,
       documentRefreshKey,
+      uploadingPdf,
 
     folders,
     loadFolders,
