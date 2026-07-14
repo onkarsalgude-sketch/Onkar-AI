@@ -30,6 +30,11 @@ function DocumentLibrary({
 
   const isDark = theme === "dark";
 
+  const selectedDocumentCount =
+    documents.filter(
+      (document) => document.is_selected
+    ).length;
+
 
   const loadDocuments = useCallback(
     async () => {
@@ -80,6 +85,15 @@ function DocumentLibrary({
     const newSelectedValue =
       !document.is_selected;
 
+    // Optimistically update selection state immediately
+    setDocuments((currentDocuments) =>
+      currentDocuments.map((item) =>
+        item.document_id === document.document_id
+          ? { ...item, is_selected: newSelectedValue }
+          : item
+      )
+    );
+
     try {
       const response =
         await updateDocumentSelection(
@@ -91,18 +105,29 @@ function DocumentLibrary({
       const updatedDocument =
         response?.data?.document;
 
-      setDocuments((currentDocuments) =>
-        currentDocuments.map((item) =>
-          item.document_id ===
-          document.document_id
-            ? updatedDocument
-            : item
-        )
-      );
+      if (updatedDocument) {
+        setDocuments((currentDocuments) =>
+          currentDocuments.map((item) =>
+            item.document_id ===
+            document.document_id
+              ? updatedDocument
+              : item
+          )
+        );
+      }
     } catch (requestError) {
       console.error(
         "Failed to update selection:",
         requestError
+      );
+
+      // Revert optimistic update on failure
+      setDocuments((currentDocuments) =>
+        currentDocuments.map((item) =>
+          item.document_id === document.document_id
+            ? { ...item, is_selected: !newSelectedValue }
+            : item
+        )
       );
 
       setError(
@@ -175,8 +200,9 @@ function DocumentLibrary({
             </h3>
 
             <p className="text-xs text-slate-500">
-              Select the PDFs that the AI
-              should use.
+              {documents.length > 0
+                ? `${selectedDocumentCount} of ${documents.length} selected`
+                : "Select the PDFs that the AI should use."}
             </p>
           </div>
 
