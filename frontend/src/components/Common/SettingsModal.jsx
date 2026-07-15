@@ -6,6 +6,7 @@ function SettingsModal({
   theme = "dark",
   onThemeChange,
   messages = [],
+  activeChat = null,
 
   models = [],
   defaultModel = "",
@@ -22,6 +23,12 @@ function SettingsModal({
   const activeModel = models.find(
     (model) => model.id === activeModelId
   );
+
+const activeChatTitle =
+  String(
+    activeChat?.title ||
+      "Onkar AI Chat"
+  ).trim() || "Onkar AI Chat";
 
   const exportableMessages = messages.filter(
     (message) =>
@@ -40,17 +47,35 @@ function SettingsModal({
     onModelChange?.(modelId);
   }
 
-  function getFileName() {
-    const now = new Date();
+ function sanitizeFileName(value) {
+  return String(
+    value || "onkar-ai-chat"
+  )
+    .trim()
+    .replace(
+      /[<>:"/\\|?*\u0000-\u001F]/g,
+      "-"
+    )
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80) ||
+    "onkar-ai-chat";
+}
 
-    const date = now
-      .toISOString()
-      .slice(0, 19)
-      .replace("T", "-")
-      .replaceAll(":", "-");
+function getFileName() {
+  const now = new Date();
 
-    return `onkar-ai-chat-${date}`;
-  }
+  const date = now
+    .toISOString()
+    .slice(0, 19)
+    .replace("T", "-")
+    .replaceAll(":", "-");
+
+  return `${sanitizeFileName(
+    activeChatTitle
+  )}-${date}`;
+}
 
   function getRoleName(role) {
     return role === "user"
@@ -181,6 +206,173 @@ function SettingsModal({
 
     URL.revokeObjectURL(downloadUrl);
   }
+
+  function normalizeBackupSource(source) {
+  if (typeof source === "string") {
+    return {
+      type: "internet",
+      title: source,
+      url: source,
+    };
+  }
+
+  if (
+    !source ||
+    typeof source !== "object"
+  ) {
+    return null;
+  }
+
+  const parsedPage = Number.parseInt(
+    String(source.page ?? ""),
+    10
+  );
+
+  return {
+    type:
+      source.type ||
+      (source.filename
+        ? "pdf"
+        : source.url
+        ? "internet"
+        : "unknown"),
+
+    title: source.title || null,
+    filename:
+      source.filename || null,
+
+    page:
+      Number.isFinite(parsedPage) &&
+      parsedPage >= 1
+        ? parsedPage
+        : null,
+
+    url: source.url || null,
+    domain: source.domain || null,
+    chat_id:
+      source.chat_id ??
+      source.chatId ??
+      null,
+  };
+}
+
+function createJsonBackup() {
+  return {
+    schema_version: 1,
+    application: "Onkar AI",
+    exported_at:
+      new Date().toISOString(),
+
+    chat: {
+      id: activeChat?.id ?? null,
+      title: activeChatTitle,
+      created_at:
+        activeChat?.created_at ||
+        null,
+      is_pinned: Boolean(
+        activeChat?.is_pinned
+      ),
+      folder_id:
+        activeChat?.folder_id ??
+        null,
+      folder_name:
+        activeChat?.folder_name ||
+        null,
+    },
+
+    model: {
+      selected_id:
+        activeModelId || null,
+      selected_name:
+        activeModel?.name || null,
+      default_id:
+        defaultModel || null,
+    },
+
+    messages:
+      exportableMessages.map(
+        (message, index) => ({
+          index: index + 1,
+          role: message.role,
+          content:
+            message.content || "",
+          model_id:
+            message.modelId ||
+            message.model_id ||
+            null,
+          created_at:
+            message.created_at ||
+            null,
+
+          attachment:
+            message.fileName
+              ? {
+                  filename:
+                    message.fileName,
+                  type:
+                    message.fileType ||
+                    null,
+                  size:
+                    message.fileSize ||
+                    null,
+                }
+              : null,
+
+          sources: Array.isArray(
+            message.sources
+          )
+            ? message.sources
+                .map(
+                  normalizeBackupSource
+                )
+                .filter(Boolean)
+            : [],
+        })
+      ),
+  };
+}
+
+function exportJSON() {
+  if (!hasMessages) {
+    alert(
+      "There is no chat to export."
+    );
+    return;
+  }
+
+  const backup =
+    createJsonBackup();
+
+  const blob = new Blob(
+    [
+      JSON.stringify(
+        backup,
+        null,
+        2
+      ),
+    ],
+    {
+      type: "application/json;charset=utf-8",
+    }
+  );
+
+  const downloadUrl =
+    URL.createObjectURL(blob);
+
+  const link =
+    document.createElement("a");
+
+  link.href = downloadUrl;
+  link.download = `${getFileName()}.json`;
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  URL.revokeObjectURL(
+    downloadUrl
+  );
+}
 
   function cleanTextForPDF(text) {
     return String(text || "")
@@ -481,7 +673,7 @@ function SettingsModal({
               🎨 Appearance
             </h3>
 
-            <div className="grid grid-cols-2 gap-3">
+           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <button
                 type="button"
                 onClick={() =>
@@ -628,53 +820,76 @@ function SettingsModal({
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={exportMarkdown}
-                disabled={!hasMessages}
-                className={`rounded-xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                  isDark
-                    ? "border-slate-700 bg-slate-800 hover:bg-slate-700"
-                    : "border-slate-200 bg-slate-100 hover:bg-slate-200"
-                }`}
-              >
-                <div className="text-2xl">
-                  📝
-                </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+  <button
+    type="button"
+    onClick={exportMarkdown}
+    disabled={!hasMessages}
+    className={`rounded-xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${
+      isDark
+        ? "border-slate-700 bg-slate-800 hover:bg-slate-700"
+        : "border-slate-200 bg-slate-100 hover:bg-slate-200"
+    }`}
+  >
+    <div className="text-2xl">
+      📝
+    </div>
 
-                <p className="mt-2 font-semibold">
-                  Markdown
-                </p>
+    <p className="mt-2 font-semibold">
+      Markdown
+    </p>
 
-                <p className="mt-1 text-xs text-slate-500">
-                  Editable .md file
-                </p>
-              </button>
+    <p className="mt-1 text-xs text-slate-500">
+      Editable .md file
+    </p>
+  </button>
 
-              <button
-                type="button"
-                onClick={exportPDF}
-                disabled={!hasMessages}
-                className={`rounded-xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                  isDark
-                    ? "border-slate-700 bg-slate-800 hover:bg-slate-700"
-                    : "border-slate-200 bg-slate-100 hover:bg-slate-200"
-                }`}
-              >
-                <div className="text-2xl">
-                  📄
-                </div>
+  <button
+    type="button"
+    onClick={exportPDF}
+    disabled={!hasMessages}
+    className={`rounded-xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${
+      isDark
+        ? "border-slate-700 bg-slate-800 hover:bg-slate-700"
+        : "border-slate-200 bg-slate-100 hover:bg-slate-200"
+    }`}
+  >
+    <div className="text-2xl">
+      📄
+    </div>
 
-                <p className="mt-2 font-semibold">
-                  PDF
-                </p>
+    <p className="mt-2 font-semibold">
+      PDF
+    </p>
 
-                <p className="mt-1 text-xs text-slate-500">
-                  Multi-page document
-                </p>
-              </button>
-            </div>
+    <p className="mt-1 text-xs text-slate-500">
+      Multi-page document
+    </p>
+  </button>
+
+  <button
+    type="button"
+    onClick={exportJSON}
+    disabled={!hasMessages}
+    className={`rounded-xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${
+      isDark
+        ? "border-slate-700 bg-slate-800 hover:bg-slate-700"
+        : "border-slate-200 bg-slate-100 hover:bg-slate-200"
+    }`}
+  >
+    <div className="text-2xl">
+      💾
+    </div>
+
+    <p className="mt-2 font-semibold">
+      JSON Backup
+    </p>
+
+    <p className="mt-1 text-xs text-slate-500">
+      Structured chat data
+    </p>
+  </button>
+</div>
           </section>
 
           {/* Other options */}
