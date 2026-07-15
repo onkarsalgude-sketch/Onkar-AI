@@ -7,6 +7,7 @@ from fastapi import (
     Form,
     HTTPException,
 )
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.config.settings import UPLOAD_DIR
@@ -59,20 +60,48 @@ def get_safe_pdf_filename(
     return safe_filename
 
 
-def get_chat_directory(chat_id: int) -> Path:
+def get_chat_upload_directory(chat_id: int) -> Path:
     if chat_id <= 0:
         raise HTTPException(
             status_code=400,
             detail="Invalid chat ID",
         )
 
-    chat_directory = UPLOAD_DIR / f"chat_{chat_id}"
+    return UPLOAD_DIR / f"chat_{chat_id}"
+
+
+def get_chat_directory(chat_id: int) -> Path:
+    chat_directory = get_chat_upload_directory(chat_id)
     chat_directory.mkdir(
         parents=True,
         exist_ok=True,
     )
 
     return chat_directory
+
+
+def resolve_chat_pdf_path(
+    chat_id: int,
+    filename: str,
+) -> tuple[Path, str]:
+    safe_filename = get_safe_pdf_filename(filename)
+    chat_directory = get_chat_upload_directory(chat_id)
+    file_path = (chat_directory / safe_filename).resolve(
+        strict=False,
+    )
+    chat_directory_resolved = chat_directory.resolve(
+        strict=False,
+    )
+
+    if not file_path.is_relative_to(
+        chat_directory_resolved,
+    ):
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found",
+        )
+
+    return file_path, safe_filename
 
 
 @router.post("/documents/upload")
@@ -255,6 +284,44 @@ async def update_document_selection(
         "message": "Document selection updated",
         "document": updated_document,
     }
+
+
+@router.api_route(
+    "/documents/{filename}/preview",
+    methods=["GET", "HEAD"],
+)
+async def preview_pdf(
+    filename: str,
+    chat_id: int,
+):
+    file_path, safe_filename = resolve_chat_pdf_path(
+        chat_id=chat_id,
+        filename=filename,
+    )
+
+    document = get_document_by_filename(
+        chat_id=chat_id,
+        filename=safe_filename,
+    )
+
+    if document is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found",
+        )
+
+    if not file_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found",
+        )
+
+    return FileResponse(
+        path=file_path,
+        media_type="application/pdf",
+        filename=safe_filename,
+        content_disposition_type="inline",
+    )
 
 
 @router.delete("/documents/{filename}")
