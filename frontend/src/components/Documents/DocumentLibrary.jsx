@@ -5,11 +5,13 @@ import {
 } from "react";
 
 import {
+  buildPdfPreviewUrls,
   deleteDocumentApi,
   getDocuments,
   updateDocumentSelection,
 } from "../../services/documentService";
 
+import PdfPreviewModal from "./PdfPreviewModal";
 
 const PAGE_SIZE = 6;
 
@@ -25,6 +27,18 @@ function DocumentLibrary({
     useState(false);
 
   const [actionId, setActionId] =
+    useState(null);
+
+  const [previewSource, setPreviewSource] =
+    useState(null);
+
+  const [deleteMode, setDeleteMode] =
+    useState(false);
+
+  const [bulkDeleteIds, setBulkDeleteIds] =
+    useState([]);
+
+  const [deleteSummary, setDeleteSummary] =
     useState(null);
 
   const [error, setError] =
@@ -55,9 +69,11 @@ function DocumentLibrary({
   const [isCollapsed, setIsCollapsed] =
     useState(() => {
       try {
-        return localStorage.getItem(
-          "onkar-ai-document-library-collapsed"
-        ) === "true";
+        return (
+          localStorage.getItem(
+            "onkar-ai-document-library-collapsed"
+          ) === "true"
+        );
       } catch {
         return false;
       }
@@ -72,6 +88,7 @@ function DocumentLibrary({
 
   function sortDocuments(docs) {
     const sorted = [...docs];
+
     if (sortOption === "name-asc") {
       sorted.sort((a, b) =>
         a.filename.localeCompare(b.filename)
@@ -81,53 +98,95 @@ function DocumentLibrary({
         b.filename.localeCompare(a.filename)
       );
     } else if (sortOption === "selected") {
-      sorted.sort((a, b) =>
-        b.is_selected - a.is_selected
+      sorted.sort(
+        (a, b) =>
+          Number(b.is_selected) -
+          Number(a.is_selected)
       );
     } else {
-      // newest: parse uploaded_at, fall back to filename
       sorted.sort((a, b) => {
-        const ta = a.uploaded_at
-          ? new Date(a.uploaded_at).getTime()
-          : NaN;
-        const tb = b.uploaded_at
-          ? new Date(b.uploaded_at).getTime()
-          : NaN;
-        const validA = !isNaN(ta);
-        const validB = !isNaN(tb);
-        if (validA && validB) return tb - ta;
-        if (validA) return -1;
-        if (validB) return 1;
-        return a.filename.localeCompare(b.filename);
+        const timeA = a.uploaded_at
+          ? new Date(
+              a.uploaded_at
+            ).getTime()
+          : Number.NaN;
+
+        const timeB = b.uploaded_at
+          ? new Date(
+              b.uploaded_at
+            ).getTime()
+          : Number.NaN;
+
+        const validA =
+          !Number.isNaN(timeA);
+
+        const validB =
+          !Number.isNaN(timeB);
+
+        if (validA && validB) {
+          return timeB - timeA;
+        }
+
+        if (validA) {
+          return -1;
+        }
+
+        if (validB) {
+          return 1;
+        }
+
+        return a.filename.localeCompare(
+          b.filename
+        );
       });
     }
+
     return sorted;
   }
 
   const filteredDocuments = sortDocuments(
-    documents.filter((doc) =>
-      doc.filename
+    documents.filter((document) =>
+      document.filename
         .toLowerCase()
-        .includes(searchQuery.toLowerCase())
+        .includes(
+          searchQuery
+            .trim()
+            .toLowerCase()
+        )
     )
   );
 
+  const filteredDeleteIds =
+    filteredDocuments.map(
+      (document) => document.document_id
+    );
+
+  const allFilteredMarkedForDelete =
+    filteredDeleteIds.length > 0 &&
+    filteredDeleteIds.every((id) =>
+      bulkDeleteIds.includes(id)
+    );
+
   const totalPages = Math.max(
     1,
-    Math.ceil(filteredDocuments.length / PAGE_SIZE)
+    Math.ceil(
+      filteredDocuments.length / PAGE_SIZE
+    )
   );
 
-  // Clamp currentPage whenever filteredDocuments shrinks
-  const safePage = Math.min(currentPage, totalPages);
-
-  const pagedDocuments = filteredDocuments.slice(
-    (safePage - 1) * PAGE_SIZE,
-    safePage * PAGE_SIZE
+  const safePage = Math.min(
+    currentPage,
+    totalPages
   );
+
+  const pagedDocuments =
+    filteredDocuments.slice(
+      (safePage - 1) * PAGE_SIZE,
+      safePage * PAGE_SIZE
+    );
 
   const showPagination =
     filteredDocuments.length > PAGE_SIZE;
-
 
   const loadDocuments = useCallback(
     async () => {
@@ -140,11 +199,14 @@ function DocumentLibrary({
       setError("");
       setSearchQuery("");
       setCurrentPage(1);
+      setDeleteMode(false);
+      setBulkDeleteIds([]);
+      setDeleteSummary(null);
+      setPreviewSource(null);
 
       try {
-        const response = await getDocuments(
-          activeChatId
-        );
+        const response =
+          await getDocuments(activeChatId);
 
         setDocuments(
           response?.data?.documents || []
@@ -165,32 +227,39 @@ function DocumentLibrary({
     [activeChatId]
   );
 
-
   useEffect(() => {
     loadDocuments();
   }, [loadDocuments, refreshKey]);
 
-  // Reset to page 1 when search or sort changes
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, sortOption]);
 
-
   async function handleSelectionChange(
     document
   ) {
-    if (bulkAction !== null) return;
+    if (
+      deleteMode ||
+      bulkAction !== null
+    ) {
+      return;
+    }
+
     setActionId(document.document_id);
     setError("");
 
     const newSelectedValue =
       !document.is_selected;
 
-    // Optimistically update selection state immediately
     setDocuments((currentDocuments) =>
       currentDocuments.map((item) =>
-        item.document_id === document.document_id
-          ? { ...item, is_selected: newSelectedValue }
+        item.document_id ===
+        document.document_id
+          ? {
+              ...item,
+              is_selected:
+                newSelectedValue,
+            }
           : item
       )
     );
@@ -207,13 +276,15 @@ function DocumentLibrary({
         response?.data?.document;
 
       if (updatedDocument) {
-        setDocuments((currentDocuments) =>
-          currentDocuments.map((item) =>
-            item.document_id ===
-            document.document_id
-              ? updatedDocument
-              : item
-          )
+        setDocuments(
+          (currentDocuments) =>
+            currentDocuments.map(
+              (item) =>
+                item.document_id ===
+                document.document_id
+                  ? updatedDocument
+                  : item
+            )
         );
       }
     } catch (requestError) {
@@ -222,13 +293,19 @@ function DocumentLibrary({
         requestError
       );
 
-      // Revert optimistic update on failure
-      setDocuments((currentDocuments) =>
-        currentDocuments.map((item) =>
-          item.document_id === document.document_id
-            ? { ...item, is_selected: !newSelectedValue }
-            : item
-        )
+      setDocuments(
+        (currentDocuments) =>
+          currentDocuments.map(
+            (item) =>
+              item.document_id ===
+              document.document_id
+                ? {
+                    ...item,
+                    is_selected:
+                      !newSelectedValue,
+                  }
+                : item
+          )
       );
 
       setError(
@@ -239,9 +316,14 @@ function DocumentLibrary({
     }
   }
 
-
   async function handleDelete(document) {
-    if (bulkAction !== null) return;
+    if (
+      deleteMode ||
+      bulkAction !== null
+    ) {
+      return;
+    }
+
     const confirmed = window.confirm(
       `Delete "${document.filename}"?`
     );
@@ -259,12 +341,13 @@ function DocumentLibrary({
         activeChatId
       );
 
-      setDocuments((currentDocuments) =>
-        currentDocuments.filter(
-          (item) =>
-            item.document_id !==
-            document.document_id
-        )
+      setDocuments(
+        (currentDocuments) =>
+          currentDocuments.filter(
+            (item) =>
+              item.document_id !==
+              document.document_id
+          )
       );
     } catch (requestError) {
       console.error(
@@ -282,6 +365,7 @@ function DocumentLibrary({
 
   async function handleBulkSelection() {
     if (
+      deleteMode ||
       loading ||
       actionId !== null ||
       bulkAction !== null ||
@@ -290,137 +374,426 @@ function DocumentLibrary({
       return;
     }
 
-    const currentChatId = activeChatId;
-    const allSelected = documents.every(
-      (doc) => doc.is_selected
-    );
-    const targetValue = !allSelected;
-    const nextBulkAction = targetValue
-      ? "selecting"
-      : "deselecting";
+    const currentChatId =
+      activeChatId;
 
-    setBulkAction(nextBulkAction);
+    const allSelected =
+      documents.every(
+        (document) =>
+          document.is_selected
+      );
+
+    const targetValue = !allSelected;
+
+    setBulkAction(
+      targetValue
+        ? "selecting"
+        : "deselecting"
+    );
+
     setError("");
 
-    const docsToUpdate = documents.filter(
-      (doc) => doc.is_selected !== targetValue
-    );
+    const documentsToUpdate =
+      documents.filter(
+        (document) =>
+          document.is_selected !==
+          targetValue
+      );
 
-    if (docsToUpdate.length === 0) {
+    if (
+      documentsToUpdate.length === 0
+    ) {
       setBulkAction(null);
       return;
     }
 
-    const previousDocuments = documents;
+    const previousDocuments =
+      documents;
 
-    setDocuments((currentDocuments) =>
-      currentDocuments.map((item) => ({
-        ...item,
-        is_selected: targetValue,
-      }))
+    setDocuments(
+      (currentDocuments) =>
+        currentDocuments.map(
+          (item) => ({
+            ...item,
+            is_selected: targetValue,
+          })
+        )
     );
 
     try {
-      const promises = docsToUpdate.map((doc) =>
-        updateDocumentSelection(
-          doc.document_id,
-          currentChatId,
-          targetValue
-        )
+      const results =
+        await Promise.allSettled(
+          documentsToUpdate.map(
+            (document) =>
+              updateDocumentSelection(
+                document.document_id,
+                currentChatId,
+                targetValue
+              )
+          )
+        );
+
+      const succeededDocuments = [];
+      const failedDocuments = [];
+      const updatedDocumentsMap = {};
+
+      results.forEach(
+        (result, index) => {
+          const document =
+            documentsToUpdate[index];
+
+          if (
+            result.status === "fulfilled"
+          ) {
+            succeededDocuments.push(
+              document
+            );
+
+            const updatedDocument =
+              result.value?.data?.document;
+
+            if (updatedDocument) {
+              updatedDocumentsMap[
+                updatedDocument.document_id
+              ] = updatedDocument;
+            }
+          } else {
+            failedDocuments.push(
+              document
+            );
+          }
+        }
       );
 
-      const results = await Promise.allSettled(promises);
-
-      const failedDocs = [];
-      const succeededDocs = [];
-      const updatedDocsMap = {};
-
-      results.forEach((result, idx) => {
-        const doc = docsToUpdate[idx];
-        if (result.status === "fulfilled") {
-          succeededDocs.push(doc);
-          const updatedDoc = result.value?.data?.document;
-          if (updatedDoc) {
-            updatedDocsMap[updatedDoc.document_id] = updatedDoc;
-          }
-        } else {
-          failedDocs.push(doc);
-        }
-      });
-
-      if (failedDocs.length > 0) {
+      if (
+        failedDocuments.length > 0
+      ) {
         let rollbackSucceeded = true;
 
-        if (succeededDocs.length > 0) {
-          try {
-            const rollbackPromises = succeededDocs.map((doc) =>
-              updateDocumentSelection(
-                doc.document_id,
-                currentChatId,
-                !targetValue
+        if (
+          succeededDocuments.length > 0
+        ) {
+          const rollbackResults =
+            await Promise.allSettled(
+              succeededDocuments.map(
+                (document) =>
+                  updateDocumentSelection(
+                    document.document_id,
+                    currentChatId,
+                    !targetValue
+                  )
               )
             );
-            const rollbackResults = await Promise.allSettled(rollbackPromises);
-            const anyRollbackFailed = rollbackResults.some(
-              (r) => r.status === "rejected"
+
+          rollbackSucceeded =
+            rollbackResults.every(
+              (result) =>
+                result.status ===
+                "fulfilled"
             );
-            if (anyRollbackFailed) {
-              rollbackSucceeded = false;
-            }
-          } catch (rollbackError) {
-            console.error(
-              "Failed to rollback some backend updates:",
-              rollbackError
-            );
-            rollbackSucceeded = false;
-          }
         }
 
         if (rollbackSucceeded) {
-          setDocuments(previousDocuments);
-          setError("Unable to update all PDF selections. Changes were restored.");
+          setDocuments(
+            previousDocuments
+          );
+
+          setError(
+            "Unable to update all PDF selections. Changes were restored."
+          );
         } else {
           await loadDocuments();
-          setError("Some PDF selections could not be restored. The current server state was refreshed.");
+
+          setError(
+            "Some PDF selections could not be restored. The server state was refreshed."
+          );
         }
       } else {
-        setDocuments((currentDocuments) =>
-          currentDocuments.map((item) =>
-            updatedDocsMap[item.document_id] || item
-          )
+        setDocuments(
+          (currentDocuments) =>
+            currentDocuments.map(
+              (item) =>
+                updatedDocumentsMap[
+                  item.document_id
+                ] || item
+            )
         );
       }
     } catch (requestError) {
       console.error(
-        "Bulk selection update failed:",
+        "Bulk selection failed:",
         requestError
       );
+
       setDocuments(previousDocuments);
-      setError("Unable to update bulk selection.");
+
+      setError(
+        "Unable to update bulk selection."
+      );
     } finally {
       setBulkAction(null);
     }
   }
 
+  function toggleBulkDeleteMode() {
+    if (
+      loading ||
+      actionId !== null ||
+      bulkAction !== null
+    ) {
+      return;
+    }
 
-  if (!activeChatId) {
-    return null;
+    setDeleteMode(
+      (currentMode) => {
+        const nextMode =
+          !currentMode;
+
+        if (!nextMode) {
+          setBulkDeleteIds([]);
+        }
+
+        return nextMode;
+      }
+    );
+
+    setDeleteSummary(null);
+    setError("");
   }
 
+  function toggleDeleteCandidate(
+    documentId
+  ) {
+    if (
+      loading ||
+      bulkAction !== null
+    ) {
+      return;
+    }
+
+    setBulkDeleteIds((currentIds) =>
+      currentIds.includes(documentId)
+        ? currentIds.filter(
+            (id) => id !== documentId
+          )
+        : [...currentIds, documentId]
+    );
+  }
+
+  function toggleAllDeleteCandidates() {
+    if (
+      loading ||
+      bulkAction !== null ||
+      filteredDocuments.length === 0
+    ) {
+      return;
+    }
+
+    const allFilteredSelected =
+      filteredDeleteIds.every((id) =>
+        bulkDeleteIds.includes(id)
+      );
+
+    setBulkDeleteIds(
+      (currentIds) => {
+        if (allFilteredSelected) {
+          return currentIds.filter(
+            (id) =>
+              !filteredDeleteIds.includes(
+                id
+              )
+          );
+        }
+
+        return Array.from(
+          new Set([
+            ...currentIds,
+            ...filteredDeleteIds,
+          ])
+        );
+      }
+    );
+  }
+
+  async function handleBulkDelete() {
+    if (
+      loading ||
+      actionId !== null ||
+      bulkAction !== null ||
+      bulkDeleteIds.length === 0
+    ) {
+      return;
+    }
+
+    const documentsToDelete =
+      documents.filter((document) =>
+        bulkDeleteIds.includes(
+          document.document_id
+        )
+      );
+
+    if (
+      documentsToDelete.length === 0
+    ) {
+      setBulkDeleteIds([]);
+      return;
+    }
+
+    const filenamePreview =
+      documentsToDelete
+        .slice(0, 5)
+        .map(
+          (document) =>
+            `• ${document.filename}`
+        )
+        .join("\n");
+
+    const remainingCount =
+      documentsToDelete.length - 5;
+
+    const confirmed = window.confirm(
+      `Permanently delete ${
+        documentsToDelete.length
+      } PDF${
+        documentsToDelete.length === 1
+          ? ""
+          : "s"
+      }?\n\n${filenamePreview}${
+        remainingCount > 0
+          ? `\n• and ${remainingCount} more`
+          : ""
+      }\n\nThis action cannot be undone.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const currentChatId =
+      activeChatId;
+
+    setBulkAction("deleting");
+    setError("");
+    setDeleteSummary(null);
+
+    try {
+      const results =
+        await Promise.allSettled(
+          documentsToDelete.map(
+            (document) =>
+              deleteDocumentApi(
+                document.filename,
+                currentChatId
+              )
+          )
+        );
+
+      const deletedDocuments = [];
+      const failedDocuments = [];
+
+      results.forEach(
+        (result, index) => {
+          const document =
+            documentsToDelete[index];
+
+          if (
+            result.status ===
+            "fulfilled"
+          ) {
+            deletedDocuments.push(
+              document
+            );
+          } else {
+            failedDocuments.push(
+              document
+            );
+          }
+        }
+      );
+
+      const deletedIds = new Set(
+        deletedDocuments.map(
+          (document) =>
+            document.document_id
+        )
+      );
+
+      setDocuments(
+        (currentDocuments) =>
+          currentDocuments.filter(
+            (document) =>
+              !deletedIds.has(
+                document.document_id
+              )
+          )
+      );
+
+      setBulkDeleteIds(
+        failedDocuments.map(
+          (document) =>
+            document.document_id
+        )
+      );
+
+      setDeleteSummary({
+        deleted:
+          deletedDocuments.map(
+            (document) =>
+              document.filename
+          ),
+        failed:
+          failedDocuments.map(
+            (document) =>
+              document.filename
+          ),
+      });
+
+      if (
+        failedDocuments.length === 0
+      ) {
+        setDeleteMode(false);
+      } else {
+        setError(
+          `${failedDocuments.length} PDF${
+            failedDocuments.length === 1
+              ? ""
+              : "s"
+          } could not be deleted.`
+        );
+      }
+    } catch (requestError) {
+      console.error(
+        "Bulk PDF deletion failed:",
+        requestError
+      );
+
+      setError(
+        "Unable to complete the bulk delete operation."
+      );
+    } finally {
+      setBulkAction(null);
+    }
+  }
 
   function toggleCollapsed() {
-    setIsCollapsed((prev) => {
-      const next = !prev;
+    setIsCollapsed((previous) => {
+      const next = !previous;
+
       try {
         localStorage.setItem(
           "onkar-ai-document-library-collapsed",
           String(next)
         );
       } catch {
-        // ignore storage errors
+        // Ignore storage errors.
       }
+
       return next;
     });
+  }
+
+  if (!activeChatId) {
+    return null;
   }
 
   return (
@@ -432,7 +805,6 @@ function DocumentLibrary({
       }`}
     >
       <div className="mx-auto max-w-5xl overflow-hidden">
-        {/* Header row — always visible */}
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold">
@@ -447,14 +819,96 @@ function DocumentLibrary({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {/* Bulk selection and Refresh — hidden when collapsed */}
-            {!isCollapsed && documents.length > 0 && (
+            {!isCollapsed &&
+              !deleteMode &&
+              documents.length > 0 && (
+                <button
+                  type="button"
+                  onClick={
+                    handleBulkSelection
+                  }
+                  disabled={
+                    loading ||
+                    actionId !== null ||
+                    bulkAction !== null
+                  }
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                    isDark
+                      ? "border-slate-700 hover:bg-slate-800"
+                      : "border-slate-300 hover:bg-slate-100"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  {bulkAction ===
+                  "selecting"
+                    ? "Selecting..."
+                    : bulkAction ===
+                      "deselecting"
+                    ? "Deselecting..."
+                    : documents.every(
+                        (document) =>
+                          document.is_selected
+                      )
+                    ? "Deselect All"
+                    : "Select All"}
+                </button>
+              )}
+
+            {!isCollapsed &&
+              documents.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={
+                      toggleBulkDeleteMode
+                    }
+                    disabled={
+                      loading ||
+                      actionId !== null ||
+                      bulkAction !== null
+                    }
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                      deleteMode
+                        ? "border-red-500 bg-red-500/10 text-red-500"
+                        : isDark
+                        ? "border-slate-700 hover:bg-slate-800"
+                        : "border-slate-300 hover:bg-slate-100"
+                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                  >
+                    {deleteMode
+                      ? "Cancel Delete"
+                      : "Bulk Delete"}
+                  </button>
+
+                  {deleteMode && (
+                    <button
+                      type="button"
+                      onClick={
+                        handleBulkDelete
+                      }
+                      disabled={
+                        loading ||
+                        bulkAction !==
+                          null ||
+                        bulkDeleteIds.length ===
+                          0
+                      }
+                      className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {bulkAction ===
+                      "deleting"
+                        ? "Deleting..."
+                        : `Delete Selected (${bulkDeleteIds.length})`}
+                    </button>
+                  )}
+                </>
+              )}
+
+            {!isCollapsed && (
               <button
                 type="button"
-                onClick={handleBulkSelection}
+                onClick={loadDocuments}
                 disabled={
                   loading ||
-                  actionId !== null ||
                   bulkAction !== null
                 }
                 className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
@@ -463,121 +917,151 @@ function DocumentLibrary({
                     : "border-slate-300 hover:bg-slate-100"
                 } disabled:cursor-not-allowed disabled:opacity-50`}
               >
-                {bulkAction === "selecting"
-                  ? "Selecting..."
-                  : bulkAction === "deselecting"
-                  ? "Deselecting..."
-                  : documents.every(
-                      (doc) => doc.is_selected
-                    )
-                  ? "Deselect All"
-                  : "Select All"}
+                {loading
+                  ? "Loading..."
+                  : "Refresh"}
               </button>
             )}
 
-            {!isCollapsed && (
-              <button
-                type="button"
-                onClick={loadDocuments}
-                disabled={
-                  loading || bulkAction !== null
-                }
-                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
-                  isDark
-                    ? "border-slate-700 hover:bg-slate-800"
-                    : "border-slate-300 hover:bg-slate-100"
-                } disabled:cursor-not-allowed disabled:opacity-50`}
-              >
-                {loading ? "Loading..." : "Refresh"}
-              </button>
-            )}
-
-            {/* Collapse / Expand — always visible */}
             <button
               type="button"
               onClick={toggleCollapsed}
+              disabled={
+                bulkAction === "deleting"
+              }
               className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
                 isDark
                   ? "border-slate-700 hover:bg-slate-800"
                   : "border-slate-300 hover:bg-slate-100"
-              }`}
+              } disabled:cursor-not-allowed disabled:opacity-50`}
             >
-              {isCollapsed ? "Expand" : "Collapse"}
+              {isCollapsed
+                ? "Expand"
+                : "Collapse"}
             </button>
           </div>
         </div>
 
-        {/* Collapsible body */}
         {!isCollapsed && (
           <>
             {documents.length > 0 && (
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                {/* Search input */}
                 <div className="relative flex items-center">
                   <input
                     type="text"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(event) =>
+                      setSearchQuery(
+                        event.target.value
+                      )
+                    }
                     placeholder="Search PDFs..."
-                    disabled={loading || bulkAction !== null}
+                    disabled={
+                      loading ||
+                      bulkAction !== null
+                    }
                     className={`w-44 rounded-lg border px-3 py-1.5 pr-8 text-xs outline-none transition sm:w-56 ${
                       isDark
                         ? "border-slate-800 bg-slate-900 text-slate-100 placeholder-slate-500 focus:border-slate-700"
                         : "border-slate-200 bg-slate-50 text-slate-800 placeholder-slate-400 focus:border-slate-300"
                     }`}
                   />
+
                   {searchQuery && (
                     <button
                       type="button"
-                      onClick={() => setSearchQuery("")}
-                      disabled={loading || bulkAction !== null}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:text-slate-600 focus:outline-none"
+                      onClick={() =>
+                        setSearchQuery("")
+                      }
+                      disabled={
+                        loading ||
+                        bulkAction !== null
+                      }
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:text-slate-600"
+                      aria-label="Clear PDF search"
                     >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-3.5 w-3.5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
+                      ✕
                     </button>
                   )}
                 </div>
 
-                {/* Sort dropdown */}
                 <select
                   value={sortOption}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setSortOption(val);
+                  onChange={(event) => {
+                    const value =
+                      event.target.value;
+
+                    setSortOption(value);
+
                     try {
                       localStorage.setItem(
                         "onkar-ai-document-sort",
-                        val
+                        value
                       );
                     } catch {
-                      // ignore storage errors
+                      // Ignore storage errors.
                     }
                   }}
-                  disabled={loading || bulkAction !== null}
+                  disabled={
+                    loading ||
+                    bulkAction !== null
+                  }
                   className={`rounded-lg border px-2 py-1.5 text-xs outline-none transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     isDark
                       ? "border-slate-800 bg-slate-900 text-slate-100 focus:border-slate-700"
                       : "border-slate-200 bg-slate-50 text-slate-800 focus:border-slate-300"
                   }`}
                 >
-                  <option value="newest">Newest first</option>
-                  <option value="name-asc">Name A–Z</option>
-                  <option value="name-desc">Name Z–A</option>
-                  <option value="selected">Selected first</option>
+                  <option value="newest">
+                    Newest first
+                  </option>
+
+                  <option value="name-asc">
+                    Name A–Z
+                  </option>
+
+                  <option value="name-desc">
+                    Name Z–A
+                  </option>
+
+                  <option value="selected">
+                    Selected first
+                  </option>
                 </select>
+
+                {deleteMode && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={
+                        toggleAllDeleteCandidates
+                      }
+                      disabled={
+                        loading ||
+                        bulkAction !==
+                          null ||
+                        filteredDocuments.length ===
+                          0
+                      }
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                        isDark
+                          ? "border-red-500/60 text-red-400 hover:bg-red-500/10"
+                          : "border-red-300 text-red-600 hover:bg-red-50"
+                      } disabled:cursor-not-allowed disabled:opacity-50`}
+                    >
+                      {allFilteredMarkedForDelete
+                        ? "Clear Delete Selection"
+                        : "Select Filtered PDFs"}
+                    </button>
+
+                    <span className="text-xs text-red-500">
+                      {
+                        bulkDeleteIds.length
+                      }{" "}
+                      marked for deletion
+                    </span>
+                  </>
+                )}
               </div>
             )}
 
@@ -587,141 +1071,316 @@ function DocumentLibrary({
               </p>
             )}
 
+            {deleteSummary && (
+              <div
+                className={`mt-3 rounded-xl border p-3 text-xs ${
+                  isDark
+                    ? "border-slate-700 bg-slate-900"
+                    : "border-slate-200 bg-slate-50"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold">
+                      Bulk delete result
+                    </p>
+
+                    {deleteSummary.deleted
+                      .length > 0 && (
+                      <p className="mt-2 break-words text-emerald-500">
+                        Deleted:{" "}
+                        {deleteSummary.deleted.join(
+                          ", "
+                        )}
+                      </p>
+                    )}
+
+                    {deleteSummary.failed
+                      .length > 0 && (
+                      <p className="mt-2 break-words text-red-500">
+                        Failed:{" "}
+                        {deleteSummary.failed.join(
+                          ", "
+                        )}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDeleteSummary(null)
+                    }
+                    className="shrink-0 rounded-md px-2 py-1 text-slate-500 hover:bg-slate-500/10"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
+
             {!loading &&
               documents.length === 0 && (
                 <p className="mt-3 text-xs text-slate-500">
-                  No PDF is uploaded in this
-                  chat.
+                  No PDF is uploaded in
+                  this chat.
                 </p>
               )}
 
             {!loading &&
               documents.length > 0 &&
-              filteredDocuments.length === 0 && (
+              filteredDocuments.length ===
+                0 && (
                 <p className="mt-3 text-xs text-slate-500">
-                  No PDFs match your search.
+                  No PDFs match your
+                  search.
                 </p>
               )}
 
-            {documents.length > 0 && filteredDocuments.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {pagedDocuments.map((document) => {
-                  const isBusy =
-                    actionId ===
-                    document.document_id ||
-                    bulkAction !== null;
+            {documents.length > 0 &&
+              filteredDocuments.length >
+                0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {pagedDocuments.map(
+                    (document) => {
+                      const isBusy =
+                        actionId ===
+                          document.document_id ||
+                        bulkAction !== null;
 
-                  return (
-                    <div
-                      key={document.document_id}
-                      className={`flex max-w-full items-center gap-2 rounded-xl border px-3 py-2 ${
-                        isDark
-                          ? "border-slate-700 bg-slate-900"
-                          : "border-slate-200 bg-slate-50"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={
-                          document.is_selected
-                        }
-                        disabled={isBusy}
-                        onChange={() =>
-                          handleSelectionChange(
-                            document
-                          )
-                        }
-                        aria-label={`Select ${document.filename}`}
-                        className="h-4 w-4 cursor-pointer accent-emerald-500"
-                      />
+                      const previewUrls =
+                        buildPdfPreviewUrls({
+                          filename:
+                            document.filename,
+                          chatId:
+                            activeChatId,
+                          page: 1,
+                        });
 
-                      <div className="min-w-0">
-                        <p
-                          className="max-w-52 truncate text-xs font-medium sm:max-w-72"
-                          title={
-                            document.filename
+                      const markedForDelete =
+                        bulkDeleteIds.includes(
+                          document.document_id
+                        );
+
+                      return (
+                        <div
+                          key={
+                            document.document_id
                           }
+                          className={`flex max-w-full items-center gap-2 rounded-xl border px-3 py-2 ${
+                            deleteMode &&
+                            markedForDelete
+                              ? "border-red-500 bg-red-500/10"
+                              : isDark
+                              ? "border-slate-700 bg-slate-900"
+                              : "border-slate-200 bg-slate-50"
+                          }`}
                         >
-                          {document.filename}
-                        </p>
+                          {deleteMode ? (
+                            <input
+                              type="checkbox"
+                              checked={
+                                markedForDelete
+                              }
+                              disabled={
+                                isBusy
+                              }
+                              onChange={() =>
+                                toggleDeleteCandidate(
+                                  document.document_id
+                                )
+                              }
+                              aria-label={`Mark ${document.filename} for deletion`}
+                              className="h-4 w-4 cursor-pointer accent-red-500"
+                            />
+                          ) : (
+                            <input
+                              type="checkbox"
+                              checked={
+                                document.is_selected
+                              }
+                              disabled={
+                                isBusy
+                              }
+                              onChange={() =>
+                                handleSelectionChange(
+                                  document
+                                )
+                              }
+                              aria-label={`Select ${document.filename}`}
+                              className="h-4 w-4 cursor-pointer accent-emerald-500"
+                            />
+                          )}
 
-                        <p className="text-[11px] text-slate-500">
-                          {document.page_count} page
-                          {document.page_count === 1
-                            ? ""
-                            : "s"}
-                          {" • "}
-                          {document.size_kb} KB
-                          {" • "}
-                          {document.status}
-                        </p>
-                      </div>
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className="max-w-52 truncate text-xs font-medium sm:max-w-72"
+                              title={
+                                document.filename
+                              }
+                            >
+                              {
+                                document.filename
+                              }
+                            </p>
 
-                      <button
-                        type="button"
-                        disabled={isBusy}
-                        onClick={() =>
-                          handleDelete(document)
-                        }
-                        className="ml-1 rounded-md px-2 py-1 text-xs text-red-500 transition hover:bg-red-500/10 disabled:opacity-50"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                            <p className="text-[11px] text-slate-500">
+                              {
+                                document.page_count
+                              }{" "}
+                              page
+                              {document.page_count ===
+                              1
+                                ? ""
+                                : "s"}
+                              {" • "}
+                              {document.size_kb}{" "}
+                              KB
+                              {" • "}
+                              {document.status}
+                            </p>
+                          </div>
 
-            {/* Pagination controls */}
-            {!loading && showPagination && (
-              <div className="mt-3 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setCurrentPage((p) => Math.max(1, p - 1))
-                  }
-                  disabled={safePage === 1 || bulkAction !== null}
-                  className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
-                    isDark
-                      ? "border-slate-700 hover:bg-slate-800"
-                      : "border-slate-300 hover:bg-slate-100"
-                  } disabled:cursor-not-allowed disabled:opacity-40`}
-                >
-                  Previous
-                </button>
+                          <button
+                            type="button"
+                            disabled={
+                              isBusy ||
+                              !previewUrls
+                            }
+                            onClick={() =>
+                              setPreviewSource({
+                                filename:
+                                  document.filename,
+                                chat_id:
+                                  activeChatId,
+                                page: 1,
+                              })
+                            }
+                            className={`rounded-md px-2 py-1 text-xs transition ${
+                              isDark
+                                ? "text-blue-400 hover:bg-blue-500/10"
+                                : "text-blue-600 hover:bg-blue-500/10"
+                            } disabled:cursor-not-allowed disabled:opacity-50`}
+                          >
+                            Preview
+                          </button>
 
-                <span className="text-xs text-slate-500">
-                  Page {safePage} of {totalPages}
-                </span>
+                          {previewUrls && (
+                            <a
+                              href={
+                                previewUrls.viewerUrl
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={`rounded-md px-2 py-1 text-xs transition ${
+                                isBusy
+                                  ? "pointer-events-none opacity-50"
+                                  : ""
+                              } ${
+                                isDark
+                                  ? "text-slate-300 hover:bg-slate-800"
+                                  : "text-slate-600 hover:bg-slate-200"
+                              }`}
+                            >
+                              Open ↗
+                            </a>
+                          )}
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    setCurrentPage((p) =>
-                      Math.min(totalPages, p + 1)
-                    )
-                  }
-                  disabled={
-                    safePage === totalPages ||
-                    bulkAction !== null
-                  }
-                  className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
-                    isDark
-                      ? "border-slate-700 hover:bg-slate-800"
-                      : "border-slate-300 hover:bg-slate-100"
-                  } disabled:cursor-not-allowed disabled:opacity-40`}
-                >
-                  Next
-                </button>
-              </div>
-            )}
+                          {!deleteMode && (
+                            <button
+                              type="button"
+                              disabled={
+                                isBusy
+                              }
+                              onClick={() =>
+                                handleDelete(
+                                  document
+                                )
+                              }
+                              className="rounded-md px-2 py-1 text-xs text-red-500 transition hover:bg-red-500/10 disabled:opacity-50"
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              )}
+
+            {!loading &&
+              showPagination && (
+                <div className="mt-3 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCurrentPage(
+                        (page) =>
+                          Math.max(
+                            1,
+                            page - 1
+                          )
+                      )
+                    }
+                    disabled={
+                      safePage === 1 ||
+                      bulkAction !== null
+                    }
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                      isDark
+                        ? "border-slate-700 hover:bg-slate-800"
+                        : "border-slate-300 hover:bg-slate-100"
+                    } disabled:cursor-not-allowed disabled:opacity-40`}
+                  >
+                    Previous
+                  </button>
+
+                  <span className="text-xs text-slate-500">
+                    Page {safePage} of{" "}
+                    {totalPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCurrentPage(
+                        (page) =>
+                          Math.min(
+                            totalPages,
+                            page + 1
+                          )
+                      )
+                    }
+                    disabled={
+                      safePage ===
+                        totalPages ||
+                      bulkAction !== null
+                    }
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                      isDark
+                        ? "border-slate-700 hover:bg-slate-800"
+                        : "border-slate-300 hover:bg-slate-100"
+                    } disabled:cursor-not-allowed disabled:opacity-40`}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
           </>
         )}
       </div>
+
+      {previewSource && (
+        <PdfPreviewModal
+          source={previewSource}
+          onClose={() =>
+            setPreviewSource(null)
+          }
+        />
+      )}
     </section>
   );
 }
-
 
 export default DocumentLibrary;
