@@ -62,6 +62,11 @@ function Sidebar({
 
   const isDark = theme === "dark";
 
+  const activeChat =
+  chats.find(
+    (chat) => chat.id === activeChatId
+  ) || null;
+
   const searchText = chatSearch
     .trim()
     .toLowerCase();
@@ -674,6 +679,7 @@ function Sidebar({
   theme={theme}
   onThemeChange={onThemeChange}
   messages={messages}
+  activeChat={activeChat}
   models={models}
   defaultModel={defaultModel}
   selectedModel={selectedModel}
