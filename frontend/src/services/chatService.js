@@ -230,3 +230,35 @@ export const moveChatToFolder = (
             },
     }
   );
+export async function exportFullChatBackup(
+  chatId
+) {
+  const response = await api.get(
+    `/backups/chats/${chatId}/full`,
+    {
+      responseType: "blob",
+    }
+  );
+
+  return response;
+}
+
+
+export async function importFullChatBackup(
+  file
+) {
+  const formData = new FormData();
+
+  formData.append("file", file);
+
+  return api.post(
+    "/backups/chats/import/full",
+    formData,
+    {
+      headers: {
+        "Content-Type":
+          "multipart/form-data",
+      },
+    }
+  );
+}

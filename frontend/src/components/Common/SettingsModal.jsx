@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import ChatBackupImport from "./ChatBackupImport";
+import FullChatBackup from "./FullChatBackup";
 
 function SettingsModal({
   open,
@@ -9,6 +10,7 @@ function SettingsModal({
   messages = [],
   activeChat = null,
   restoreChatBackup,
+  restoreFullChatBackup,
 
   models = [],
   defaultModel = "",
@@ -897,6 +899,13 @@ function exportJSON() {
           <ChatBackupImport
   restoreChatBackup={
     restoreChatBackup
+  }
+  theme={theme}
+/>
+<FullChatBackup
+  activeChat={activeChat}
+  restoreFullChatBackup={
+    restoreFullChatBackup
   }
   theme={theme}
 />

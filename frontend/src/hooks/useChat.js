@@ -201,9 +201,10 @@ export default function useChat() {
     selectChat,
     newChat,
     createNewChatIfNeeded,
-    renameCurrentChat,
-    deleteCurrentChat,
-    restoreChatBackup,
+   restoreChatBackup,
+restoreFullChatBackup,
+renameCurrentChat,
+deleteCurrentChat,
   } = useChats(
     setMessages,
     setInput
@@ -1227,6 +1228,7 @@ export default function useChat() {
    renameCurrentChat,
 deleteCurrentChat,
 restoreChatBackup,
+restoreFullChatBackup,
 toggleChatPin,
 
     createChatFolder,
