@@ -34,6 +34,7 @@ function Sidebar({
   renameCurrentChat,
 deleteCurrentChat,
 restoreChatBackup,
+restoreFullChatBackup,
 toggleChatPin,
 
   folders = [],
@@ -672,7 +673,7 @@ toggleChatPin,
         </div>
       </aside>
 
-     <SettingsModal
+    <SettingsModal
   open={showSettings}
   onClose={() =>
     setShowSettings(false)
@@ -683,6 +684,9 @@ toggleChatPin,
   activeChat={activeChat}
   restoreChatBackup={
     restoreChatBackup
+  }
+  restoreFullChatBackup={
+    restoreFullChatBackup
   }
   models={models}
   defaultModel={defaultModel}

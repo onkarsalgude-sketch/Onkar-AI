@@ -1,17 +1,31 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import (
+    CORSMiddleware,
+)
+
+from app.api.backups import (
+    router as backups_router,
+)
 from app.api.chat import router as chat_router
-from app.api.documents import router as documents_router
+from app.api.documents import (
+    router as documents_router,
+)
 from app.api.image import router as image_router
 
+
 app = FastAPI(title="Onkar AI")
-from fastapi.middleware.cors import CORSMiddleware
+
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://onkar-ai.vercel.app",
     ],
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1):\d+$",
+    allow_origin_regex=(
+        r"^https?://"
+        r"(localhost|127\.0\.0\.1):"
+        r"\d+$"
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -25,9 +39,12 @@ app.add_middleware(
 
 @app.get("/")
 def root():
-    return {"message": "Onkar AI is running 🚀"}
+    return {
+        "message": "Onkar AI is running 🚀",
+    }
 
 
 app.include_router(chat_router)
 app.include_router(documents_router)
 app.include_router(image_router)
+app.include_router(backups_router)

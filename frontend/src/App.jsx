@@ -39,6 +39,7 @@ dismissChatError,
     renameCurrentChat,
 deleteCurrentChat,
 restoreChatBackup,
+restoreFullChatBackup,
 regenerateResponse,
     toggleChatPin,
 
@@ -113,6 +114,9 @@ regenerateResponse,
 }
 restoreChatBackup={
   restoreChatBackup
+}
+restoreFullChatBackup={
+  restoreFullChatBackup
 }
 toggleChatPin={toggleChatPin}
 

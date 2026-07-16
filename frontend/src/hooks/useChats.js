@@ -6,6 +6,7 @@ import {
   getChatMessages,
   getChats,
   importChatBackup as importChatBackupRequest,
+  importFullChatBackup as importFullChatBackupRequest,
   renameChat,
 } from "../services/chatService";
 
@@ -254,6 +255,70 @@ export default function useChats(
     }
   }
 
+  async function restoreFullChatBackup(
+  file
+) {
+  if (!(file instanceof File)) {
+    window.alert(
+      "Please select a valid ZIP backup file."
+    );
+
+    return null;
+  }
+
+  try {
+    const response =
+      await importFullChatBackupRequest(
+        file
+      );
+
+    const result =
+      response?.data;
+
+    const importedChatId =
+      result?.chat_id;
+
+    if (!importedChatId) {
+      throw new Error(
+        "The backend did not return an imported chat ID."
+      );
+    }
+
+    const chatsResponse =
+      await getChats();
+
+    setChats(
+      chatsResponse?.data?.chats ||
+        []
+    );
+
+    setActiveChatId(
+      importedChatId
+    );
+
+    await loadMessages(
+      importedChatId
+    );
+
+    setInput("");
+
+    return result;
+  } catch (error) {
+    console.error(
+      "Full backup restore error:",
+      error
+    );
+
+    window.alert(
+      error?.response?.data?.detail ||
+        error?.message ||
+        "Unable to restore the full backup."
+    );
+
+    return null;
+  }
+}
+
   async function renameCurrentChat(
     chatId
   ) {
@@ -416,8 +481,9 @@ export default function useChats(
     selectChat,
     newChat,
     createNewChatIfNeeded,
-    restoreChatBackup,
-    renameCurrentChat,
+   restoreChatBackup,
+restoreFullChatBackup,
+renameCurrentChat,
     deleteCurrentChat,
   };
 }
