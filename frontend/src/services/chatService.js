@@ -38,6 +38,13 @@ export const getChats = () =>
   api.get("/chats");
 
 
+export const importChatBackup = (
+  backup
+) =>
+  api.post(
+    "/chats/import",
+    backup
+  );
 export const getChatMessages = (chatId) =>
   api.get(`/chats/${chatId}/messages`);
 

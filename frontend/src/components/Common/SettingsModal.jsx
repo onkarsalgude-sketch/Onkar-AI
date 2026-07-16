@@ -1,4 +1,5 @@
 import { jsPDF } from "jspdf";
+import ChatBackupImport from "./ChatBackupImport";
 
 function SettingsModal({
   open,
@@ -7,6 +8,7 @@ function SettingsModal({
   onThemeChange,
   messages = [],
   activeChat = null,
+  restoreChatBackup,
 
   models = [],
   defaultModel = "",
@@ -891,6 +893,13 @@ function exportJSON() {
   </button>
 </div>
           </section>
+
+          <ChatBackupImport
+  restoreChatBackup={
+    restoreChatBackup
+  }
+  theme={theme}
+/>
 
           {/* Other options */}
           <section className="space-y-2">

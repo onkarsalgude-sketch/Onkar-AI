@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import datetime
 
@@ -39,7 +40,10 @@ def init_db():
             chat_id INTEGER NOT NULL,
             role TEXT NOT NULL,
             content TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            sources_json TEXT NOT NULL DEFAULT '[]',
+            model_id TEXT DEFAULT NULL,
+            attachment_json TEXT DEFAULT NULL
         )
     """)
 
@@ -82,6 +86,32 @@ def init_db():
             ADD COLUMN folder_id INTEGER DEFAULT NULL
         """)
 
+    # Add backup metadata columns to old messages table
+    cursor.execute("PRAGMA table_info(messages)")
+
+    message_columns = {
+        row[1]
+        for row in cursor.fetchall()
+    }
+
+    if "sources_json" not in message_columns:
+        cursor.execute("""
+            ALTER TABLE messages
+            ADD COLUMN sources_json TEXT NOT NULL DEFAULT '[]'
+        """)
+
+    if "model_id" not in message_columns:
+        cursor.execute("""
+            ALTER TABLE messages
+            ADD COLUMN model_id TEXT DEFAULT NULL
+        """)
+
+    if "attachment_json" not in message_columns:
+        cursor.execute("""
+            ALTER TABLE messages
+            ADD COLUMN attachment_json TEXT DEFAULT NULL
+        """)
+
     # Indexes
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_chats_folder_id
@@ -110,6 +140,31 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+
+def _to_iso_datetime(value):
+    if value is None:
+        return datetime.now().isoformat()
+
+    if isinstance(value, datetime):
+        return value.isoformat()
+
+    text = str(value).strip()
+
+    return text or datetime.now().isoformat()
+
+
+def _load_json(value, default):
+    if not value:
+        return default
+
+    try:
+        return json.loads(value)
+    except (
+        TypeError,
+        json.JSONDecodeError,
+    ):
+        return default
 
 
 def create_chat(title="New Chat"):
@@ -188,9 +243,28 @@ def save_message(
     chat_id: int,
     role: str,
     content: str,
+    *,
+    sources=None,
+    model_id=None,
+    attachment=None,
+    created_at=None,
 ):
     conn = get_connection(DB_PATH)
     cursor = conn.cursor()
+
+    sources_json = json.dumps(
+        sources or [],
+        ensure_ascii=False,
+    )
+
+    attachment_json = (
+        json.dumps(
+            attachment,
+            ensure_ascii=False,
+        )
+        if attachment
+        else None
+    )
 
     cursor.execute(
         """
@@ -198,15 +272,21 @@ def save_message(
             chat_id,
             role,
             content,
-            created_at
+            created_at,
+            sources_json,
+            model_id,
+            attachment_json
         )
-        VALUES (?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             chat_id,
             role,
             content,
-            datetime.now().isoformat(),
+            _to_iso_datetime(created_at),
+            sources_json,
+            model_id,
+            attachment_json,
         ),
     )
 
@@ -216,7 +296,7 @@ def save_message(
 
 def get_messages(
     chat_id: int,
-    limit: int = 50,
+    limit: int = 1000,
 ):
     conn = get_connection(DB_PATH)
     cursor = conn.cursor()
@@ -226,7 +306,10 @@ def get_messages(
         SELECT
             role,
             content,
-            created_at
+            created_at,
+            sources_json,
+            model_id,
+            attachment_json
         FROM messages
         WHERE chat_id = ?
         ORDER BY id DESC
@@ -241,14 +324,241 @@ def get_messages(
     rows = cursor.fetchall()
     conn.close()
 
-    return [
-        {
+    messages = []
+
+    for row in reversed(rows):
+        sources = _load_json(
+            row[3],
+            [],
+        )
+
+        attachment = _load_json(
+            row[5],
+            None,
+        )
+
+        message = {
             "role": row[0],
             "content": row[1],
             "created_at": row[2],
+            "sources": sources,
+            "model_id": row[4],
+            "attachment": attachment,
         }
-        for row in reversed(rows)
-    ]
+
+        if attachment:
+            message["fileName"] = (
+                attachment.get("filename")
+            )
+
+            message["fileType"] = (
+                attachment.get("type")
+            )
+
+            message["fileSize"] = (
+                attachment.get("size")
+            )
+
+        messages.append(message)
+
+    return messages
+
+
+def restore_chat_backup(
+    backup: dict,
+):
+    chat_data = backup.get(
+        "chat",
+        {},
+    )
+
+    model_data = backup.get(
+        "model",
+        {},
+    ) or {}
+
+    messages = backup.get(
+        "messages",
+        [],
+    )
+
+    title = str(
+        chat_data.get("title")
+        or "Imported Chat"
+    ).strip()
+
+    if not title:
+        title = "Imported Chat"
+
+    title = title[:200]
+
+    chat_created_at = (
+        _to_iso_datetime(
+            chat_data.get("created_at")
+        )
+    )
+
+    is_pinned = (
+        1
+        if chat_data.get("is_pinned")
+        else 0
+    )
+
+    default_model_id = (
+        model_data.get("selected_id")
+    )
+
+    conn = get_connection(DB_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("BEGIN")
+
+        cursor.execute(
+            """
+            INSERT INTO chats (
+                title,
+                created_at,
+                is_pinned,
+                folder_id
+            )
+            VALUES (?, ?, ?, NULL)
+            """,
+            (
+                title,
+                chat_created_at,
+                is_pinned,
+            ),
+        )
+
+        chat_id = cursor.lastrowid
+
+        has_pdf_metadata = False
+        has_attachment_metadata = False
+
+        for message in messages:
+            role = message.get("role")
+            content = str(
+                message.get("content")
+                or ""
+            )
+
+            message_sources = []
+
+            for source in (
+                message.get("sources")
+                or []
+            ):
+                source_copy = dict(source)
+
+                if source_copy.get(
+                    "filename"
+                ):
+                    has_pdf_metadata = True
+
+                    # Old chat ID must not be reused.
+                    source_copy[
+                        "chat_id"
+                    ] = chat_id
+
+                message_sources.append(
+                    source_copy
+                )
+
+            attachment = (
+                message.get("attachment")
+            )
+
+            if attachment:
+                has_attachment_metadata = True
+
+            message_model_id = (
+                message.get("model_id")
+            )
+
+            if (
+                not message_model_id
+                and role == "assistant"
+            ):
+                message_model_id = (
+                    default_model_id
+                )
+
+            cursor.execute(
+                """
+                INSERT INTO messages (
+                    chat_id,
+                    role,
+                    content,
+                    created_at,
+                    sources_json,
+                    model_id,
+                    attachment_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    chat_id,
+                    role,
+                    content,
+                    _to_iso_datetime(
+                        message.get(
+                            "created_at"
+                        )
+                    ),
+                    json.dumps(
+                        message_sources,
+                        ensure_ascii=False,
+                    ),
+                    message_model_id,
+                    (
+                        json.dumps(
+                            attachment,
+                            ensure_ascii=False,
+                        )
+                        if attachment
+                        else None
+                    ),
+                ),
+            )
+
+        conn.commit()
+
+        warnings = []
+
+        if (
+            chat_data.get("folder_id")
+            or chat_data.get(
+                "folder_name"
+            )
+        ):
+            warnings.append(
+                "The original folder was not restored."
+            )
+
+        if (
+            has_pdf_metadata
+            or has_attachment_metadata
+        ):
+            warnings.append(
+                "Attachment metadata was restored, but the original files and PDF RAG data were not included in the backup."
+            )
+
+        return {
+            "chat_id": chat_id,
+            "title": title,
+            "message_count": len(
+                messages
+            ),
+            "warnings": warnings,
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
 
 
 def rename_chat(

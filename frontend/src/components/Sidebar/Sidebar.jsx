@@ -32,8 +32,9 @@ function Sidebar({
   activeChatId,
   selectChat,
   renameCurrentChat,
-  deleteCurrentChat,
-  toggleChatPin,
+deleteCurrentChat,
+restoreChatBackup,
+toggleChatPin,
 
   folders = [],
   createChatFolder,
@@ -671,7 +672,7 @@ function Sidebar({
         </div>
       </aside>
 
-      <SettingsModal
+     <SettingsModal
   open={showSettings}
   onClose={() =>
     setShowSettings(false)
@@ -680,6 +681,9 @@ function Sidebar({
   onThemeChange={onThemeChange}
   messages={messages}
   activeChat={activeChat}
+  restoreChatBackup={
+    restoreChatBackup
+  }
   models={models}
   defaultModel={defaultModel}
   selectedModel={selectedModel}

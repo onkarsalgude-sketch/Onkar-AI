@@ -8,7 +8,12 @@ from fastapi.responses import StreamingResponse
 from app.agents.brain import Brain
 from app.config.settings import UPLOAD_DIR
 from app.memory.memory import clear
-from app.models.chat import ChatRequest, ChatResponse
+from app.models.chat import (
+    ChatBackupImportRequest,
+    ChatBackupImportResponse,
+    ChatRequest,
+    ChatResponse,
+)
 from app.services.history_service import (
     clear_history,
     create_chat,
@@ -22,6 +27,7 @@ from app.services.history_service import (
     move_chat_to_folder,
     rename_chat,
     rename_folder,
+    restore_chat_backup,
     save_message,
     toggle_pin_chat,
 )
@@ -64,6 +70,48 @@ def list_chats():
     return {
         "chats": get_chats(),
     }
+
+
+@router.post(
+    "/chats/import",
+    response_model=ChatBackupImportResponse,
+)
+def import_chat_backup(
+    request: ChatBackupImportRequest,
+):
+    if (
+        request.application.strip().lower()
+        != "onkar ai"
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This backup was not created "
+                "by Onkar AI."
+            ),
+        )
+
+    try:
+        result = restore_chat_backup(
+            request.model_dump(mode="json")
+        )
+    except Exception as error:
+        print(
+            "CHAT BACKUP IMPORT ERROR:",
+            error,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to restore the chat "
+                "backup."
+            ),
+        ) from error
+
+    return ChatBackupImportResponse(
+        **result
+    )
 
 
 @router.get("/chats/{chat_id}/messages")
@@ -271,15 +319,27 @@ def chat(request: ChatRequest):
         model_id=request.model_id,
     )
 
+    result_sources = (
+        result.get("sources")
+        or []
+    )
+
+    result_model_id = (
+        result.get("model_id")
+        or request.model_id
+    )
+
     save_message(
         chat_id,
         "assistant",
         result["reply"],
+        sources=result_sources,
+        model_id=result_model_id,
     )
 
     return ChatResponse(
         reply=result["reply"],
-        sources=result["sources"],
+        sources=result_sources,
         chat_id=chat_id,
     )
 
@@ -322,9 +382,20 @@ def chat_stream(request: ChatRequest):
         model_id=request.model_id,
     )
 
+    stream_sources = (
+        stream_result.get("sources")
+        or []
+    )
+
+    stream_model_id = (
+        stream_result.get("model_id")
+        or request.model_id
+        or ""
+    )
+
     sources_header = quote(
         json.dumps(
-            stream_result["sources"],
+            stream_sources,
             ensure_ascii=False,
         )
     )
@@ -341,6 +412,11 @@ def chat_stream(request: ChatRequest):
                 chat_id,
                 "assistant",
                 full_reply,
+                sources=stream_sources,
+                model_id=(
+                    stream_model_id
+                    or None
+                ),
             )
 
         except Exception as error:
@@ -353,9 +429,7 @@ def chat_stream(request: ChatRequest):
         headers={
             "X-Sources": sources_header,
             "X-Chat-Id": str(chat_id),
-            "X-Model-Id": stream_result[
-                "model_id"
-            ],
+            "X-Model-Id": stream_model_id,
         },
     )
 
