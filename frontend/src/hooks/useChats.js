@@ -10,11 +10,13 @@ import {
   renameChat,
 } from "../services/chatService";
 
+
 const welcomeMessage = {
   role: "assistant",
   content: "Hello! How can I help you today?",
   sources: [],
 };
+
 
 function normalizeMessages(messages = []) {
   return messages.map((message) => {
@@ -22,9 +24,18 @@ function normalizeMessages(messages = []) {
       message.attachment || null;
 
     return {
-      role: message.role,
-      content: message.content,
-      sources: message.sources || [],
+      id:
+        message.id ??
+        null,
+
+      role:
+        message.role,
+
+      content:
+        message.content,
+
+      sources:
+        message.sources || [],
 
       modelId:
         message.model_id ||
@@ -32,7 +43,12 @@ function normalizeMessages(messages = []) {
         null,
 
       created_at:
-        message.created_at || null,
+        message.created_at ||
+        null,
+
+      imageUrl:
+        message.imageUrl ||
+        null,
 
       fileName:
         message.fileName ||
@@ -52,37 +68,84 @@ function normalizeMessages(messages = []) {
   });
 }
 
+
 export default function useChats(
   setMessages,
   setInput
 ) {
-  const [chats, setChats] = useState([]);
-  const [activeChatId, setActiveChatId] =
-    useState(null);
+  const [chats, setChats] =
+    useState([]);
+
+  const [
+    activeChatId,
+    setActiveChatId,
+  ] = useState(null);
+
+  const [
+    messageSearchTarget,
+    setMessageSearchTarget,
+  ] = useState(null);
+
+
+  function clearMessageSearchTarget() {
+    setMessageSearchTarget(null);
+  }
+
+
+  function createMessageSearchTarget(
+    messageId
+  ) {
+    const numericMessageId =
+      Number(messageId);
+
+    if (!numericMessageId) {
+      setMessageSearchTarget(null);
+      return;
+    }
+
+    setMessageSearchTarget({
+      messageId: numericMessageId,
+      requestId:
+        `${numericMessageId}-${Date.now()}-${Math.random()}`,
+    });
+  }
+
 
   async function loadMessages(chatId) {
     const response =
       await getChatMessages(chatId);
 
-    setMessages(
+    const normalizedMessages =
       normalizeMessages(
         response?.data?.messages || []
-      )
+      );
+
+    setMessages(
+      normalizedMessages
     );
+
+    return normalizedMessages;
   }
+
 
   async function loadChats() {
     try {
-      const response = await getChats();
+      const response =
+        await getChats();
 
       const loadedChats =
         response?.data?.chats || [];
 
       setChats(loadedChats);
 
-      if (loadedChats.length === 0) {
+      if (
+        loadedChats.length === 0
+      ) {
         setActiveChatId(null);
-        setMessages([welcomeMessage]);
+        clearMessageSearchTarget();
+        setMessages([
+          welcomeMessage,
+        ]);
         setInput("");
         return;
       }
@@ -90,7 +153,8 @@ export default function useChats(
       const activeChatStillExists =
         loadedChats.some(
           (chat) =>
-            chat.id === activeChatId
+            chat.id ===
+            activeChatId
         );
 
       if (
@@ -107,6 +171,8 @@ export default function useChats(
         fallbackChat.id
       );
 
+      clearMessageSearchTarget();
+
       await loadMessages(
         fallbackChat.id
       );
@@ -118,22 +184,54 @@ export default function useChats(
     }
   }
 
-  async function selectChat(chatId) {
+
+  async function selectChat(
+    chatId,
+    messageId = null
+  ) {
     if (!chatId) {
       return;
     }
 
     try {
       const response =
-        await getChatMessages(chatId);
+        await getChatMessages(
+          chatId
+        );
+
+      const normalizedMessages =
+        normalizeMessages(
+          response?.data
+            ?.messages || []
+        );
 
       setActiveChatId(chatId);
-
       setMessages(
-        normalizeMessages(
-          response?.data?.messages || []
-        )
+        normalizedMessages
       );
+
+      if (messageId) {
+        const targetExists =
+          normalizedMessages.some(
+            (message) =>
+              Number(message.id) ===
+              Number(messageId)
+          );
+
+        if (targetExists) {
+          createMessageSearchTarget(
+            messageId
+          );
+        } else {
+          clearMessageSearchTarget();
+
+          window.alert(
+            "The matching message could not be found in this chat."
+          );
+        }
+      } else {
+        clearMessageSearchTarget();
+      }
     } catch (error) {
       console.error(
         "Select chat error:",
@@ -146,11 +244,16 @@ export default function useChats(
     }
   }
 
+
   function newChat() {
     setActiveChatId(null);
-    setMessages([welcomeMessage]);
+    clearMessageSearchTarget();
+    setMessages([
+      welcomeMessage,
+    ]);
     setInput("");
   }
+
 
   async function createNewChatIfNeeded() {
     if (activeChatId) {
@@ -170,7 +273,8 @@ export default function useChats(
         "New Chat",
       last_message: "",
       created_at:
-        response.data.created_at ||
+        response.data
+          .created_at ||
         new Date().toISOString(),
       is_pinned: false,
       folder_id: null,
@@ -178,21 +282,26 @@ export default function useChats(
     };
 
     setActiveChatId(chatId);
+    clearMessageSearchTarget();
 
-    setChats((currentChats) => [
-      newChatItem,
-      ...currentChats,
-    ]);
+    setChats(
+      (currentChats) => [
+        newChatItem,
+        ...currentChats,
+      ]
+    );
 
     return chatId;
   }
+
 
   async function restoreChatBackup(
     backup
   ) {
     if (
       !backup ||
-      typeof backup !== "object" ||
+      typeof backup !==
+        "object" ||
       Array.isArray(backup)
     ) {
       window.alert(
@@ -224,13 +333,15 @@ export default function useChats(
         await getChats();
 
       setChats(
-        chatsResponse?.data?.chats ||
-          []
+        chatsResponse?.data
+          ?.chats || []
       );
 
       setActiveChatId(
         importedChatId
       );
+
+      clearMessageSearchTarget();
 
       await loadMessages(
         importedChatId
@@ -246,7 +357,8 @@ export default function useChats(
       );
 
       window.alert(
-        error?.response?.data?.detail ||
+        error?.response?.data
+          ?.detail ||
           error?.message ||
           "Unable to import the chat backup."
       );
@@ -255,81 +367,88 @@ export default function useChats(
     }
   }
 
+
   async function restoreFullChatBackup(
-  file
-) {
-  if (!(file instanceof File)) {
-    window.alert(
-      "Please select a valid ZIP backup file."
-    );
-
-    return null;
-  }
-
-  try {
-    const response =
-      await importFullChatBackupRequest(
-        file
+    file
+  ) {
+    if (!(file instanceof File)) {
+      window.alert(
+        "Please select a valid ZIP backup file."
       );
 
-    const result =
-      response?.data;
-
-    const importedChatId =
-      result?.chat_id;
-
-    if (!importedChatId) {
-      throw new Error(
-        "The backend did not return an imported chat ID."
-      );
+      return null;
     }
 
-    const chatsResponse =
-      await getChats();
+    try {
+      const response =
+        await importFullChatBackupRequest(
+          file
+        );
 
-    setChats(
-      chatsResponse?.data?.chats ||
-        []
-    );
+      const result =
+        response?.data;
 
-    setActiveChatId(
-      importedChatId
-    );
+      const importedChatId =
+        result?.chat_id;
 
-    await loadMessages(
-      importedChatId
-    );
+      if (!importedChatId) {
+        throw new Error(
+          "The backend did not return an imported chat ID."
+        );
+      }
 
-    setInput("");
+      const chatsResponse =
+        await getChats();
 
-    return result;
-  } catch (error) {
-    console.error(
-      "Full backup restore error:",
-      error
-    );
+      setChats(
+        chatsResponse?.data
+          ?.chats || []
+      );
 
-    window.alert(
-      error?.response?.data?.detail ||
-        error?.message ||
-        "Unable to restore the full backup."
-    );
+      setActiveChatId(
+        importedChatId
+      );
 
-    return null;
+      clearMessageSearchTarget();
+
+      await loadMessages(
+        importedChatId
+      );
+
+      setInput("");
+
+      return result;
+    } catch (error) {
+      console.error(
+        "Full backup restore error:",
+        error
+      );
+
+      window.alert(
+        error?.response?.data
+          ?.detail ||
+          error?.message ||
+          "Unable to restore the full backup."
+      );
+
+      return null;
+    }
   }
-}
+
 
   async function renameCurrentChat(
     chatId
   ) {
     const chat = chats.find(
-      (item) => item.id === chatId
+      (item) =>
+        item.id === chatId
     );
 
     const enteredTitle =
       window.prompt(
         "Enter new chat title:",
-        chat?.title || "New Chat"
+        chat?.title ||
+          "New Chat"
       );
 
     if (enteredTitle === null) {
@@ -357,15 +476,18 @@ export default function useChats(
         title
       );
 
-      setChats((currentChats) =>
-        currentChats.map((item) =>
-          item.id === chatId
-            ? {
-                ...item,
-                title,
-              }
-            : item
-        )
+      setChats(
+        (currentChats) =>
+          currentChats.map(
+            (item) =>
+              item.id ===
+              chatId
+                ? {
+                    ...item,
+                    title,
+                  }
+                : item
+          )
       );
 
       return true;
@@ -376,7 +498,8 @@ export default function useChats(
       );
 
       window.alert(
-        error?.response?.data?.detail ||
+        error?.response?.data
+          ?.detail ||
           "Unable to rename the chat."
       );
 
@@ -384,15 +507,18 @@ export default function useChats(
     }
   }
 
+
   async function deleteCurrentChat(
     chatId
   ) {
     const chat = chats.find(
-      (item) => item.id === chatId
+      (item) =>
+        item.id === chatId
     );
 
     const title =
-      chat?.title || "New Chat";
+      chat?.title ||
+      "New Chat";
 
     const confirmed =
       window.confirm(
@@ -410,15 +536,24 @@ export default function useChats(
         await getChats();
 
       const remainingChats =
-        response?.data?.chats || [];
+        response?.data?.chats ||
+        [];
 
-      setChats(remainingChats);
+      setChats(
+        remainingChats
+      );
 
-      if (chatId !== activeChatId) {
+      if (
+        chatId !== activeChatId
+      ) {
         return true;
       }
 
-      if (remainingChats.length > 0) {
+      clearMessageSearchTarget();
+
+      if (
+        remainingChats.length > 0
+      ) {
         const deletedIndex =
           chats.findIndex(
             (item) =>
@@ -431,7 +566,8 @@ export default function useChats(
               deletedIndex,
               0
             ),
-            remainingChats.length - 1
+            remainingChats.length -
+              1
           );
 
         const fallbackChat =
@@ -451,7 +587,11 @@ export default function useChats(
       }
 
       setActiveChatId(null);
-      setMessages([welcomeMessage]);
+
+      setMessages([
+        welcomeMessage,
+      ]);
+
       setInput("");
 
       return true;
@@ -462,13 +602,15 @@ export default function useChats(
       );
 
       window.alert(
-        error?.response?.data?.detail ||
+        error?.response?.data
+          ?.detail ||
           "Unable to delete the chat."
       );
 
       return false;
     }
   }
+
 
   return {
     chats,
@@ -477,13 +619,16 @@ export default function useChats(
     activeChatId,
     setActiveChatId,
 
+    messageSearchTarget,
+    clearMessageSearchTarget,
+
     loadChats,
     selectChat,
     newChat,
     createNewChatIfNeeded,
-   restoreChatBackup,
-restoreFullChatBackup,
-renameCurrentChat,
+    restoreChatBackup,
+    restoreFullChatBackup,
+    renameCurrentChat,
     deleteCurrentChat,
   };
 }

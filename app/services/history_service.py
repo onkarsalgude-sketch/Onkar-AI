@@ -119,8 +119,23 @@ def init_db():
     """)
 
     cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_chats_title
+        ON chats(title COLLATE NOCASE)
+    """)
+
+    cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_messages_chat_id
         ON messages(chat_id)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_messages_role
+        ON messages(role)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_messages_created_at
+        ON messages(created_at)
     """)
 
     cursor.execute("""
@@ -165,6 +180,68 @@ def _load_json(value, default):
         json.JSONDecodeError,
     ):
         return default
+
+
+def _escape_like(value: str) -> str:
+    return (
+        value
+        .replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
+
+
+def _build_search_snippet(
+    text: str,
+    query: str,
+    context_length: int = 80,
+) -> str:
+    clean_text = " ".join(
+        str(text or "").split()
+    )
+
+    if not clean_text:
+        return ""
+
+    match_index = clean_text.casefold().find(
+        query.casefold()
+    )
+
+    if match_index < 0:
+        return (
+            clean_text[: context_length * 2]
+            + (
+                "…"
+                if len(clean_text)
+                > context_length * 2
+                else ""
+            )
+        )
+
+    start = max(
+        0,
+        match_index - context_length,
+    )
+
+    end = min(
+        len(clean_text),
+        match_index
+        + len(query)
+        + context_length,
+    )
+
+    prefix = "…" if start > 0 else ""
+    suffix = (
+        "…"
+        if end < len(clean_text)
+        else ""
+    )
+
+    return (
+        prefix
+        + clean_text[start:end]
+        + suffix
+    )
 
 
 def create_chat(title="New Chat"):
@@ -239,6 +316,208 @@ def get_chats():
     ]
 
 
+def search_chats(
+    query: str,
+    *,
+    role: str | None = None,
+    folder_id: int | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    search_text = str(
+        query or ""
+    ).strip()
+
+    if not search_text:
+        return []
+
+    if role not in {
+        None,
+        "user",
+        "assistant",
+    }:
+        raise ValueError(
+            "Role must be 'user' or 'assistant'."
+        )
+
+    safe_limit = max(
+        1,
+        min(int(limit), 100),
+    )
+
+    like_pattern = (
+        f"%{_escape_like(search_text)}%"
+    )
+
+    folder_clause = ""
+    folder_parameters = []
+
+    if folder_id == 0:
+        folder_clause = (
+            " AND chats.folder_id IS NULL"
+        )
+
+    elif (
+        folder_id is not None
+        and folder_id > 0
+    ):
+        folder_clause = (
+            " AND chats.folder_id = ?"
+        )
+
+        folder_parameters.append(
+            folder_id
+        )
+
+    result_queries = []
+    parameters = []
+
+    # Title results are included only when no role filter is active.
+    if role is None:
+        result_queries.append(
+            f"""
+            SELECT
+                chats.id AS chat_id,
+                chats.title AS chat_title,
+                chats.created_at AS chat_created_at,
+                chats.is_pinned AS is_pinned,
+                chats.folder_id AS folder_id,
+                folders.name AS folder_name,
+                NULL AS message_id,
+                NULL AS role,
+                chats.title AS matched_text,
+                chats.created_at AS matched_at,
+                'title' AS match_type,
+                0 AS match_rank
+            FROM chats
+            LEFT JOIN folders
+                ON folders.id = chats.folder_id
+            WHERE chats.title
+                LIKE ? ESCAPE '\\'
+                COLLATE NOCASE
+                {folder_clause}
+            """
+        )
+
+        parameters.append(
+            like_pattern
+        )
+
+        parameters.extend(
+            folder_parameters
+        )
+
+    message_role_clause = ""
+
+    if role is not None:
+        message_role_clause = (
+            " AND messages.role = ?"
+        )
+
+    result_queries.append(
+        f"""
+        SELECT
+            chats.id AS chat_id,
+            chats.title AS chat_title,
+            chats.created_at AS chat_created_at,
+            chats.is_pinned AS is_pinned,
+            chats.folder_id AS folder_id,
+            folders.name AS folder_name,
+            messages.id AS message_id,
+            messages.role AS role,
+            messages.content AS matched_text,
+            messages.created_at AS matched_at,
+            'message' AS match_type,
+            1 AS match_rank
+        FROM messages
+        INNER JOIN chats
+            ON chats.id = messages.chat_id
+        LEFT JOIN folders
+            ON folders.id = chats.folder_id
+        WHERE messages.content
+            LIKE ? ESCAPE '\\'
+            COLLATE NOCASE
+            {message_role_clause}
+            {folder_clause}
+        """
+    )
+
+    parameters.append(
+        like_pattern
+    )
+
+    if role is not None:
+        parameters.append(
+            role
+        )
+
+    parameters.extend(
+        folder_parameters
+    )
+
+    sql = f"""
+        SELECT
+            chat_id,
+            chat_title,
+            chat_created_at,
+            is_pinned,
+            folder_id,
+            folder_name,
+            message_id,
+            role,
+            matched_text,
+            matched_at,
+            match_type
+        FROM (
+            {" UNION ALL ".join(result_queries)}
+        )
+        ORDER BY
+            match_rank ASC,
+            is_pinned DESC,
+            matched_at DESC,
+            chat_id DESC
+        LIMIT ?
+    """
+
+    parameters.append(
+        safe_limit
+    )
+
+    conn = get_connection(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        sql,
+        parameters,
+    )
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    results = []
+
+    for row in rows:
+        results.append(
+            {
+                "chat_id": row[0],
+                "chat_title": row[1],
+                "chat_created_at": row[2],
+                "is_pinned": bool(row[3]),
+                "folder_id": row[4],
+                "folder_name": row[5],
+                "message_id": row[6],
+                "role": row[7],
+                "snippet": _build_search_snippet(
+                    row[8],
+                    search_text,
+                ),
+                "matched_at": row[9],
+                "match_type": row[10],
+            }
+        )
+
+    return results
+
+
 def save_message(
     chat_id: int,
     role: str,
@@ -304,6 +583,7 @@ def get_messages(
     cursor.execute(
         """
         SELECT
+            id,
             role,
             content,
             created_at,
@@ -328,21 +608,22 @@ def get_messages(
 
     for row in reversed(rows):
         sources = _load_json(
-            row[3],
+            row[4],
             [],
         )
 
         attachment = _load_json(
-            row[5],
+            row[6],
             None,
         )
 
         message = {
-            "role": row[0],
-            "content": row[1],
-            "created_at": row[2],
+            "id": row[0],
+            "role": row[1],
+            "content": row[2],
+            "created_at": row[3],
             "sources": sources,
-            "model_id": row[4],
+            "model_id": row[5],
             "attachment": attachment,
         }
 

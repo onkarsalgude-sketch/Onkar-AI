@@ -30,12 +30,17 @@ function ChatWindow({
   onOpenSidebar,
   theme = "dark",
 
+  messageSearchTarget = null,
+
   chatError = null,
   retryLastRequest,
   dismissChatError,
 }) {
   const [isDragging, setIsDragging] =
     useState(false);
+
+  const [highlightedMessageId, setHighlightedMessageId] =
+    useState(null);
 
   const [isOnline, setIsOnline] =
     useState(() => {
@@ -51,16 +56,107 @@ function ChatWindow({
 
   const dragCounter = useRef(0);
   const messagesEndRef = useRef(null);
+  const messageRefs = useRef(
+    new Map()
+  );
+  const highlightTimerRef =
+    useRef(null);
 
   const isDark = theme === "dark";
 
+  const targetMessageId =
+    Number(
+      messageSearchTarget?.messageId
+    ) || null;
+
+  const targetRequestId =
+    messageSearchTarget?.requestId ||
+    null;
+
 
   useEffect(() => {
+    if (targetMessageId) {
+      return;
+    }
+
     messagesEndRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "end",
     });
-  }, [messages, loading, chatError]);
+  }, [
+    messages,
+    loading,
+    chatError,
+    targetMessageId,
+  ]);
+
+
+  useEffect(() => {
+    if (!targetMessageId) {
+      setHighlightedMessageId(null);
+      return undefined;
+    }
+
+    const targetElement =
+      messageRefs.current.get(
+        targetMessageId
+      );
+
+    if (!targetElement) {
+      return undefined;
+    }
+
+    const scrollTimer =
+      window.setTimeout(() => {
+        targetElement.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+
+        setHighlightedMessageId(
+          targetMessageId
+        );
+
+        if (
+          highlightTimerRef.current
+        ) {
+          window.clearTimeout(
+            highlightTimerRef.current
+          );
+        }
+
+        highlightTimerRef.current =
+          window.setTimeout(() => {
+            setHighlightedMessageId(
+              null
+            );
+          }, 2800);
+      }, 120);
+
+    return () => {
+      window.clearTimeout(
+        scrollTimer
+      );
+    };
+  }, [
+    activeChatId,
+    messages,
+    targetMessageId,
+    targetRequestId,
+  ]);
+
+
+  useEffect(() => {
+    return () => {
+      if (
+        highlightTimerRef.current
+      ) {
+        window.clearTimeout(
+          highlightTimerRef.current
+        );
+      }
+    };
+  }, []);
 
 
   useEffect(() => {
@@ -94,6 +190,31 @@ function ChatWindow({
       );
     };
   }, []);
+
+
+  function registerMessageRef(
+    messageId,
+    element
+  ) {
+    const numericMessageId =
+      Number(messageId);
+
+    if (!numericMessageId) {
+      return;
+    }
+
+    if (element) {
+      messageRefs.current.set(
+        numericMessageId,
+        element
+      );
+      return;
+    }
+
+    messageRefs.current.delete(
+      numericMessageId
+    );
+  }
 
 
   function handleDragEnter(event) {
@@ -160,7 +281,6 @@ function ChatWindow({
       return;
     }
 
-    // Pass all dropped files — uploadFile handles type filtering
     await uploadFile({
       target: {
         files,
@@ -209,7 +329,6 @@ function ChatWindow({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Drag and drop overlay */}
       {isDragging && (
         <div
           className={`pointer-events-none absolute inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-sm ${
@@ -241,7 +360,6 @@ function ChatWindow({
         </div>
       )}
 
-      {/* Header */}
       <header
         className={`flex h-20 shrink-0 items-center justify-between border-b px-3 sm:px-5 md:px-8 ${
           isDark
@@ -300,14 +418,12 @@ function ChatWindow({
         </div>
       </header>
 
-      {/* Document Library */}
       <DocumentLibrary
         activeChatId={activeChatId}
         refreshKey={documentRefreshKey}
         theme={theme}
       />
 
-      {/* Messages */}
       <section className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 md:px-8 md:py-6">
         <div className="mx-auto max-w-4xl">
           {messages.length <= 1 && (
@@ -318,44 +434,73 @@ function ChatWindow({
           )}
 
           {messages.map(
-            (message, index) => (
-              <Message
-                key={
-                  message.id ||
-                  `${message.role}-${index}`
-                }
-                role={message.role}
-                content={
-                  message.content
-                }
-                imageUrl={
-                  message.imageUrl
-                }
-                fileName={
-                  message.fileName
-                }
-                fileType={
-                  message.fileType
-                }
-                fileSize={
-                  message.fileSize
-                }
-                sources={
-                  message.sources || []
-                }
-                isLast={
-                  index ===
-                  messages.length - 1
-                }
-                regenerateResponse={
-                  regenerateResponse
-                }
-                theme={theme}
-              />
-            )
+            (message, index) => {
+              const messageId =
+                Number(message.id) ||
+                null;
+
+              const isHighlighted =
+                messageId !== null &&
+                highlightedMessageId ===
+                  messageId;
+
+              return (
+                <div
+                  key={
+                    message.id ||
+                    `${message.role}-${index}`
+                  }
+                  ref={(element) =>
+                    registerMessageRef(
+                      messageId,
+                      element
+                    )
+                  }
+                  data-message-id={
+                    messageId || undefined
+                  }
+                  className={`scroll-mt-24 rounded-2xl transition-all duration-500 ${
+                    isHighlighted
+                      ? isDark
+                        ? "ring-2 ring-amber-400 ring-offset-4 ring-offset-slate-900"
+                        : "ring-2 ring-amber-500 ring-offset-4 ring-offset-slate-100"
+                      : ""
+                  }`}
+                >
+                  <Message
+                    role={message.role}
+                    content={
+                      message.content
+                    }
+                    imageUrl={
+                      message.imageUrl
+                    }
+                    fileName={
+                      message.fileName
+                    }
+                    fileType={
+                      message.fileType
+                    }
+                    fileSize={
+                      message.fileSize
+                    }
+                    sources={
+                      message.sources || []
+                    }
+                    isLast={
+                      index ===
+                      messages.length - 1
+                    }
+                    regenerateResponse={
+                      regenerateResponse
+                    }
+                    theme={theme}
+                  />
+                </div>
+              );
+            }
           )}
 
-          {/* Offline warning */}
           {!isOnline && (
             <div
               className={`mb-4 rounded-2xl border p-4 ${
@@ -392,7 +537,6 @@ function ChatWindow({
             </div>
           )}
 
-          {/* Request error */}
           {chatError && (
             <div
               className={`mb-4 rounded-2xl border p-4 ${
@@ -476,7 +620,6 @@ function ChatWindow({
         </div>
       </section>
 
-      {/* Message input */}
       <div
         className={`shrink-0 px-3 pb-4 sm:px-5 md:px-8 md:pb-6 ${
           isDark

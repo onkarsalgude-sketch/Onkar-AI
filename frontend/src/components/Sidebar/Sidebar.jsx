@@ -1,5 +1,9 @@
-import { useState } from "react";
+import {
+  useState,
+} from "react";
+
 import SettingsModal from "../Common/SettingsModal";
+import GlobalChatSearch from "./GlobalChatSearch";
 
 function getGroup(dateString) {
   if (!dateString) return "Older";
@@ -11,14 +15,20 @@ function getGroup(dateString) {
   date.setHours(0, 0, 0, 0);
 
   const difference = Math.floor(
-    (today.getTime() - date.getTime()) /
+    (
+      today.getTime() -
+      date.getTime()
+    ) /
       (1000 * 60 * 60 * 24)
   );
 
   if (difference === 0) return "Today";
   if (difference === 1) return "Yesterday";
 
-  if (difference > 1 && difference < 7) {
+  if (
+    difference > 1 &&
+    difference < 7
+  ) {
     return "Last Week";
   }
 
@@ -32,16 +42,16 @@ function Sidebar({
   activeChatId,
   selectChat,
   renameCurrentChat,
-deleteCurrentChat,
-restoreChatBackup,
-restoreFullChatBackup,
-toggleChatPin,
+  deleteCurrentChat,
+  restoreChatBackup,
+  restoreFullChatBackup,
+  toggleChatPin,
 
   folders = [],
   createChatFolder,
   renameChatFolder,
   deleteChatFolder,
-   moveChatToFolder,
+  moveChatToFolder,
 
   models = [],
   defaultModel = "",
@@ -53,73 +63,76 @@ toggleChatPin,
   theme = "dark",
   onThemeChange,
 }) {
-  const [chatSearch, setChatSearch] =
-    useState("");
+  const [
+    globalSearchActive,
+    setGlobalSearchActive,
+  ] = useState(false);
 
-  const [newFolderName, setNewFolderName] =
-    useState("");
+  const [
+    newFolderName,
+    setNewFolderName,
+  ] = useState("");
 
-  const [showSettings, setShowSettings] =
-    useState(false);
+  const [
+    showSettings,
+    setShowSettings,
+  ] = useState(false);
 
-  const isDark = theme === "dark";
+  const isDark =
+    theme === "dark";
 
   const activeChat =
-  chats.find(
-    (chat) => chat.id === activeChatId
-  ) || null;
+    chats.find(
+      (chat) =>
+        chat.id === activeChatId
+    ) || null;
 
-  const searchText = chatSearch
-    .trim()
-    .toLowerCase();
+  const pinnedChats =
+    chats.filter(
+      (chat) =>
+        chat.is_pinned
+    );
 
-  const filteredChats = chats.filter(
-    (chat) =>
-      (chat.title || "New Chat")
-        .toLowerCase()
-        .includes(searchText) ||
-      (chat.last_message || "")
-        .toLowerCase()
-        .includes(searchText) ||
-      (chat.folder_name || "")
-        .toLowerCase()
-        .includes(searchText)
-  );
+  const normalChats =
+    chats.filter(
+      (chat) =>
+        !chat.is_pinned
+    );
 
-  // Pinned chats नेहमी सर्वांत वर
-  const pinnedChats = filteredChats.filter(
-    (chat) => chat.is_pinned
-  );
-
-  // Pinned chats खाली पुन्हा दिसू नयेत
-  const normalChats = filteredChats.filter(
-    (chat) => !chat.is_pinned
-  );
-
-  const unfiledChats = normalChats.filter(
-    (chat) => chat.folder_id == null
-  );
+  const unfiledChats =
+    normalChats.filter(
+      (chat) =>
+        chat.folder_id == null
+    );
 
   const groupedUnfiledChats =
-    unfiledChats.reduce((groups, chat) => {
-      const group = getGroup(
-        chat.created_at
-      );
+    unfiledChats.reduce(
+      (groups, chat) => {
+        const group = getGroup(
+          chat.created_at
+        );
 
-      if (!groups[group]) {
-        groups[group] = [];
-      }
+        if (!groups[group]) {
+          groups[group] = [];
+        }
 
-      groups[group].push(chat);
+        groups[group].push(
+          chat
+        );
 
-      return groups;
-    }, {});
+        return groups;
+      },
+      {}
+    );
 
-  function getChatsForFolder(folderId) {
+  function getChatsForFolder(
+    folderId
+  ) {
     return normalChats.filter(
       (chat) =>
-        Number(chat.folder_id) ===
-        Number(folderId)
+        Number(
+          chat.folder_id
+        ) === Number(folderId)
     );
   }
 
@@ -128,12 +141,27 @@ toggleChatPin,
     onClose?.();
   }
 
-  function handleSelectChat(chatId) {
+  function handleSelectChat(
+    chatId
+  ) {
     selectChat(chatId);
     onClose?.();
   }
 
-  async function handleCreateFolder(event) {
+  function handleSearchResult(
+    result
+  ) {
+    selectChat(
+      result.chat_id,
+      result.message_id || null
+    );
+
+    onClose?.();
+  }
+
+  async function handleCreateFolder(
+    event
+  ) {
     event.preventDefault();
 
     const folderName =
@@ -154,10 +182,11 @@ toggleChatPin,
   async function handleRenameFolder(
     folder
   ) {
-    const name = window.prompt(
-      "Enter new folder name:",
-      folder.name
-    );
+    const name =
+      window.prompt(
+        "Enter new folder name:",
+        folder.name
+      );
 
     if (name === null) return;
 
@@ -170,13 +199,16 @@ toggleChatPin,
   async function handleDeleteFolder(
     folder
   ) {
-    const confirmed = window.confirm(
-      `Delete folder "${folder.name}"?\n\nChats will not be deleted. They will move to Unfiled Chats.`
-    );
+    const confirmed =
+      window.confirm(
+        `Delete folder "${folder.name}"?\n\nChats will not be deleted. They will move to Unfiled Chats.`
+      );
 
     if (!confirmed) return;
 
-    await deleteChatFolder?.(folder.id);
+    await deleteChatFolder?.(
+      folder.id
+    );
   }
 
   async function handleMoveChat(
@@ -185,7 +217,8 @@ toggleChatPin,
   ) {
     event.stopPropagation();
 
-    const value = event.target.value;
+    const value =
+      event.target.value;
 
     const folderId =
       value === ""
@@ -206,7 +239,9 @@ toggleChatPin,
       <div
         key={chat.id}
         onClick={() =>
-          handleSelectChat(chat.id)
+          handleSelectChat(
+            chat.id
+          )
         }
         className={`group cursor-pointer rounded-xl border p-3 transition ${
           isActive
@@ -222,7 +257,8 @@ toggleChatPin,
               {chat.is_pinned
                 ? "📌"
                 : "💬"}{" "}
-              {chat.title || "New Chat"}
+              {chat.title ||
+                "New Chat"}
             </p>
 
             <p
@@ -246,7 +282,10 @@ toggleChatPin,
                       : "text-slate-600"
                 }`}
               >
-                📁 {chat.folder_name}
+                📁{" "}
+                {
+                  chat.folder_name
+                }
               </p>
             )}
           </div>
@@ -256,7 +295,10 @@ toggleChatPin,
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
-                toggleChatPin?.(chat.id);
+
+                toggleChatPin?.(
+                  chat.id
+                );
               }}
               className={`rounded-md p-1 transition ${
                 chat.is_pinned
@@ -281,7 +323,10 @@ toggleChatPin,
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
-                renameCurrentChat(chat.id);
+
+                renameCurrentChat(
+                  chat.id
+                );
               }}
               className="rounded-md p-1 transition hover:bg-black/10"
               title="Rename chat"
@@ -294,7 +339,10 @@ toggleChatPin,
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
-                deleteCurrentChat(chat.id);
+
+                deleteCurrentChat(
+                  chat.id
+                );
               }}
               className="rounded-md p-1 transition hover:bg-red-500/20"
               title="Delete chat"
@@ -305,9 +353,11 @@ toggleChatPin,
           </div>
         </div>
 
-        {/* Move chat dropdown */}
         <select
-          value={chat.folder_id ?? ""}
+          value={
+            chat.folder_id ??
+            ""
+          }
           onClick={(event) =>
             event.stopPropagation()
           }
@@ -334,15 +384,18 @@ toggleChatPin,
             📂 No folder
           </option>
 
-          {folders.map((folder) => (
-            <option
-              key={folder.id}
-              value={folder.id}
-              className="text-slate-900"
-            >
-              📁 {folder.name}
-            </option>
-          ))}
+          {folders.map(
+            (folder) => (
+              <option
+                key={folder.id}
+                value={folder.id}
+                className="text-slate-900"
+              >
+                📁{" "}
+                {folder.name}
+              </option>
+            )
+          )}
         </select>
       </div>
     );
@@ -350,7 +403,6 @@ toggleChatPin,
 
   return (
     <>
-      {/* Mobile overlay */}
       {isOpen && (
         <button
           type="button"
@@ -371,7 +423,6 @@ toggleChatPin,
             : "border-slate-200 bg-white text-slate-900"
         }`}
       >
-        {/* Logo */}
         <div
           className={`flex items-center justify-between border-b p-6 ${
             isDark
@@ -409,7 +460,6 @@ toggleChatPin,
           </button>
         </div>
 
-        {/* Main buttons */}
         <div
           className={`space-y-3 border-b p-4 ${
             isDark
@@ -419,7 +469,9 @@ toggleChatPin,
         >
           <button
             type="button"
-            onClick={handleNewChat}
+            onClick={
+              handleNewChat
+            }
             className="w-full rounded-xl bg-blue-600 p-3 font-semibold text-white transition hover:bg-blue-700"
           >
             + New Chat
@@ -428,7 +480,9 @@ toggleChatPin,
           <button
             type="button"
             onClick={() =>
-              setShowSettings(true)
+              setShowSettings(
+                true
+              )
             }
             className={`w-full rounded-xl p-3 font-semibold transition ${
               isDark
@@ -441,7 +495,6 @@ toggleChatPin,
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-5">
-          {/* Chat heading */}
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-xs uppercase tracking-wider text-slate-500">
               Chats
@@ -458,241 +511,254 @@ toggleChatPin,
             </span>
           </div>
 
-          {/* Search */}
-          <input
-            type="text"
-            placeholder="🔍 Search chats..."
-            value={chatSearch}
-            onChange={(event) =>
-              setChatSearch(
-                event.target.value
-              )
+          <GlobalChatSearch
+            folders={folders}
+            onSelectResult={
+              handleSearchResult
             }
-            className={`mb-5 w-full rounded-lg border p-2 text-sm outline-none transition focus:border-blue-500 ${
-              isDark
-                ? "border-slate-700 bg-slate-900 text-white placeholder:text-slate-500"
-                : "border-slate-300 bg-slate-50 text-slate-900 placeholder:text-slate-400"
-            }`}
+            onSearchActiveChange={
+              setGlobalSearchActive
+            }
+            theme={theme}
           />
 
-          {/* Create folder */}
-          <div
-            className={`mb-5 rounded-xl border p-3 ${
-              isDark
-                ? "border-slate-800 bg-slate-900/60"
-                : "border-slate-200 bg-slate-50"
-            }`}
-          >
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                📁 Folders
-              </h3>
-
-              <span className="text-xs text-slate-500">
-                {folders.length}
-              </span>
-            </div>
-
-            <form
-              onSubmit={handleCreateFolder}
-              className="flex gap-2"
-            >
-              <input
-                type="text"
-                value={newFolderName}
-                onChange={(event) =>
-                  setNewFolderName(
-                    event.target.value
-                  )
-                }
-                placeholder="Folder name..."
-                maxLength={50}
-                className={`min-w-0 flex-1 rounded-lg border px-2 py-2 text-sm outline-none focus:border-blue-500 ${
+          {!globalSearchActive && (
+            <>
+              <div
+                className={`mb-5 rounded-xl border p-3 ${
                   isDark
-                    ? "border-slate-700 bg-slate-950 text-white"
-                    : "border-slate-300 bg-white text-slate-900"
+                    ? "border-slate-800 bg-slate-900/60"
+                    : "border-slate-200 bg-slate-50"
                 }`}
-              />
-
-              <button
-                type="submit"
-                disabled={
-                  !newFolderName.trim()
-                }
-                className="rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-                title="Create folder"
               >
-                +
-              </button>
-            </form>
-          </div>
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    📁 Folders
+                  </h3>
 
-          {filteredChats.length === 0 &&
-          searchText ? (
-            <p className="py-3 text-center text-sm text-slate-500">
-              No chats found
-            </p>
-          ) : (
-            <div className="space-y-6">
-              {/* Pinned */}
-              {pinnedChats.length > 0 && (
-                <section>
-                  <h4 className="mb-2 text-xs uppercase tracking-wider text-amber-500">
-                    📌 Pinned
-                  </h4>
+                  <span className="text-xs text-slate-500">
+                    {folders.length}
+                  </span>
+                </div>
 
-                  <div className="space-y-2">
-                    {pinnedChats.map(
-                      renderChatItem
-                    )}
-                  </div>
-                </section>
-              )}
+                <form
+                  onSubmit={
+                    handleCreateFolder
+                  }
+                  className="flex gap-2"
+                >
+                  <input
+                    type="text"
+                    value={
+                      newFolderName
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setNewFolderName(
+                        event.target
+                          .value
+                      )
+                    }
+                    placeholder="Folder name..."
+                    maxLength={50}
+                    className={`min-w-0 flex-1 rounded-lg border px-2 py-2 text-sm outline-none focus:border-blue-500 ${
+                      isDark
+                        ? "border-slate-700 bg-slate-950 text-white"
+                        : "border-slate-300 bg-white text-slate-900"
+                    }`}
+                  />
 
-              {/* Folder sections */}
-              {folders.map((folder) => {
-                const folderChats =
-                  getChatsForFolder(
-                    folder.id
-                  );
+                  <button
+                    type="submit"
+                    disabled={
+                      !newFolderName.trim()
+                    }
+                    className="rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    title="Create folder"
+                  >
+                    +
+                  </button>
+                </form>
+              </div>
 
-                if (
-                  searchText &&
-                  folderChats.length === 0
-                ) {
-                  return null;
-                }
+              <div className="space-y-6">
+                {pinnedChats.length >
+                  0 && (
+                  <section>
+                    <h4 className="mb-2 text-xs uppercase tracking-wider text-amber-500">
+                      📌 Pinned
+                    </h4>
 
-                return (
-                  <section key={folder.id}>
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <h4 className="truncate text-xs font-semibold uppercase tracking-wider text-blue-500">
-                          📁 {folder.name}
-                        </h4>
-
-                        <p className="mt-1 text-[11px] text-slate-500">
-                          {folder.chat_count || 0}{" "}
-                          chats
-                        </p>
-                      </div>
-
-                      <div className="flex shrink-0 gap-1">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleRenameFolder(
-                              folder
-                            )
-                          }
-                          className={`rounded-md p-1 text-xs transition ${
-                            isDark
-                              ? "hover:bg-slate-800"
-                              : "hover:bg-slate-200"
-                          }`}
-                          title="Rename folder"
-                        >
-                          ✏️
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleDeleteFolder(
-                              folder
-                            )
-                          }
-                          className="rounded-md p-1 text-xs transition hover:bg-red-500/20"
-                          title="Delete folder"
-                        >
-                          🗑️
-                        </button>
-                      </div>
+                    <div className="space-y-2">
+                      {pinnedChats.map(
+                        renderChatItem
+                      )}
                     </div>
-
-                    {folderChats.length > 0 ? (
-                      <div className="space-y-2">
-                        {folderChats.map(
-                          renderChatItem
-                        )}
-                      </div>
-                    ) : (
-                      <p
-                        className={`rounded-lg border border-dashed px-3 py-3 text-center text-xs ${
-                          isDark
-                            ? "border-slate-800 text-slate-500"
-                            : "border-slate-300 text-slate-500"
-                        }`}
-                      >
-                        No chats in this folder
-                      </p>
-                    )}
                   </section>
-                );
-              })}
+                )}
 
-              {/* Chats without folder */}
-              {unfiledChats.length > 0 && (
-                <section>
-                  <h4 className="mb-2 text-xs uppercase tracking-wider text-slate-500">
-                    📂 Unfiled Chats
-                  </h4>
+                {folders.map(
+                  (folder) => {
+                    const folderChats =
+                      getChatsForFolder(
+                        folder.id
+                      );
 
-                  <div className="space-y-5">
-                    {Object.entries(
-                      groupedUnfiledChats
-                    ).map(
-                      ([
-                        group,
-                        groupChats,
-                      ]) => (
-                        <div key={group}>
-                          <h5 className="mb-2 text-[11px] uppercase text-slate-500">
-                            {group}
-                          </h5>
+                    return (
+                      <section
+                        key={
+                          folder.id
+                        }
+                      >
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <h4 className="truncate text-xs font-semibold uppercase tracking-wider text-blue-500">
+                              📁{" "}
+                              {
+                                folder.name
+                              }
+                            </h4>
 
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              {folder.chat_count ||
+                                0}{" "}
+                              chats
+                            </p>
+                          </div>
+
+                          <div className="flex shrink-0 gap-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleRenameFolder(
+                                  folder
+                                )
+                              }
+                              className={`rounded-md p-1 text-xs transition ${
+                                isDark
+                                  ? "hover:bg-slate-800"
+                                  : "hover:bg-slate-200"
+                              }`}
+                              title="Rename folder"
+                            >
+                              ✏️
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleDeleteFolder(
+                                  folder
+                                )
+                              }
+                              className="rounded-md p-1 text-xs transition hover:bg-red-500/20"
+                              title="Delete folder"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+
+                        {folderChats.length >
+                        0 ? (
                           <div className="space-y-2">
-                            {groupChats.map(
+                            {folderChats.map(
                               renderChatItem
                             )}
                           </div>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </section>
-              )}
+                        ) : (
+                          <p
+                            className={`rounded-lg border border-dashed px-3 py-3 text-center text-xs ${
+                              isDark
+                                ? "border-slate-800 text-slate-500"
+                                : "border-slate-300 text-slate-500"
+                            }`}
+                          >
+                            No chats in this folder
+                          </p>
+                        )}
+                      </section>
+                    );
+                  }
+                )}
 
-              {chats.length === 0 && (
-                <p className="py-3 text-center text-sm text-slate-500">
-                  Start your first chat
-                </p>
-              )}
-            </div>
+                {unfiledChats.length >
+                  0 && (
+                  <section>
+                    <h4 className="mb-2 text-xs uppercase tracking-wider text-slate-500">
+                      📂 Unfiled Chats
+                    </h4>
+
+                    <div className="space-y-5">
+                      {Object.entries(
+                        groupedUnfiledChats
+                      ).map(
+                        ([
+                          group,
+                          groupChats,
+                        ]) => (
+                          <div
+                            key={
+                              group
+                            }
+                          >
+                            <h5 className="mb-2 text-[11px] uppercase text-slate-500">
+                              {group}
+                            </h5>
+
+                            <div className="space-y-2">
+                              {groupChats.map(
+                                renderChatItem
+                              )}
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </section>
+                )}
+
+                {chats.length ===
+                  0 && (
+                  <p className="py-3 text-center text-sm text-slate-500">
+                    Start your first chat
+                  </p>
+                )}
+              </div>
+            </>
           )}
         </div>
       </aside>
 
-    <SettingsModal
-  open={showSettings}
-  onClose={() =>
-    setShowSettings(false)
-  }
-  theme={theme}
-  onThemeChange={onThemeChange}
-  messages={messages}
-  activeChat={activeChat}
-  restoreChatBackup={
-    restoreChatBackup
-  }
-  restoreFullChatBackup={
-    restoreFullChatBackup
-  }
-  models={models}
-  defaultModel={defaultModel}
-  selectedModel={selectedModel}
-  onModelChange={onModelChange}
-/>
+      <SettingsModal
+        open={showSettings}
+        onClose={() =>
+          setShowSettings(false)
+        }
+        theme={theme}
+        onThemeChange={
+          onThemeChange
+        }
+        messages={messages}
+        activeChat={activeChat}
+        restoreChatBackup={
+          restoreChatBackup
+        }
+        restoreFullChatBackup={
+          restoreFullChatBackup
+        }
+        models={models}
+        defaultModel={
+          defaultModel
+        }
+        selectedModel={
+          selectedModel
+        }
+        onModelChange={
+          onModelChange
+        }
+      />
     </>
   );
 }

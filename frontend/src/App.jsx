@@ -32,10 +32,11 @@ dismissChatError,
     newChat,
     sendMessage,
 
-    chats,
-    activeChatId,
-    documentRefreshKey,
-    selectChat,
+   chats,
+activeChatId,
+messageSearchTarget,
+documentRefreshKey,
+selectChat,
     renameCurrentChat,
 deleteCurrentChat,
 restoreChatBackup,
@@ -150,9 +151,14 @@ toggleChatPin={toggleChatPin}
       />
 
      <ChatWindow
-     activeChatId={activeChatId}
-  documentRefreshKey={documentRefreshKey}
+  activeChatId={activeChatId}
+  documentRefreshKey={
+    documentRefreshKey
+  }
   messages={messages}
+  messageSearchTarget={
+    messageSearchTarget
+  }
   input={input}
   setInput={setInput}
   sendMessage={sendMessage}
