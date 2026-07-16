@@ -29,6 +29,7 @@ from app.services.history_service import (
     rename_folder,
     restore_chat_backup,
     save_message,
+    search_chats,
     toggle_pin_chat,
 )
 
@@ -69,6 +70,98 @@ def create_new_chat():
 def list_chats():
     return {
         "chats": get_chats(),
+    }
+
+
+@router.get("/chats/search")
+def global_chat_search(
+    q: str,
+    role: str | None = None,
+    folder_id: int | None = None,
+    limit: int = 50,
+):
+    search_query = str(q or "").strip()
+
+    if len(search_query) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Enter at least 2 characters "
+                "to search."
+            ),
+        )
+
+    if len(search_query) > 200:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Search text cannot exceed "
+                "200 characters."
+            ),
+        )
+
+    if role not in {
+        None,
+        "user",
+        "assistant",
+    }:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Role must be 'user' or "
+                "'assistant'."
+            ),
+        )
+
+    if (
+        folder_id is not None
+        and folder_id < 0
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Folder ID must be 0 or "
+                "a positive integer."
+            ),
+        )
+
+    safe_limit = max(
+        1,
+        min(limit, 100),
+    )
+
+    try:
+        results = search_chats(
+            search_query,
+            role=role,
+            folder_id=folder_id,
+            limit=safe_limit,
+        )
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        print(
+            "GLOBAL CHAT SEARCH ERROR:",
+            error,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to search chat "
+                "history."
+            ),
+        ) from error
+
+    return {
+        "query": search_query,
+        "count": len(results),
+        "results": results,
     }
 
 

@@ -262,3 +262,31 @@ export async function importFullChatBackup(
     }
   );
 }
+export const searchChats = (
+  query,
+  {
+    role = null,
+    folderId = null,
+    limit = 50,
+  } = {}
+) => {
+  const params = {
+    q: query,
+    limit,
+  };
+
+  if (role) {
+    params.role = role;
+  }
+
+  if (folderId !== null) {
+    params.folder_id = folderId;
+  }
+
+  return api.get(
+    "/chats/search",
+    {
+      params,
+    }
+  );
+};

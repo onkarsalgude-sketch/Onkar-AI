@@ -196,9 +196,11 @@ export default function useChat() {
     chats,
     setChats,
     activeChatId,
-    setActiveChatId,
-    loadChats,
-    selectChat,
+setActiveChatId,
+messageSearchTarget,
+clearMessageSearchTarget,
+loadChats,
+selectChat,
     newChat,
     createNewChatIfNeeded,
    restoreChatBackup,
@@ -336,9 +338,10 @@ deleteCurrentChat,
   }
 
 
-  async function handleSelectChat(
-    chatId
-  ) {
+ async function handleSelectChat(
+  chatId,
+  messageId = null
+) {
     setPendingFiles([]);
     setUploadSummary(null);
     setChatError(null);
@@ -346,7 +349,10 @@ deleteCurrentChat,
     lastFailedRequestRef.current =
       null;
 
-    await selectChat(chatId);
+    await selectChat(
+  chatId,
+  messageId
+);
   }
 
 
@@ -1201,9 +1207,11 @@ deleteCurrentChat,
 
     chats,
     setChats,
-    activeChatId,
-    setActiveChatId,
-    documentRefreshKey,
+   activeChatId,
+setActiveChatId,
+messageSearchTarget,
+clearMessageSearchTarget,
+documentRefreshKey,
 
     folders,
     loadFolders,
