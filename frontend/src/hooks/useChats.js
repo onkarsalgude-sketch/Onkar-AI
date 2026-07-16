@@ -5,6 +5,7 @@ import {
   deleteChat,
   getChatMessages,
   getChats,
+  importChatBackup as importChatBackupRequest,
   renameChat,
 } from "../services/chatService";
 
@@ -15,12 +16,39 @@ const welcomeMessage = {
 };
 
 function normalizeMessages(messages = []) {
-  return messages.map((message) => ({
-    role: message.role,
-    content: message.content,
-    sources: message.sources || [],
-    modelId: message.model_id || message.modelId,
-  }));
+  return messages.map((message) => {
+    const attachment =
+      message.attachment || null;
+
+    return {
+      role: message.role,
+      content: message.content,
+      sources: message.sources || [],
+
+      modelId:
+        message.model_id ||
+        message.modelId ||
+        null,
+
+      created_at:
+        message.created_at || null,
+
+      fileName:
+        message.fileName ||
+        attachment?.filename ||
+        null,
+
+      fileType:
+        message.fileType ||
+        attachment?.type ||
+        null,
+
+      fileSize:
+        message.fileSize ||
+        attachment?.size ||
+        null,
+    };
+  });
 }
 
 export default function useChats(
@@ -64,8 +92,6 @@ export default function useChats(
             chat.id === activeChatId
         );
 
-      // Rename, pin किंवा folder refresh झाल्यास
-      // सध्याचा active chat तसाच ठेवायचा.
       if (
         activeChatId &&
         activeChatStillExists
@@ -73,11 +99,12 @@ export default function useChats(
         return;
       }
 
-      // Active chat delete झाला किंवा app पहिल्यांदा उघडला.
       const fallbackChat =
         loadedChats[0];
 
-      setActiveChatId(fallbackChat.id);
+      setActiveChatId(
+        fallbackChat.id
+      );
 
       await loadMessages(
         fallbackChat.id
@@ -157,6 +184,74 @@ export default function useChats(
     ]);
 
     return chatId;
+  }
+
+  async function restoreChatBackup(
+    backup
+  ) {
+    if (
+      !backup ||
+      typeof backup !== "object" ||
+      Array.isArray(backup)
+    ) {
+      window.alert(
+        "Invalid chat backup data."
+      );
+
+      return null;
+    }
+
+    try {
+      const response =
+        await importChatBackupRequest(
+          backup
+        );
+
+      const result =
+        response?.data;
+
+      const importedChatId =
+        result?.chat_id;
+
+      if (!importedChatId) {
+        throw new Error(
+          "The backend did not return an imported chat ID."
+        );
+      }
+
+      const chatsResponse =
+        await getChats();
+
+      setChats(
+        chatsResponse?.data?.chats ||
+          []
+      );
+
+      setActiveChatId(
+        importedChatId
+      );
+
+      await loadMessages(
+        importedChatId
+      );
+
+      setInput("");
+
+      return result;
+    } catch (error) {
+      console.error(
+        "Chat backup import error:",
+        error
+      );
+
+      window.alert(
+        error?.response?.data?.detail ||
+          error?.message ||
+          "Unable to import the chat backup."
+      );
+
+      return null;
+    }
   }
 
   async function renameCurrentChat(
@@ -254,13 +349,10 @@ export default function useChats(
 
       setChats(remainingChats);
 
-      // दुसरा chat delete केला असल्यास
-      // active chat बदलू नका.
       if (chatId !== activeChatId) {
         return true;
       }
 
-      // Active chat delete झाला आणि दुसरे chats उपलब्ध आहेत.
       if (remainingChats.length > 0) {
         const deletedIndex =
           chats.findIndex(
@@ -270,7 +362,10 @@ export default function useChats(
 
         const fallbackIndex =
           Math.min(
-            Math.max(deletedIndex, 0),
+            Math.max(
+              deletedIndex,
+              0
+            ),
             remainingChats.length - 1
           );
 
@@ -290,7 +385,6 @@ export default function useChats(
         return true;
       }
 
-      // शेवटचा chat delete झाला.
       setActiveChatId(null);
       setMessages([welcomeMessage]);
       setInput("");
@@ -322,6 +416,7 @@ export default function useChats(
     selectChat,
     newChat,
     createNewChatIfNeeded,
+    restoreChatBackup,
     renameCurrentChat,
     deleteCurrentChat,
   };

@@ -37,8 +37,9 @@ dismissChatError,
     documentRefreshKey,
     selectChat,
     renameCurrentChat,
-    deleteCurrentChat,
-    regenerateResponse,
+deleteCurrentChat,
+restoreChatBackup,
+regenerateResponse,
     toggleChatPin,
 
     folders,
@@ -107,10 +108,13 @@ dismissChatError,
         renameCurrentChat={
           renameCurrentChat
         }
-        deleteCurrentChat={
-          deleteCurrentChat
-        }
-        toggleChatPin={toggleChatPin}
+       deleteCurrentChat={
+  deleteCurrentChat
+}
+restoreChatBackup={
+  restoreChatBackup
+}
+toggleChatPin={toggleChatPin}
 
         folders={folders}
         createChatFolder={
