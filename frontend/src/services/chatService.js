@@ -323,3 +323,56 @@ export const regenerateMessage = (
       model_id: modelId,
     }
   );
+  export const saveMessageBookmark = (
+  chatId,
+  messageId,
+  note = ""
+) =>
+  api.put(
+    `/chats/${chatId}/messages/${messageId}/bookmark`,
+    {
+      note,
+    }
+  );
+
+
+export const removeMessageBookmark = (
+  chatId,
+  messageId
+) =>
+  api.delete(
+    `/chats/${chatId}/messages/${messageId}/bookmark`
+  );
+
+
+export const getBookmarks = (
+  {
+    query = "",
+    role = null,
+    folderId = null,
+    limit = 100,
+  } = {}
+) => {
+  const params = {
+    limit,
+  };
+
+  if (query.trim()) {
+    params.q = query.trim();
+  }
+
+  if (role) {
+    params.role = role;
+  }
+
+  if (folderId !== null) {
+    params.folder_id = folderId;
+  }
+
+  return api.get(
+    "/bookmarks",
+    {
+      params,
+    }
+  );
+};

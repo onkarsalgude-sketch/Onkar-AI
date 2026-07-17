@@ -10,7 +10,9 @@ import {
   importChatBackup as importChatBackupRequest,
   importFullChatBackup as importFullChatBackupRequest,
   regenerateMessage as regenerateMessageRequest,
+  removeMessageBookmark as removeMessageBookmarkRequest,
   renameChat,
+  saveMessageBookmark as saveMessageBookmarkRequest,
 } from "../services/chatService";
 
 
@@ -66,6 +68,31 @@ function normalizeMessages(messages = []) {
       fileSize:
         message.fileSize ||
         attachment?.size ||
+        null,
+
+              isBookmarked: Boolean(
+        message.is_bookmarked ??
+        message.isBookmarked
+      ),
+
+      bookmarkId:
+        message.bookmark_id ??
+        message.bookmarkId ??
+        null,
+
+      bookmarkNote:
+        message.bookmark_note ??
+        message.bookmarkNote ??
+        "",
+
+      bookmarkedAt:
+        message.bookmarked_at ??
+        message.bookmarkedAt ??
+        null,
+
+      bookmarkUpdatedAt:
+        message.bookmark_updated_at ??
+        message.bookmarkUpdatedAt ??
         null,
     };
   });
@@ -708,6 +735,100 @@ async function regenerateCurrentMessage(
   }
 }
 
+async function saveCurrentMessageBookmark(
+  messageId,
+  note = ""
+) {
+  if (!activeChatId) {
+    throw new Error(
+      "No active chat selected."
+    );
+  }
+
+  try {
+    setMessageActionLoadingId(
+      messageId
+    );
+
+    const response =
+      await saveMessageBookmarkRequest(
+        activeChatId,
+        messageId,
+        note
+      );
+
+    await loadMessages(
+      activeChatId
+    );
+
+    createMessageSearchTarget(
+      messageId
+    );
+
+    return response?.data;
+  } catch (error) {
+    console.error(
+      "Save bookmark error:",
+      error
+    );
+
+    window.alert(
+      error?.response?.data?.detail ||
+        "Unable to save the bookmark."
+    );
+
+    throw error;
+  } finally {
+    setMessageActionLoadingId(null);
+  }
+}
+
+
+async function removeCurrentMessageBookmark(
+  messageId
+) {
+  if (!activeChatId) {
+    throw new Error(
+      "No active chat selected."
+    );
+  }
+
+  try {
+    setMessageActionLoadingId(
+      messageId
+    );
+
+    const response =
+      await removeMessageBookmarkRequest(
+        activeChatId,
+        messageId
+      );
+
+    await loadMessages(
+      activeChatId
+    );
+
+    createMessageSearchTarget(
+      messageId
+    );
+
+    return response?.data;
+  } catch (error) {
+    console.error(
+      "Remove bookmark error:",
+      error
+    );
+
+    window.alert(
+      error?.response?.data?.detail ||
+        "Unable to remove the bookmark."
+    );
+
+    throw error;
+  } finally {
+    setMessageActionLoadingId(null);
+  }
+}
 
   async function deleteCurrentChat(
     chatId
@@ -827,6 +948,8 @@ async function regenerateCurrentMessage(
   editCurrentMessage,
   deleteCurrentMessage,
   regenerateCurrentMessage,
+    saveCurrentMessageBookmark,
+  removeCurrentMessageBookmark,
 
   loadChats,
   selectChat,

@@ -47,6 +47,18 @@ def init_db():
         )
     """)
 
+    # Message bookmarks
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS message_bookmarks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            message_id INTEGER NOT NULL UNIQUE,
+            note TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+
     # Uploaded PDF documents
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS documents (
@@ -136,6 +148,16 @@ def init_db():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_messages_created_at
         ON messages(created_at)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_message_bookmarks_chat_id
+        ON message_bookmarks(chat_id)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_message_bookmarks_created_at
+        ON message_bookmarks(created_at)
     """)
 
     cursor.execute("""
@@ -583,16 +605,22 @@ def get_messages(
     cursor.execute(
         """
         SELECT
-            id,
-            role,
-            content,
-            created_at,
-            sources_json,
-            model_id,
-            attachment_json
+            messages.id,
+            messages.role,
+            messages.content,
+            messages.created_at,
+            messages.sources_json,
+            messages.model_id,
+            messages.attachment_json,
+            message_bookmarks.id AS bookmark_id,
+            message_bookmarks.note AS bookmark_note,
+            message_bookmarks.created_at AS bookmarked_at,
+            message_bookmarks.updated_at AS bookmark_updated_at
         FROM messages
-        WHERE chat_id = ?
-        ORDER BY id DESC
+        LEFT JOIN message_bookmarks
+            ON message_bookmarks.message_id = messages.id
+        WHERE messages.chat_id = ?
+        ORDER BY messages.id DESC
         LIMIT ?
         """,
         (
@@ -625,6 +653,15 @@ def get_messages(
             "sources": sources,
             "model_id": row[5],
             "attachment": attachment,
+            "is_bookmarked": (
+                row[7] is not None
+            ),
+            "bookmark_id": row[7],
+            "bookmark_note": (
+                row[8] or ""
+            ),
+            "bookmarked_at": row[9],
+            "bookmark_updated_at": row[10],
         }
 
         if attachment:
@@ -654,17 +691,23 @@ def get_message(
     cursor.execute(
         """
         SELECT
-            id,
-            chat_id,
-            role,
-            content,
-            created_at,
-            sources_json,
-            model_id,
-            attachment_json
+            messages.id,
+            messages.chat_id,
+            messages.role,
+            messages.content,
+            messages.created_at,
+            messages.sources_json,
+            messages.model_id,
+            messages.attachment_json,
+            message_bookmarks.id AS bookmark_id,
+            message_bookmarks.note AS bookmark_note,
+            message_bookmarks.created_at AS bookmarked_at,
+            message_bookmarks.updated_at AS bookmark_updated_at
         FROM messages
-        WHERE id = ?
-          AND chat_id = ?
+        LEFT JOIN message_bookmarks
+            ON message_bookmarks.message_id = messages.id
+        WHERE messages.id = ?
+          AND messages.chat_id = ?
         """,
         (
             message_id,
@@ -693,8 +736,330 @@ def get_message(
             row[7],
             None,
         ),
+        "is_bookmarked": (
+            row[8] is not None
+        ),
+        "bookmark_id": row[8],
+        "bookmark_note": (
+            row[9] or ""
+        ),
+        "bookmarked_at": row[10],
+        "bookmark_updated_at": row[11],
     }
 
+def save_message_bookmark(
+    chat_id: int,
+    message_id: int,
+    note: str = "",
+):
+    cleaned_note = str(
+        note or ""
+    ).strip()
+
+    if len(cleaned_note) > 1000:
+        raise ValueError(
+            "Bookmark note cannot exceed 1000 characters."
+        )
+
+    conn = get_connection(DB_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "BEGIN IMMEDIATE"
+        )
+
+        cursor.execute(
+            """
+            SELECT
+                role,
+                content,
+                created_at
+            FROM messages
+            WHERE id = ?
+              AND chat_id = ?
+            """,
+            (
+                message_id,
+                chat_id,
+            ),
+        )
+
+        message_row = cursor.fetchone()
+
+        if message_row is None:
+            conn.rollback()
+            return None
+
+        now = datetime.now().isoformat()
+
+        cursor.execute(
+            """
+            SELECT
+                id,
+                created_at
+            FROM message_bookmarks
+            WHERE message_id = ?
+            """,
+            (message_id,),
+        )
+
+        bookmark_row = cursor.fetchone()
+
+        if bookmark_row is None:
+            cursor.execute(
+                """
+                INSERT INTO message_bookmarks (
+                    chat_id,
+                    message_id,
+                    note,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    chat_id,
+                    message_id,
+                    cleaned_note,
+                    now,
+                    now,
+                ),
+            )
+
+            bookmark_id = cursor.lastrowid
+            created_at = now
+
+        else:
+            bookmark_id = bookmark_row[0]
+            created_at = bookmark_row[1]
+
+            cursor.execute(
+                """
+                UPDATE message_bookmarks
+                SET
+                    chat_id = ?,
+                    note = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    chat_id,
+                    cleaned_note,
+                    now,
+                    bookmark_id,
+                ),
+            )
+
+        conn.commit()
+
+        return {
+            "bookmark_id": bookmark_id,
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "role": message_row[0],
+            "content": message_row[1],
+            "message_created_at": message_row[2],
+            "note": cleaned_note,
+            "created_at": created_at,
+            "updated_at": now,
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+def remove_message_bookmark(
+    chat_id: int,
+    message_id: int,
+):
+    conn = get_connection(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        DELETE FROM message_bookmarks
+        WHERE chat_id = ?
+          AND message_id = ?
+        """,
+        (
+            chat_id,
+            message_id,
+        ),
+    )
+
+    deleted = cursor.rowcount > 0
+
+    conn.commit()
+    conn.close()
+
+    if not deleted:
+        return None
+
+    return {
+        "chat_id": chat_id,
+        "message_id": message_id,
+    }
+
+
+def get_message_bookmarks(
+    query: str | None = None,
+    *,
+    role: str | None = None,
+    folder_id: int | None = None,
+    limit: int = 100,
+):
+    if role not in {
+        None,
+        "user",
+        "assistant",
+    }:
+        raise ValueError(
+            "Role must be 'user' or 'assistant'."
+        )
+
+    safe_limit = max(
+        1,
+        min(int(limit), 200),
+    )
+
+    search_text = str(
+        query or ""
+    ).strip()
+
+    where_clauses = []
+    parameters = []
+
+    if role is not None:
+        where_clauses.append(
+            "messages.role = ?"
+        )
+        parameters.append(role)
+
+    if folder_id == 0:
+        where_clauses.append(
+            "chats.folder_id IS NULL"
+        )
+
+    elif (
+        folder_id is not None
+        and folder_id > 0
+    ):
+        where_clauses.append(
+            "chats.folder_id = ?"
+        )
+        parameters.append(folder_id)
+
+    if search_text:
+        like_pattern = (
+            f"%{_escape_like(search_text)}%"
+        )
+
+        where_clauses.append(
+            """
+            (
+                message_bookmarks.note
+                    LIKE ? ESCAPE '\\'
+                    COLLATE NOCASE
+                OR messages.content
+                    LIKE ? ESCAPE '\\'
+                    COLLATE NOCASE
+                OR chats.title
+                    LIKE ? ESCAPE '\\'
+                    COLLATE NOCASE
+            )
+            """
+        )
+
+        parameters.extend(
+            [
+                like_pattern,
+                like_pattern,
+                like_pattern,
+            ]
+        )
+
+    where_sql = ""
+
+    if where_clauses:
+        where_sql = (
+            "WHERE "
+            + " AND ".join(
+                where_clauses
+            )
+        )
+
+    parameters.append(safe_limit)
+
+    conn = get_connection(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        f"""
+        SELECT
+            message_bookmarks.id,
+            message_bookmarks.chat_id,
+            message_bookmarks.message_id,
+            message_bookmarks.note,
+            message_bookmarks.created_at,
+            message_bookmarks.updated_at,
+            messages.role,
+            messages.content,
+            messages.created_at,
+            chats.title,
+            chats.folder_id,
+            folders.name
+        FROM message_bookmarks
+        INNER JOIN messages
+            ON messages.id =
+                message_bookmarks.message_id
+        INNER JOIN chats
+            ON chats.id =
+                message_bookmarks.chat_id
+        LEFT JOIN folders
+            ON folders.id =
+                chats.folder_id
+        {where_sql}
+        ORDER BY
+            message_bookmarks.updated_at DESC,
+            message_bookmarks.id DESC
+        LIMIT ?
+        """,
+        parameters,
+    )
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    bookmarks = []
+
+    for row in rows:
+        bookmarks.append(
+            {
+                "bookmark_id": row[0],
+                "chat_id": row[1],
+                "message_id": row[2],
+                "note": row[3] or "",
+                "created_at": row[4],
+                "updated_at": row[5],
+                "role": row[6],
+                "content": row[7],
+                "snippet": _build_search_snippet(
+                    row[7],
+                    search_text,
+                ),
+                "message_created_at": row[8],
+                "chat_title": row[9],
+                "folder_id": row[10],
+                "folder_name": row[11],
+            }
+        )
+
+    return bookmarks
 
 def edit_user_message(
     chat_id: int,
@@ -759,6 +1124,36 @@ def edit_user_message(
         # Edited message नंतरचे जुने responses
         # delete केले जातील, जेणेकरून नवीन
         # response योग्य context वर generate होईल.
+        cursor.execute(
+            """
+            DELETE FROM message_bookmarks
+            WHERE chat_id = ?
+              AND message_id IN (
+                  SELECT id
+                  FROM messages
+                  WHERE chat_id = ?
+                    AND id > ?
+              )
+            """,
+            (
+                chat_id,
+                chat_id,
+                message_id,
+            ),
+        )
+
+        cursor.execute(
+            """
+            DELETE FROM message_bookmarks
+            WHERE chat_id = ?
+              AND message_id = ?
+            """,
+            (
+                chat_id,
+                message_id,
+            ),
+        )
+
         cursor.execute(
             """
             DELETE FROM messages
@@ -1313,6 +1708,14 @@ def delete_chat(chat_id: int):
 
     cursor.execute(
         """
+        DELETE FROM message_bookmarks
+        WHERE chat_id = ?
+        """,
+        (chat_id,),
+    )
+
+    cursor.execute(
+        """
         DELETE FROM messages
         WHERE chat_id = ?
         """,
@@ -1335,8 +1738,17 @@ def clear_history():
     conn = get_connection(DB_PATH)
     cursor = conn.cursor()
 
-    cursor.execute("DELETE FROM messages")
-    cursor.execute("DELETE FROM chats")
+    cursor.execute(
+        "DELETE FROM message_bookmarks"
+    )
+
+    cursor.execute(
+        "DELETE FROM messages"
+    )
+
+    cursor.execute(
+        "DELETE FROM chats"
+    )
 
     conn.commit()
     conn.close()

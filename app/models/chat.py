@@ -243,3 +243,47 @@ class MessageDeleteResponse(BaseModel):
         "user",
         "assistant",
     ]
+
+    # -------------------------
+# Message bookmark models
+# -------------------------
+
+class MessageBookmarkRequest(BaseModel):
+    note: str = Field(
+        default="",
+        max_length=1000,
+    )
+
+    @field_validator("note")
+    @classmethod
+    def clean_note(
+        cls,
+        value: str,
+    ) -> str:
+        return str(
+            value or ""
+        ).strip()
+
+
+class MessageBookmarkResponse(BaseModel):
+    message: str
+    bookmark_id: int
+    chat_id: int
+    message_id: int
+    role: Literal[
+        "user",
+        "assistant",
+    ]
+    content: str
+    message_created_at: str
+    note: str = ""
+    created_at: str
+    updated_at: str
+
+
+class MessageBookmarkDeleteResponse(
+    BaseModel
+):
+    message: str
+    chat_id: int
+    message_id: int

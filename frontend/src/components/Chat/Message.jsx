@@ -25,6 +25,11 @@ function Message({
   onEditMessage,
   onDeleteMessage,
   onRegenerateMessage,
+
+    isBookmarked = false,
+  bookmarkNote = "",
+  onSaveMessageBookmark,
+  onRemoveMessageBookmark,
   isLast,
   actionLoading = false,
   theme = "dark",
@@ -249,6 +254,76 @@ function Message({
     }
   }
 
+  async function saveBookmark() {
+    if (
+      !resolvedMessageId ||
+      !onSaveMessageBookmark
+    ) {
+      return;
+    }
+
+    const enteredNote =
+      window.prompt(
+        isBookmarked
+          ? "Update bookmark note:"
+          : "Add an optional bookmark note:",
+        bookmarkNote || ""
+      );
+
+    if (enteredNote === null) {
+      return;
+    }
+
+    try {
+      setLocalAction("bookmark");
+
+      await onSaveMessageBookmark(
+        resolvedMessageId,
+        enteredNote.trim()
+      );
+    } catch (error) {
+      console.error(
+        "Save bookmark failed:",
+        error
+      );
+    } finally {
+      setLocalAction(null);
+    }
+  }
+
+
+  async function removeBookmark() {
+    if (
+      !resolvedMessageId ||
+      !onRemoveMessageBookmark
+    ) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        "Remove this bookmark?"
+      );
+
+    if (!confirmed) return;
+
+    try {
+      setLocalAction(
+        "remove-bookmark"
+      );
+
+      await onRemoveMessageBookmark(
+        resolvedMessageId
+      );
+    } catch (error) {
+      console.error(
+        "Remove bookmark failed:",
+        error
+      );
+    } finally {
+      setLocalAction(null);
+    }
+  }
 
   function handleEditorKeyDown(event) {
     if (
@@ -503,6 +578,38 @@ function Message({
           </>
         )}
 
+        {/* Bookmark details */}
+        {isBookmarked &&
+          !isEditing && (
+            <div
+              className={`mt-3 rounded-xl border px-3 py-2 text-sm ${
+                isUser
+                  ? "border-amber-300/50 bg-blue-700/40"
+                  : isDark
+                    ? "border-amber-500/30 bg-amber-500/10"
+                    : "border-amber-300 bg-amber-50"
+              }`}
+            >
+              <p className="font-semibold">
+                🔖 Bookmarked
+              </p>
+
+              {bookmarkNote && (
+                <p
+                  className={`mt-1 break-words text-xs ${
+                    isUser
+                      ? "text-blue-100"
+                      : isDark
+                        ? "text-slate-300"
+                        : "text-slate-600"
+                  }`}
+                >
+                  {bookmarkNote}
+                </p>
+              )}
+            </div>
+          )}
+
         {/* Timestamp */}
         {formattedTimestamp &&
           !isEditing && (
@@ -539,6 +646,41 @@ function Message({
                 ? "✅ Copied"
                 : "📋 Copy"}
             </button>
+
+            {onSaveMessageBookmark &&
+              resolvedMessageId && (
+                <button
+                  type="button"
+                  onClick={saveBookmark}
+                  disabled={isBusy}
+                  className="rounded-lg bg-amber-500 px-3 py-1 text-sm text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {localAction ===
+                  "bookmark"
+                    ? "Saving..."
+                    : isBookmarked
+                      ? "✏️ Bookmark note"
+                      : "🔖 Bookmark"}
+                </button>
+              )}
+
+            {isBookmarked &&
+              onRemoveMessageBookmark &&
+              resolvedMessageId && (
+                <button
+                  type="button"
+                  onClick={
+                    removeBookmark
+                  }
+                  disabled={isBusy}
+                  className="rounded-lg bg-orange-700 px-3 py-1 text-sm text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {localAction ===
+                  "remove-bookmark"
+                    ? "Removing..."
+                    : "🔖 Remove"}
+                </button>
+              )}
 
             {!isUser && (
               <button

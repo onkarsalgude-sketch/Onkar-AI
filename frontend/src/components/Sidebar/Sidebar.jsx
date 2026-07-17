@@ -4,6 +4,7 @@ import {
 
 import SettingsModal from "../Common/SettingsModal";
 import GlobalChatSearch from "./GlobalChatSearch";
+import BookmarksPanel from "./BookmarksPanel";
 
 function getGroup(dateString) {
   if (!dateString) return "Older";
@@ -66,6 +67,11 @@ function Sidebar({
   const [
     globalSearchActive,
     setGlobalSearchActive,
+  ] = useState(false);
+
+  const [
+    bookmarksPanelActive,
+    setBookmarksPanelActive,
   ] = useState(false);
 
   const [
@@ -522,7 +528,19 @@ function Sidebar({
             theme={theme}
           />
 
-          {!globalSearchActive && (
+          <BookmarksPanel
+            folders={folders}
+            onSelectResult={
+              handleSearchResult
+            }
+            onPanelActiveChange={
+              setBookmarksPanelActive
+            }
+            theme={theme}
+          />
+
+          {!globalSearchActive &&
+            !bookmarksPanelActive && (
             <>
               <div
                 className={`mb-5 rounded-xl border p-3 ${
