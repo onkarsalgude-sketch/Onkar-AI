@@ -41,6 +41,8 @@ messageActionLoadingId,
 editMessage,
 deleteMessage,
 regenerateMessage,
+saveMessageBookmark,
+removeMessageBookmark,
 
 selectChat,
 renameCurrentChat,
@@ -191,6 +193,12 @@ toggleChatPin={toggleChatPin}
   onRegenerateMessage={
     regenerateMessage
   }
+  onSaveMessageBookmark={
+  saveMessageBookmark
+}
+onRemoveMessageBookmark={
+  removeMessageBookmark
+}
   messageActionLoadingId={
     messageActionLoadingId
   }

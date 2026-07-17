@@ -13,6 +13,9 @@ from app.models.chat import (
     ChatBackupImportResponse,
     ChatRequest,
     ChatResponse,
+    MessageBookmarkDeleteResponse,
+    MessageBookmarkRequest,
+    MessageBookmarkResponse,
     MessageDeleteResponse,
     MessageEditRequest,
     MessageEditResponse,
@@ -29,13 +32,16 @@ from app.services.history_service import (
     get_chats,
     get_folders,
     get_message,
+    get_message_bookmarks,
     get_messages,
     init_db,
     move_chat_to_folder,
+    remove_message_bookmark,
     rename_chat,
     rename_folder,
     restore_chat_backup,
     save_message,
+    save_message_bookmark,
     search_chats,
     toggle_pin_chat,
 )
@@ -172,6 +178,90 @@ def global_chat_search(
     }
 
 
+@router.get("/bookmarks")
+def list_message_bookmarks(
+    q: str | None = None,
+    role: str | None = None,
+    folder_id: int | None = None,
+    limit: int = 100,
+):
+    search_query = str(
+        q or ""
+    ).strip()
+
+    if len(search_query) > 200:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Search text cannot exceed "
+                "200 characters."
+            ),
+        )
+
+    if role not in {
+        None,
+        "user",
+        "assistant",
+    }:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Role must be 'user' or "
+                "'assistant'."
+            ),
+        )
+
+    if (
+        folder_id is not None
+        and folder_id < 0
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Folder ID must be 0 or "
+                "a positive integer."
+            ),
+        )
+
+    safe_limit = max(
+        1,
+        min(limit, 200),
+    )
+
+    try:
+        bookmarks = get_message_bookmarks(
+            search_query or None,
+            role=role,
+            folder_id=folder_id,
+            limit=safe_limit,
+        )
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        print(
+            "BOOKMARK LIST ERROR:",
+            error,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to load bookmarks."
+            ),
+        ) from error
+
+    return {
+        "query": search_query,
+        "count": len(bookmarks),
+        "bookmarks": bookmarks,
+    }
+
+
 @router.post(
     "/chats/import",
     response_model=ChatBackupImportResponse,
@@ -219,6 +309,95 @@ def chat_messages(chat_id: int):
     return {
         "messages": get_messages(chat_id),
     }
+
+@router.put(
+    "/chats/{chat_id}/messages/{message_id}/bookmark",
+    response_model=MessageBookmarkResponse,
+)
+def add_or_update_message_bookmark(
+    chat_id: int,
+    message_id: int,
+    request: MessageBookmarkRequest,
+):
+    try:
+        result = save_message_bookmark(
+            chat_id,
+            message_id,
+            request.note,
+        )
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        print(
+            "BOOKMARK SAVE ERROR:",
+            error,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to save the bookmark."
+            ),
+        ) from error
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Message not found.",
+        )
+
+    return MessageBookmarkResponse(
+        message=(
+            "Bookmark saved successfully."
+        ),
+        **result,
+    )
+
+
+@router.delete(
+    "/chats/{chat_id}/messages/{message_id}/bookmark",
+    response_model=MessageBookmarkDeleteResponse,
+)
+def delete_message_bookmark(
+    chat_id: int,
+    message_id: int,
+):
+    try:
+        result = remove_message_bookmark(
+            chat_id,
+            message_id,
+        )
+
+    except Exception as error:
+        print(
+            "BOOKMARK DELETE ERROR:",
+            error,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to remove the bookmark."
+            ),
+        ) from error
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Bookmark not found.",
+        )
+
+    return MessageBookmarkDeleteResponse(
+        message=(
+            "Bookmark removed successfully."
+        ),
+        **result,
+    )
 
 @router.patch(
     "/chats/{chat_id}/messages/{message_id}",

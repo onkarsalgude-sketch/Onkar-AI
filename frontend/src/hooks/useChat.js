@@ -207,6 +207,8 @@ export default function useChat() {
   editCurrentMessage,
   deleteCurrentMessage,
   regenerateCurrentMessage,
+  saveCurrentMessageBookmark,
+removeCurrentMessageBookmark,
 
   loadChats,
   selectChat,
@@ -539,6 +541,34 @@ async function handleRegenerateMessage(
   );
 }
 
+async function handleSaveMessageBookmark(
+  messageId,
+  note = ""
+) {
+  setChatError(null);
+
+  lastFailedRequestRef.current =
+    null;
+
+  return saveCurrentMessageBookmark(
+    messageId,
+    note
+  );
+}
+
+
+async function handleRemoveMessageBookmark(
+  messageId
+) {
+  setChatError(null);
+
+  lastFailedRequestRef.current =
+    null;
+
+  return removeCurrentMessageBookmark(
+    messageId
+  );
+}
 
   async function uploadFile(event) {
     const allFiles = Array.from(
@@ -1418,6 +1448,11 @@ deleteMessage:
 regenerateMessage:
   handleRegenerateMessage,
 
+  saveMessageBookmark:
+  handleSaveMessageBookmark,
+
+removeMessageBookmark:
+  handleRemoveMessageBookmark,
 folders,
 loadFolders,
 

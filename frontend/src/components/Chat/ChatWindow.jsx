@@ -31,6 +31,8 @@ function ChatWindow({
   onEditMessage,
   onDeleteMessage,
   onRegenerateMessage,
+  onSaveMessageBookmark,
+onRemoveMessageBookmark,
   messageActionLoadingId = null,
 
   onOpenSidebar,
@@ -511,6 +513,18 @@ function ChatWindow({
       ? onRegenerateMessage
       : undefined
   }
+  isBookmarked={
+  message.isBookmarked
+}
+bookmarkNote={
+  message.bookmarkNote || ""
+}
+onSaveMessageBookmark={
+  onSaveMessageBookmark
+}
+onRemoveMessageBookmark={
+  onRemoveMessageBookmark
+}
   actionLoading={
     loading ||
     isMessageActionLoading
