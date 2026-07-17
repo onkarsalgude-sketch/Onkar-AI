@@ -32,12 +32,18 @@ dismissChatError,
     newChat,
     sendMessage,
 
-   chats,
+  chats,
 activeChatId,
 messageSearchTarget,
 documentRefreshKey,
+
+messageActionLoadingId,
+editMessage,
+deleteMessage,
+regenerateMessage,
+
 selectChat,
-    renameCurrentChat,
+renameCurrentChat,
 deleteCurrentChat,
 restoreChatBackup,
 restoreFullChatBackup,
@@ -165,15 +171,37 @@ toggleChatPin={toggleChatPin}
   loading={loading}
   uploadFile={uploadFile}
   pendingFiles={pendingFiles}
-  removePendingFileAt={removePendingFileAt}
-  clearAllPendingFiles={clearAllPendingFiles}
+  removePendingFileAt={
+    removePendingFileAt
+  }
+  clearAllPendingFiles={
+    clearAllPendingFiles
+  }
   uploadProgress={uploadProgress}
   uploadSummary={uploadSummary}
-  dismissUploadSummary={dismissUploadSummary}
-  regenerateResponse={regenerateResponse}
+  dismissUploadSummary={
+    dismissUploadSummary
+  }
+  regenerateResponse={
+    regenerateResponse
+  }
+
+  onEditMessage={editMessage}
+  onDeleteMessage={deleteMessage}
+  onRegenerateMessage={
+    regenerateMessage
+  }
+  messageActionLoadingId={
+    messageActionLoadingId
+  }
+
   chatError={chatError}
-  retryLastRequest={retryLastRequest}
-  dismissChatError={dismissChatError}
+  retryLastRequest={
+    retryLastRequest
+  }
+  dismissChatError={
+    dismissChatError
+  }
   onOpenSidebar={() =>
     setSidebarOpen(true)
   }

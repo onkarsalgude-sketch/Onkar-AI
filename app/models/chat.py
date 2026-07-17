@@ -1,7 +1,11 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import (
+    BaseModel,
+    Field,
+    field_validator,
+)
 
 
 class ChatRequest(BaseModel):
@@ -190,3 +194,52 @@ class ChatBackupImportResponse(BaseModel):
     warnings: list[str] = Field(
         default_factory=list
     )
+    # -------------------------
+# Message action models
+# -------------------------
+
+class MessageEditRequest(BaseModel):
+    content: str = Field(
+        min_length=1,
+        max_length=200000,
+    )
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(
+        cls,
+        value: str,
+    ) -> str:
+        cleaned_content = value.strip()
+
+        if not cleaned_content:
+            raise ValueError(
+                "Message content cannot be empty."
+            )
+
+        return cleaned_content
+
+
+class MessageRegenerateRequest(BaseModel):
+    model_id: Optional[str] = Field(
+        default=None,
+        max_length=255,
+    )
+
+
+class MessageEditResponse(BaseModel):
+    message: str
+    chat_id: int
+    message_id: int
+    content: str
+    deleted_following_messages: int = 0
+
+
+class MessageDeleteResponse(BaseModel):
+    message: str
+    chat_id: int
+    message_id: int
+    role: Literal[
+        "user",
+        "assistant",
+    ]

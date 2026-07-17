@@ -290,3 +290,36 @@ export const searchChats = (
     }
   );
 };
+export const editMessage = (
+  chatId,
+  messageId,
+  content
+) =>
+  api.patch(
+    `/chats/${chatId}/messages/${messageId}`,
+    {
+      content,
+    }
+  );
+
+
+export const deleteMessage = (
+  chatId,
+  messageId
+) =>
+  api.delete(
+    `/chats/${chatId}/messages/${messageId}`
+  );
+
+
+export const regenerateMessage = (
+  chatId,
+  messageId,
+  modelId = null
+) =>
+  api.post(
+    `/chats/${chatId}/messages/${messageId}/regenerate`,
+    {
+      model_id: modelId,
+    }
+  );

@@ -1,59 +1,276 @@
-import { useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import CodeBlock from "./CodeBlock";
 import SourcesCard from "./SourcesCard";
 
+
 function Message({
+  id,
+  messageId,
   role,
   content = "",
+  createdAt,
   imageUrl,
   fileName,
   fileType,
   fileSize,
   sources = [],
   regenerateResponse,
+  onEditMessage,
+  onDeleteMessage,
+  onRegenerateMessage,
   isLast,
+  actionLoading = false,
   theme = "dark",
 }) {
   const isUser = role === "user";
   const isDark = theme === "dark";
 
-  const [copied, setCopied] = useState(false);
+  const resolvedMessageId =
+    messageId ?? id ?? null;
+
+  const [copied, setCopied] =
+    useState(false);
+
+  const [isEditing, setIsEditing] =
+    useState(false);
+
+  const [draftContent, setDraftContent] =
+    useState(content);
+
+  const [localAction, setLocalAction] =
+    useState(null);
+
+  const isBusy =
+    actionLoading || localAction !== null;
+
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDraftContent(content);
+    }
+  }, [content, isEditing]);
+
+
+  const formattedTimestamp = useMemo(() => {
+    if (!createdAt) return "";
+
+    const date = new Date(createdAt);
+
+    if (
+      Number.isNaN(date.getTime())
+    ) {
+      return "";
+    }
+
+    return new Intl.DateTimeFormat(
+      "en-IN",
+      {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }
+    ).format(date);
+  }, [createdAt]);
+
 
   function speak() {
-    if (!content.trim()) return;
+    if (
+      !content.trim() ||
+      !window.speechSynthesis
+    ) {
+      return;
+    }
 
-    const speech = new SpeechSynthesisUtterance(content);
+    const speech =
+      new SpeechSynthesisUtterance(
+        content
+      );
 
     speech.lang = "en-IN";
     speech.rate = 1;
     speech.pitch = 1;
 
     window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(speech);
+    window.speechSynthesis.speak(
+      speech
+    );
   }
+
 
   async function copyText() {
     if (!content.trim()) return;
 
     try {
-      await navigator.clipboard.writeText(content);
+      await navigator.clipboard.writeText(
+        content
+      );
+
       setCopied(true);
 
-      setTimeout(() => {
+      window.setTimeout(() => {
         setCopied(false);
       }, 2000);
     } catch (error) {
-      console.error("Copy failed:", error);
+      console.error(
+        "Copy failed:",
+        error
+      );
     }
   }
+
+
+  function startEditing() {
+    setDraftContent(content);
+    setIsEditing(true);
+  }
+
+
+  function cancelEditing() {
+    setDraftContent(content);
+    setIsEditing(false);
+  }
+
+
+  async function saveEditedMessage() {
+    const cleanedContent =
+      draftContent.trim();
+
+    if (
+      !cleanedContent ||
+      !resolvedMessageId ||
+      !onEditMessage
+    ) {
+      return;
+    }
+
+    if (cleanedContent === content.trim()) {
+      setIsEditing(false);
+      return;
+    }
+
+    try {
+      setLocalAction("edit");
+
+      await onEditMessage(
+        resolvedMessageId,
+        cleanedContent
+      );
+
+      setIsEditing(false);
+    } catch (error) {
+      console.error(
+        "Edit message failed:",
+        error
+      );
+    } finally {
+      setLocalAction(null);
+    }
+  }
+
+
+  async function deleteCurrentMessage() {
+    if (
+      !resolvedMessageId ||
+      !onDeleteMessage
+    ) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      isUser
+        ? "Delete this user message?"
+        : "Delete this assistant response?"
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setLocalAction("delete");
+
+      await onDeleteMessage(
+        resolvedMessageId,
+        role
+      );
+    } catch (error) {
+      console.error(
+        "Delete message failed:",
+        error
+      );
+    } finally {
+      setLocalAction(null);
+    }
+  }
+
+
+  async function regenerateFromMessage() {
+    if (
+      !resolvedMessageId ||
+      !onRegenerateMessage
+    ) {
+      return;
+    }
+
+    try {
+      setLocalAction("regenerate");
+
+      await onRegenerateMessage(
+        resolvedMessageId
+      );
+    } catch (error) {
+      console.error(
+        "Regenerate message failed:",
+        error
+      );
+    } finally {
+      setLocalAction(null);
+    }
+  }
+
+
+  async function regenerateLatestResponse() {
+    if (!regenerateResponse) return;
+
+    try {
+      setLocalAction("regenerate");
+      await regenerateResponse();
+    } catch (error) {
+      console.error(
+        "Regenerate response failed:",
+        error
+      );
+    } finally {
+      setLocalAction(null);
+    }
+  }
+
+
+  function handleEditorKeyDown(event) {
+    if (
+      event.key === "Enter" &&
+      (event.ctrlKey || event.metaKey)
+    ) {
+      event.preventDefault();
+      saveEditedMessage();
+    }
+
+    if (event.key === "Escape") {
+      cancelEditing();
+    }
+  }
+
 
   return (
     <div
       className={`mb-5 flex ${
-        isUser ? "justify-end" : "justify-start"
+        isUser
+          ? "justify-end"
+          : "justify-start"
       }`}
     >
       <div
@@ -70,7 +287,10 @@ function Message({
           <div className="mb-3">
             <img
               src={imageUrl}
-              alt={fileName || "Uploaded image"}
+              alt={
+                fileName ||
+                "Uploaded image"
+              }
               className={`max-h-80 max-w-full rounded-xl border ${
                 isDark
                   ? "border-slate-700"
@@ -87,7 +307,9 @@ function Message({
                     : "text-slate-500"
               }`}
             >
-              📷 {fileName || "Uploaded image"}
+              📷{" "}
+              {fileName ||
+                "Uploaded image"}
             </p>
           </div>
         )}
@@ -117,7 +339,8 @@ function Message({
                       : "text-slate-900"
                 }`}
               >
-                {fileName || "Uploaded PDF"}
+                {fileName ||
+                  "Uploaded PDF"}
               </p>
 
               <p
@@ -130,138 +353,298 @@ function Message({
                 }`}
               >
                 PDF document
-                {fileSize ? ` • ${fileSize}` : ""}
+                {fileSize
+                  ? ` • ${fileSize}`
+                  : ""}
               </p>
             </div>
           </div>
         )}
 
-        {/* Message content */}
-        {content && (
-          <div className="break-words">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                code({
-                  inline,
-                  className,
-                  children,
-                  ...props
-                }) {
-                  const match = /language-(\w+)/.exec(
-                    className || ""
-                  );
+        {/* Message editor */}
+        {isEditing ? (
+          <div>
+            <textarea
+              value={draftContent}
+              onChange={(event) =>
+                setDraftContent(
+                  event.target.value
+                )
+              }
+              onKeyDown={
+                handleEditorKeyDown
+              }
+              disabled={isBusy}
+              autoFocus
+              rows={5}
+              className={`w-full resize-y rounded-xl border p-3 text-sm outline-none transition ${
+                isDark
+                  ? "border-blue-400 bg-slate-950 text-white focus:ring-2 focus:ring-blue-400"
+                  : "border-blue-300 bg-white text-slate-900 focus:ring-2 focus:ring-blue-300"
+              }`}
+            />
 
-                  return !inline && match ? (
-                    <CodeBlock
-  language={match[1]}
-  value={String(children).replace(
-    /\n$/,
-    ""
-  )}
-  theme={theme}
-/>
-                  ) : (
-                    <code
-                      className={`rounded px-1 py-0.5 ${
-                        isUser
-                          ? "bg-blue-800/50"
-                          : isDark
-                            ? "bg-slate-950"
-                            : "bg-slate-200"
-                      }`}
-                      {...props}
-                    >
-                      {children}
-                    </code>
-                  );
-                },
+            <div className="mt-2 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelEditing}
+                disabled={isBusy}
+                className="rounded-lg bg-slate-600 px-3 py-1.5 text-sm text-white transition hover:bg-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
 
-                a({ children, href }) {
-                  return (
-                    <a
-                      href={href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={
-                        isUser
-                          ? "text-white underline"
-                          : "text-blue-500 underline"
-                      }
-                    >
-                      {children}
-                    </a>
-                  );
-                },
-              }}
-            >
-              {content}
-            </ReactMarkdown>
+              <button
+                type="button"
+                onClick={
+                  saveEditedMessage
+                }
+                disabled={
+                  isBusy ||
+                  !draftContent.trim()
+                }
+                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {localAction === "edit"
+                  ? "Saving..."
+                  : "Save & regenerate"}
+              </button>
+            </div>
+
+            <p className="mt-2 text-right text-xs text-blue-100">
+              Ctrl + Enter to save •
+              Esc to cancel
+            </p>
           </div>
+        ) : (
+          <>
+            {/* Message content */}
+            {content && (
+              <div className="break-words">
+                <ReactMarkdown
+                  remarkPlugins={[
+                    remarkGfm,
+                  ]}
+                  components={{
+                    code({
+                      inline,
+                      className,
+                      children,
+                      ...props
+                    }) {
+                      const match =
+                        /language-(\w+)/.exec(
+                          className || ""
+                        );
+
+                      return (
+                        !inline && match
+                      ) ? (
+                        <CodeBlock
+                          language={
+                            match[1]
+                          }
+                          value={String(
+                            children
+                          ).replace(
+                            /\n$/,
+                            ""
+                          )}
+                          theme={theme}
+                        />
+                      ) : (
+                        <code
+                          className={`rounded px-1 py-0.5 ${
+                            isUser
+                              ? "bg-blue-800/50"
+                              : isDark
+                                ? "bg-slate-950"
+                                : "bg-slate-200"
+                          }`}
+                          {...props}
+                        >
+                          {children}
+                        </code>
+                      );
+                    },
+
+                    a({
+                      children,
+                      href,
+                    }) {
+                      return (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={
+                            isUser
+                              ? "text-white underline"
+                              : "text-blue-500 underline"
+                          }
+                        >
+                          {children}
+                        </a>
+                      );
+                    },
+                  }}
+                >
+                  {content}
+                </ReactMarkdown>
+              </div>
+            )}
+
+            {!isUser && (
+              <SourcesCard
+                sources={sources}
+                theme={theme}
+              />
+            )}
+          </>
         )}
 
-        {!isUser && (
-          <SourcesCard
-            sources={sources}
-            theme={theme}
-          />
-        )}
+        {/* Timestamp */}
+        {formattedTimestamp &&
+          !isEditing && (
+            <p
+              className={`mt-3 text-xs ${
+                isUser
+                  ? "text-blue-100"
+                  : isDark
+                    ? "text-slate-400"
+                    : "text-slate-500"
+              }`}
+              title={createdAt}
+            >
+              {formattedTimestamp}
+            </p>
+          )}
 
-        {/* Assistant actions */}
-        {!isUser && content && (
-          <div className="mt-4 flex flex-wrap gap-2">
+        {/* Message actions */}
+        {!isEditing && content && (
+          <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
               onClick={copyText}
-              className={`rounded-lg px-3 py-1 text-sm transition ${
-                isDark
-                  ? "bg-slate-700 hover:bg-slate-600"
-                  : "bg-slate-200 hover:bg-slate-300"
+              disabled={isBusy}
+              className={`rounded-lg px-3 py-1 text-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                isUser
+                  ? "bg-blue-700 hover:bg-blue-800"
+                  : isDark
+                    ? "bg-slate-700 hover:bg-slate-600"
+                    : "bg-slate-200 hover:bg-slate-300"
               }`}
             >
-              {copied ? "✅ Copied" : "📋 Copy"}
+              {copied
+                ? "✅ Copied"
+                : "📋 Copy"}
             </button>
 
-            <button
-              type="button"
-              onClick={speak}
-              className="rounded-lg bg-purple-600 px-3 py-1 text-sm text-white transition hover:bg-purple-500"
-            >
-              🔊 Speak
-            </button>
-
-            <button
-              type="button"
-              className={`rounded-lg px-3 py-1 transition ${
-                isDark
-                  ? "bg-slate-700 hover:bg-slate-600"
-                  : "bg-slate-200 hover:bg-slate-300"
-              }`}
-              title="Helpful"
-            >
-              👍
-            </button>
-
-            <button
-              type="button"
-              className={`rounded-lg px-3 py-1 transition ${
-                isDark
-                  ? "bg-slate-700 hover:bg-slate-600"
-                  : "bg-slate-200 hover:bg-slate-300"
-              }`}
-              title="Not helpful"
-            >
-              👎
-            </button>
-
-            {isLast && (
+            {!isUser && (
               <button
                 type="button"
-                onClick={regenerateResponse}
-                className="rounded-lg bg-blue-600 px-3 py-1 text-sm text-white transition hover:bg-blue-500"
+                onClick={speak}
+                disabled={isBusy}
+                className="rounded-lg bg-purple-600 px-3 py-1 text-sm text-white transition hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                🔄 Regenerate
+                🔊 Speak
               </button>
+            )}
+
+            {isUser &&
+              onEditMessage &&
+              resolvedMessageId && (
+                <button
+                  type="button"
+                  onClick={startEditing}
+                  disabled={isBusy}
+                  className="rounded-lg bg-amber-500 px-3 py-1 text-sm text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  ✏️ Edit
+                </button>
+              )}
+
+            {isUser &&
+              onRegenerateMessage &&
+              resolvedMessageId && (
+                <button
+                  type="button"
+                  onClick={
+                    regenerateFromMessage
+                  }
+                  disabled={isBusy}
+                  className="rounded-lg bg-emerald-600 px-3 py-1 text-sm text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {localAction ===
+                  "regenerate"
+                    ? "Regenerating..."
+                    : "🔄 Regenerate"}
+                </button>
+              )}
+
+            {!isUser &&
+              isLast &&
+              regenerateResponse &&
+              !onRegenerateMessage && (
+                <button
+                  type="button"
+                  onClick={
+                    regenerateLatestResponse
+                  }
+                  disabled={isBusy}
+                  className="rounded-lg bg-blue-600 px-3 py-1 text-sm text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {localAction ===
+                  "regenerate"
+                    ? "Regenerating..."
+                    : "🔄 Regenerate"}
+                </button>
+              )}
+
+            {onDeleteMessage &&
+              resolvedMessageId && (
+                <button
+                  type="button"
+                  onClick={
+                    deleteCurrentMessage
+                  }
+                  disabled={isBusy}
+                  className="rounded-lg bg-red-600 px-3 py-1 text-sm text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {localAction === "delete"
+                    ? "Deleting..."
+                    : "🗑️ Delete"}
+                </button>
+              )}
+
+            {!isUser && (
+              <>
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  className={`rounded-lg px-3 py-1 transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                    isDark
+                      ? "bg-slate-700 hover:bg-slate-600"
+                      : "bg-slate-200 hover:bg-slate-300"
+                  }`}
+                  title="Helpful"
+                >
+                  👍
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  className={`rounded-lg px-3 py-1 transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                    isDark
+                      ? "bg-slate-700 hover:bg-slate-600"
+                      : "bg-slate-200 hover:bg-slate-300"
+                  }`}
+                  title="Not helpful"
+                >
+                  👎
+                </button>
+              </>
             )}
           </div>
         )}

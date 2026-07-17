@@ -3,10 +3,13 @@ import { useState } from "react";
 import {
   createChat,
   deleteChat,
+  deleteMessage as deleteMessageRequest,
+  editMessage as editMessageRequest,
   getChatMessages,
   getChats,
   importChatBackup as importChatBackupRequest,
   importFullChatBackup as importFullChatBackupRequest,
+  regenerateMessage as regenerateMessageRequest,
   renameChat,
 } from "../services/chatService";
 
@@ -86,6 +89,11 @@ export default function useChats(
     setMessageSearchTarget,
   ] = useState(null);
 
+  const [
+  messageActionLoadingId,
+  setMessageActionLoadingId,
+] = useState(null);
+
 
   function clearMessageSearchTarget() {
     setMessageSearchTarget(null);
@@ -126,6 +134,29 @@ export default function useChats(
 
     return normalizedMessages;
   }
+
+  async function refreshAfterMessageAction(
+  chatId
+) {
+  const normalizedMessages =
+    await loadMessages(chatId);
+
+  try {
+    const response =
+      await getChats();
+
+    setChats(
+      response?.data?.chats || []
+    );
+  } catch (error) {
+    console.error(
+      "Refresh chat list error:",
+      error
+    );
+  }
+
+  return normalizedMessages;
+}
 
 
   async function loadChats() {
@@ -507,6 +538,176 @@ export default function useChats(
     }
   }
 
+  async function editCurrentMessage(
+  messageId,
+  content
+) {
+  if (!activeChatId) {
+    throw new Error(
+      "No active chat selected."
+    );
+  }
+
+  const cleanedContent =
+    String(content || "").trim();
+
+  if (!cleanedContent) {
+    throw new Error(
+      "Message content cannot be empty."
+    );
+  }
+
+  let messageWasEdited = false;
+
+  try {
+    setMessageActionLoadingId(
+      messageId
+    );
+
+    await editMessageRequest(
+      activeChatId,
+      messageId,
+      cleanedContent
+    );
+
+    messageWasEdited = true;
+
+    await regenerateMessageRequest(
+      activeChatId,
+      messageId,
+      null
+    );
+
+    await refreshAfterMessageAction(
+      activeChatId
+    );
+
+    createMessageSearchTarget(
+      messageId
+    );
+
+    return true;
+  } catch (error) {
+    console.error(
+      "Edit message error:",
+      error
+    );
+
+    window.alert(
+      error?.response?.data?.detail ||
+        (
+          messageWasEdited
+            ? "Message was edited, but the response could not be regenerated."
+            : "Unable to edit the message."
+        )
+    );
+
+    throw error;
+  } finally {
+    setMessageActionLoadingId(null);
+  }
+}
+
+
+async function deleteCurrentMessage(
+  messageId
+) {
+  if (!activeChatId) {
+    throw new Error(
+      "No active chat selected."
+    );
+  }
+
+  try {
+    setMessageActionLoadingId(
+      messageId
+    );
+
+    const response =
+      await deleteMessageRequest(
+        activeChatId,
+        messageId
+      );
+
+    await refreshAfterMessageAction(
+      activeChatId
+    );
+
+    if (
+      Number(
+        messageSearchTarget?.messageId
+      ) === Number(messageId)
+    ) {
+      clearMessageSearchTarget();
+    }
+
+    return response?.data;
+  } catch (error) {
+    console.error(
+      "Delete message error:",
+      error
+    );
+
+    window.alert(
+      error?.response?.data?.detail ||
+        "Unable to delete the message."
+    );
+
+    throw error;
+  } finally {
+    setMessageActionLoadingId(null);
+  }
+}
+
+
+async function regenerateCurrentMessage(
+  messageId,
+  modelId = null
+) {
+  if (!activeChatId) {
+    throw new Error(
+      "No active chat selected."
+    );
+  }
+
+  try {
+    setMessageActionLoadingId(
+      messageId
+    );
+
+    const response =
+      await regenerateMessageRequest(
+        activeChatId,
+        messageId,
+        modelId
+      );
+
+    await refreshAfterMessageAction(
+      activeChatId
+    );
+
+    createMessageSearchTarget(
+      messageId
+    );
+
+    return response?.data;
+  } catch (error) {
+    console.error(
+      "Regenerate message error:",
+      error
+    );
+
+    window.alert(
+      error?.response?.data?.detail ||
+        "Unable to regenerate the response."
+    );
+
+    throw error;
+  } finally {
+    setMessageActionLoadingId(null);
+  }
+}
+
 
   async function deleteCurrentChat(
     chatId
@@ -612,23 +813,28 @@ export default function useChats(
   }
 
 
-  return {
-    chats,
-    setChats,
+ return {
+  chats,
+  setChats,
 
-    activeChatId,
-    setActiveChatId,
+  activeChatId,
+  setActiveChatId,
 
-    messageSearchTarget,
-    clearMessageSearchTarget,
+  messageSearchTarget,
+  clearMessageSearchTarget,
 
-    loadChats,
-    selectChat,
-    newChat,
-    createNewChatIfNeeded,
-    restoreChatBackup,
-    restoreFullChatBackup,
-    renameCurrentChat,
-    deleteCurrentChat,
-  };
+  messageActionLoadingId,
+  editCurrentMessage,
+  deleteCurrentMessage,
+  regenerateCurrentMessage,
+
+  loadChats,
+  selectChat,
+  newChat,
+  createNewChatIfNeeded,
+  restoreChatBackup,
+  restoreFullChatBackup,
+  renameCurrentChat,
+  deleteCurrentChat,
+};
 }
