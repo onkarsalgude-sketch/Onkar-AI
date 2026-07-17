@@ -25,8 +25,14 @@ function ChatWindow({
   clearAllPendingFiles,
   uploadProgress,
   uploadSummary,
-  dismissUploadSummary,
+   dismissUploadSummary,
   regenerateResponse,
+
+  onEditMessage,
+  onDeleteMessage,
+  onRegenerateMessage,
+  messageActionLoadingId = null,
+
   onOpenSidebar,
   theme = "dark",
 
@@ -444,6 +450,11 @@ function ChatWindow({
                 highlightedMessageId ===
                   messageId;
 
+                  const isMessageActionLoading =
+                 messageId !== null &&
+                Number(messageActionLoadingId) ===
+                  messageId;
+
               return (
                 <div
                   key={
@@ -468,34 +479,44 @@ function ChatWindow({
                   }`}
                 >
                   <Message
-                    role={message.role}
-                    content={
-                      message.content
-                    }
-                    imageUrl={
-                      message.imageUrl
-                    }
-                    fileName={
-                      message.fileName
-                    }
-                    fileType={
-                      message.fileType
-                    }
-                    fileSize={
-                      message.fileSize
-                    }
-                    sources={
-                      message.sources || []
-                    }
-                    isLast={
-                      index ===
-                      messages.length - 1
-                    }
-                    regenerateResponse={
-                      regenerateResponse
-                    }
-                    theme={theme}
-                  />
+  id={messageId}
+  role={message.role}
+  content={message.content}
+  createdAt={
+    message.created_at ||
+    message.createdAt
+  }
+  imageUrl={message.imageUrl}
+  fileName={message.fileName}
+  fileType={message.fileType}
+  fileSize={message.fileSize}
+  sources={message.sources || []}
+  isLast={
+    index ===
+    messages.length - 1
+  }
+  regenerateResponse={
+    regenerateResponse
+  }
+  onEditMessage={
+    message.role === "user"
+      ? onEditMessage
+      : undefined
+  }
+  onDeleteMessage={
+    onDeleteMessage
+  }
+  onRegenerateMessage={
+    message.role === "user"
+      ? onRegenerateMessage
+      : undefined
+  }
+  actionLoading={
+    loading ||
+    isMessageActionLoading
+  }
+  theme={theme}
+/>
                 </div>
               );
             }

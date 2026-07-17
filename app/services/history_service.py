@@ -644,6 +644,215 @@ def get_messages(
 
     return messages
 
+def get_message(
+    chat_id: int,
+    message_id: int,
+):
+    conn = get_connection(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT
+            id,
+            chat_id,
+            role,
+            content,
+            created_at,
+            sources_json,
+            model_id,
+            attachment_json
+        FROM messages
+        WHERE id = ?
+          AND chat_id = ?
+        """,
+        (
+            message_id,
+            chat_id,
+        ),
+    )
+
+    row = cursor.fetchone()
+    conn.close()
+
+    if row is None:
+        return None
+
+    return {
+        "id": row[0],
+        "chat_id": row[1],
+        "role": row[2],
+        "content": row[3],
+        "created_at": row[4],
+        "sources": _load_json(
+            row[5],
+            [],
+        ),
+        "model_id": row[6],
+        "attachment": _load_json(
+            row[7],
+            None,
+        ),
+    }
+
+
+def edit_user_message(
+    chat_id: int,
+    message_id: int,
+    content: str,
+):
+    cleaned_content = str(
+        content or ""
+    ).strip()
+
+    if not cleaned_content:
+        raise ValueError(
+            "Message content cannot be empty."
+        )
+
+    conn = get_connection(DB_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "BEGIN IMMEDIATE"
+        )
+
+        cursor.execute(
+            """
+            SELECT role
+            FROM messages
+            WHERE id = ?
+              AND chat_id = ?
+            """,
+            (
+                message_id,
+                chat_id,
+            ),
+        )
+
+        row = cursor.fetchone()
+
+        if row is None:
+            conn.rollback()
+            return None
+
+        if row[0] != "user":
+            raise ValueError(
+                "Only user messages can be edited."
+            )
+
+        cursor.execute(
+            """
+            UPDATE messages
+            SET content = ?
+            WHERE id = ?
+              AND chat_id = ?
+            """,
+            (
+                cleaned_content,
+                message_id,
+                chat_id,
+            ),
+        )
+
+        # Edited message नंतरचे जुने responses
+        # delete केले जातील, जेणेकरून नवीन
+        # response योग्य context वर generate होईल.
+        cursor.execute(
+            """
+            DELETE FROM messages
+            WHERE chat_id = ?
+              AND id > ?
+            """,
+            (
+                chat_id,
+                message_id,
+            ),
+        )
+
+        deleted_following_messages = (
+            cursor.rowcount
+        )
+
+        conn.commit()
+
+        return {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "content": cleaned_content,
+            "deleted_following_messages": (
+                deleted_following_messages
+            ),
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+def delete_message(
+    chat_id: int,
+    message_id: int,
+):
+    conn = get_connection(DB_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "BEGIN IMMEDIATE"
+        )
+
+        cursor.execute(
+            """
+            SELECT role
+            FROM messages
+            WHERE id = ?
+              AND chat_id = ?
+            """,
+            (
+                message_id,
+                chat_id,
+            ),
+        )
+
+        row = cursor.fetchone()
+
+        if row is None:
+            conn.rollback()
+            return None
+
+        role = row[0]
+
+        cursor.execute(
+            """
+            DELETE FROM messages
+            WHERE id = ?
+              AND chat_id = ?
+            """,
+            (
+                message_id,
+                chat_id,
+            ),
+        )
+
+        conn.commit()
+
+        return {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "role": role,
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
 
 def restore_chat_backup(
     backup: dict,

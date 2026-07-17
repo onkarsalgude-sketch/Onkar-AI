@@ -13,6 +13,10 @@ from app.models.chat import (
     ChatBackupImportResponse,
     ChatRequest,
     ChatResponse,
+    MessageDeleteResponse,
+    MessageEditRequest,
+    MessageEditResponse,
+    MessageRegenerateRequest,
 )
 from app.services.history_service import (
     clear_history,
@@ -20,8 +24,11 @@ from app.services.history_service import (
     create_folder,
     delete_chat,
     delete_folder,
+    delete_message,
+    edit_user_message,
     get_chats,
     get_folders,
+    get_message,
     get_messages,
     init_db,
     move_chat_to_folder,
@@ -213,6 +220,190 @@ def chat_messages(chat_id: int):
         "messages": get_messages(chat_id),
     }
 
+@router.patch(
+    "/chats/{chat_id}/messages/{message_id}",
+    response_model=MessageEditResponse,
+)
+def update_user_message(
+    chat_id: int,
+    message_id: int,
+    request: MessageEditRequest,
+):
+    try:
+        result = edit_user_message(
+            chat_id,
+            message_id,
+            request.content,
+        )
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        print(
+            "MESSAGE EDIT ERROR:",
+            error,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to edit the message.",
+        ) from error
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Message not found.",
+        )
+
+    return MessageEditResponse(
+        message="Message updated successfully.",
+        **result,
+    )
+
+
+@router.delete(
+    "/chats/{chat_id}/messages/{message_id}",
+    response_model=MessageDeleteResponse,
+)
+def remove_message(
+    chat_id: int,
+    message_id: int,
+):
+    try:
+        result = delete_message(
+            chat_id,
+            message_id,
+        )
+
+    except Exception as error:
+        print(
+            "MESSAGE DELETE ERROR:",
+            error,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to delete the message.",
+        ) from error
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Message not found.",
+        )
+
+    return MessageDeleteResponse(
+        message="Message deleted successfully.",
+        **result,
+    )
+
+
+@router.post(
+    "/chats/{chat_id}/messages/{message_id}/regenerate"
+)
+def regenerate_message_response(
+    chat_id: int,
+    message_id: int,
+    request: MessageRegenerateRequest,
+):
+    original_message = get_message(
+        chat_id,
+        message_id,
+    )
+
+    if original_message is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Message not found.",
+        )
+
+    if original_message["role"] != "user":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "A response can only be regenerated "
+                "from a user message."
+            ),
+        )
+
+    if original_message.get("attachment"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Attachment messages cannot be "
+                "regenerated yet."
+            ),
+        )
+
+    try:
+        # जुना assistant response आणि त्यानंतरचे
+        # messages remove करून context सुरक्षित ठेवणे.
+        edit_result = edit_user_message(
+            chat_id,
+            message_id,
+            original_message["content"],
+        )
+
+        result = brain.chat(
+            original_message["content"],
+            chat_id=chat_id,
+            model_id=request.model_id,
+        )
+
+        result_sources = (
+            result.get("sources")
+            or []
+        )
+
+        result_model_id = (
+            result.get("model_id")
+            or request.model_id
+        )
+
+        save_message(
+            chat_id,
+            "assistant",
+            result["reply"],
+            sources=result_sources,
+            model_id=result_model_id,
+        )
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        print(
+            "MESSAGE REGENERATE ERROR:",
+            error,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to regenerate the response."
+            ),
+        ) from error
+
+    return {
+        "message": "Response regenerated successfully.",
+        "chat_id": chat_id,
+        "user_message_id": message_id,
+        "reply": result["reply"],
+        "sources": result_sources,
+        "model_id": result_model_id,
+        "deleted_following_messages": (
+            edit_result[
+                "deleted_following_messages"
+            ]
+        ),
+    }
 
 @router.delete("/chats/{chat_id}")
 def remove_chat(chat_id: int):

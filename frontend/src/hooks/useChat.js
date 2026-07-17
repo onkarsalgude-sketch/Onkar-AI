@@ -7,6 +7,7 @@ import {
 import {
   streamChat,
   getChats,
+  getChatMessages,
   getModels,
   togglePinChat as togglePinChatRequest,
   getFolders,
@@ -193,24 +194,32 @@ export default function useChat() {
     useRef(null);
 
   const {
-    chats,
-    setChats,
-    activeChatId,
-setActiveChatId,
-messageSearchTarget,
-clearMessageSearchTarget,
-loadChats,
-selectChat,
-    newChat,
-    createNewChatIfNeeded,
-   restoreChatBackup,
-restoreFullChatBackup,
-renameCurrentChat,
-deleteCurrentChat,
-  } = useChats(
-    setMessages,
-    setInput
-  );
+  chats,
+  setChats,
+
+  activeChatId,
+  setActiveChatId,
+
+  messageSearchTarget,
+  clearMessageSearchTarget,
+
+  messageActionLoadingId,
+  editCurrentMessage,
+  deleteCurrentMessage,
+  regenerateCurrentMessage,
+
+  loadChats,
+  selectChat,
+  newChat,
+  createNewChatIfNeeded,
+  restoreChatBackup,
+  restoreFullChatBackup,
+  renameCurrentChat,
+  deleteCurrentChat,
+} = useChats(
+  setMessages,
+  setInput
+);
 
 
   useEffect(() => {
@@ -354,6 +363,181 @@ deleteCurrentChat,
   messageId
 );
   }
+
+  async function syncLatestPersistedMessages(
+  chatId
+) {
+  if (!chatId) return;
+
+  try {
+    const response =
+      await getChatMessages(chatId);
+
+    const persistedMessages =
+      response?.data?.messages || [];
+
+    const latestUserMessage = [
+      ...persistedMessages,
+    ]
+      .reverse()
+      .find(
+        (message) =>
+          message.role === "user"
+      );
+
+    const latestAssistantMessage = [
+      ...persistedMessages,
+    ]
+      .reverse()
+      .find(
+        (message) =>
+          message.role ===
+          "assistant"
+      );
+
+    setMessages(
+      (previousMessages) => {
+        const updatedMessages = [
+          ...previousMessages,
+        ];
+
+        let assistantIndex = -1;
+
+        for (
+          let index =
+            updatedMessages.length - 1;
+          index >= 0;
+          index -= 1
+        ) {
+          if (
+            updatedMessages[index]
+              ?.role === "assistant"
+          ) {
+            assistantIndex = index;
+            break;
+          }
+        }
+
+        let userIndex = -1;
+
+        const userSearchStart =
+          assistantIndex > 0
+            ? assistantIndex - 1
+            : updatedMessages.length -
+              1;
+
+        for (
+          let index = userSearchStart;
+          index >= 0;
+          index -= 1
+        ) {
+          if (
+            updatedMessages[index]
+              ?.role === "user"
+          ) {
+            userIndex = index;
+            break;
+          }
+        }
+
+        if (
+          userIndex >= 0 &&
+          latestUserMessage
+        ) {
+          updatedMessages[userIndex] = {
+            ...updatedMessages[userIndex],
+            id:
+              latestUserMessage.id,
+            created_at:
+              latestUserMessage.created_at,
+          };
+        }
+
+        if (
+          assistantIndex >= 0 &&
+          latestAssistantMessage
+        ) {
+          updatedMessages[
+            assistantIndex
+          ] = {
+            ...updatedMessages[
+              assistantIndex
+            ],
+            id:
+              latestAssistantMessage.id,
+            created_at:
+              latestAssistantMessage.created_at,
+            sources:
+              latestAssistantMessage
+                .sources ||
+              updatedMessages[
+                assistantIndex
+              ].sources ||
+              [],
+            modelId:
+              latestAssistantMessage
+                .model_id ||
+              updatedMessages[
+                assistantIndex
+              ].modelId ||
+              null,
+          };
+        }
+
+        return updatedMessages;
+      }
+    );
+  } catch (error) {
+    console.error(
+      "Message ID sync error:",
+      error
+    );
+  }
+}
+
+  async function handleEditMessage(
+  messageId,
+  content
+) {
+  setChatError(null);
+
+  lastFailedRequestRef.current =
+    null;
+
+  return editCurrentMessage(
+    messageId,
+    content
+  );
+}
+
+
+async function handleDeleteMessage(
+  messageId
+) {
+  setChatError(null);
+
+  lastFailedRequestRef.current =
+    null;
+
+  return deleteCurrentMessage(
+    messageId
+  );
+}
+
+
+async function handleRegenerateMessage(
+  messageId
+) {
+  setChatError(null);
+
+  lastFailedRequestRef.current =
+    null;
+
+  return regenerateCurrentMessage(
+    messageId,
+    selectedModel || null
+  );
+}
 
 
   async function uploadFile(event) {
@@ -776,6 +960,10 @@ deleteCurrentChat,
         return updatedMessages;
       });
 
+      await syncLatestPersistedMessages(
+  currentChatId
+);
+
       if (result?.chatId) {
         setActiveChatId(result.chatId);
       }
@@ -926,33 +1114,37 @@ deleteCurrentChat,
         );
 
       setMessages(
-        (previousMessages) => {
-          const updatedMessages = [
-            ...previousMessages,
-          ];
+  (previousMessages) => {
+    const updatedMessages = [
+      ...previousMessages,
+    ];
 
-          const lastIndex =
-            updatedMessages.length - 1;
+    const lastIndex =
+      updatedMessages.length - 1;
 
-          updatedMessages[
-            lastIndex
-          ] = {
-            ...updatedMessages[
-              lastIndex
-            ],
-            sources:
-              result?.sources || [],
-            modelId:
-              result?.modelId ||
-              selectedModel,
-          };
+    updatedMessages[
+      lastIndex
+    ] = {
+      ...updatedMessages[
+        lastIndex
+      ],
+      sources:
+        result?.sources || [],
+      modelId:
+        result?.modelId ||
+        selectedModel,
+    };
 
-          return updatedMessages;
-        }
-      );
+    return updatedMessages;
+  }
+);
 
-      const chatsResponse =
-        await getChats();
+await syncLatestPersistedMessages(
+  activeChatId
+);
+
+const chatsResponse =
+  await getChats();
 
       setChats(
         chatsResponse.data.chats ||
@@ -1209,12 +1401,25 @@ deleteCurrentChat,
     setChats,
    activeChatId,
 setActiveChatId,
+
 messageSearchTarget,
 clearMessageSearchTarget,
+
 documentRefreshKey,
 
-    folders,
-    loadFolders,
+messageActionLoadingId,
+
+editMessage:
+  handleEditMessage,
+
+deleteMessage:
+  handleDeleteMessage,
+
+regenerateMessage:
+  handleRegenerateMessage,
+
+folders,
+loadFolders,
 
     models,
     defaultModel,
