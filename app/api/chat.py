@@ -11,6 +11,8 @@ from app.memory.memory import clear
 from app.models.chat import (
     ChatBackupImportRequest,
     ChatBackupImportResponse,
+    ChatBranchRequest,
+    ChatBranchResponse,
     ChatRequest,
     ChatResponse,
     MessageBookmarkDeleteResponse,
@@ -24,6 +26,7 @@ from app.models.chat import (
 from app.services.history_service import (
     clear_history,
     create_chat,
+    create_chat_branch,
     create_folder,
     delete_chat,
     delete_folder,
@@ -314,6 +317,58 @@ def chat_messages(chat_id: int):
     "/chats/{chat_id}/messages/{message_id}/bookmark",
     response_model=MessageBookmarkResponse,
 )
+@router.post(
+    "/chats/{chat_id}/messages/{message_id}/branch",
+    response_model=ChatBranchResponse,
+)
+def branch_conversation(
+    chat_id: int,
+    message_id: int,
+    request: ChatBranchRequest,
+):
+    try:
+        result = create_chat_branch(
+            chat_id,
+            message_id,
+            request.title,
+        )
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        print(
+            "CHAT BRANCH ERROR:",
+            error,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to create the "
+                "conversation branch."
+            ),
+        ) from error
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Chat or source message "
+                "not found."
+            ),
+        )
+
+    return ChatBranchResponse(
+        message=(
+            "Conversation branch created "
+            "successfully."
+        ),
+        **result,
+    )
 def add_or_update_message_bookmark(
     chat_id: int,
     message_id: int,

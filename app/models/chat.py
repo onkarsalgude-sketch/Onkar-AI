@@ -287,3 +287,45 @@ class MessageBookmarkDeleteResponse(
     message: str
     chat_id: int
     message_id: int
+
+    # -------------------------
+# Conversation branch models
+# -------------------------
+
+class ChatBranchRequest(BaseModel):
+    title: Optional[str] = Field(
+        default=None,
+        max_length=200,
+    )
+
+    @field_validator("title")
+    @classmethod
+    def clean_title(
+        cls,
+        value: Optional[str],
+    ) -> Optional[str]:
+        if value is None:
+            return None
+
+        cleaned_title = value.strip()
+
+        return cleaned_title or None
+
+
+class ChatBranchResponse(BaseModel):
+    message: str
+    chat_id: int
+    title: str
+    parent_chat_id: int
+    parent_chat_title: str
+    branched_from_message_id: int
+    branch_message_id: int
+
+    branched_from_message_role: Literal[
+        "user"
+    ]
+
+    branched_from_message_content: str
+    copied_message_count: int = 0
+    folder_id: Optional[int] = None
+    created_at: str

@@ -207,6 +207,7 @@ export default function useChat() {
   editCurrentMessage,
   deleteCurrentMessage,
   regenerateCurrentMessage,
+  createCurrentConversationBranch,
   saveCurrentMessageBookmark,
 removeCurrentMessageBookmark,
 
@@ -541,6 +542,20 @@ async function handleRegenerateMessage(
   );
 }
 
+async function handleCreateConversationBranch(
+  messageId,
+  title = null
+) {
+  setChatError(null);
+
+  lastFailedRequestRef.current =
+    null;
+
+  return createCurrentConversationBranch(
+    messageId,
+    title
+  );
+}
 async function handleSaveMessageBookmark(
   messageId,
   note = ""
@@ -1447,6 +1462,9 @@ deleteMessage:
 
 regenerateMessage:
   handleRegenerateMessage,
+
+createConversationBranch:
+  handleCreateConversationBranch,
 
   saveMessageBookmark:
   handleSaveMessageBookmark,

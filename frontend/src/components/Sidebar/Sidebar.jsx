@@ -259,13 +259,14 @@ function Sidebar({
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">
-              {chat.is_pinned
-                ? "📌"
-                : "💬"}{" "}
-              {chat.title ||
-                "New Chat"}
-            </p>
+           <p className="truncate text-sm font-medium">
+  {chat.is_pinned && "📌 "}
+  {chat.is_branch
+    ? "🌿"
+    : "💬"}{" "}
+  {chat.title ||
+    "New Chat"}
+</p>
 
             <p
               className={`mt-1 truncate text-xs ${
@@ -277,6 +278,43 @@ function Sidebar({
               {chat.last_message ||
                 "No messages yet"}
             </p>
+
+            {chat.is_branch && (
+  <p
+    className={`mt-1 truncate text-[11px] ${
+      isActive
+        ? "text-emerald-100"
+        : isDark
+          ? "text-emerald-400"
+          : "text-emerald-700"
+    }`}
+    title={`Branch of ${
+      chat.parent_chat_title ||
+      "original chat"
+    }`}
+  >
+    ↳ Branch of{" "}
+    {chat.parent_chat_title ||
+      "original chat"}
+  </p>
+)}
+
+{Number(chat.branch_count) > 0 && (
+  <p
+    className={`mt-1 text-[11px] ${
+      isActive
+        ? "text-blue-100"
+        : isDark
+          ? "text-slate-400"
+          : "text-slate-600"
+    }`}
+  >
+    🌿 {chat.branch_count}{" "}
+    {Number(chat.branch_count) === 1
+      ? "branch"
+      : "branches"}
+  </p>
+)}
 
             {chat.folder_name && (
               <p

@@ -29,7 +29,9 @@ def init_db():
             title TEXT NOT NULL,
             created_at TEXT NOT NULL,
             is_pinned INTEGER NOT NULL DEFAULT 0,
-            folder_id INTEGER DEFAULT NULL
+            folder_id INTEGER DEFAULT NULL,
+            parent_chat_id INTEGER DEFAULT NULL,
+            branched_from_message_id INTEGER DEFAULT NULL
         )
     """)
 
@@ -98,6 +100,18 @@ def init_db():
             ADD COLUMN folder_id INTEGER DEFAULT NULL
         """)
 
+    if "parent_chat_id" not in chat_columns:
+        cursor.execute("""
+            ALTER TABLE chats
+            ADD COLUMN parent_chat_id INTEGER DEFAULT NULL
+        """)
+
+    if "branched_from_message_id" not in chat_columns:
+        cursor.execute("""
+            ALTER TABLE chats
+            ADD COLUMN branched_from_message_id INTEGER DEFAULT NULL
+        """)
+
     # Add backup metadata columns to old messages table
     cursor.execute("PRAGMA table_info(messages)")
 
@@ -133,6 +147,16 @@ def init_db():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_chats_title
         ON chats(title COLLATE NOCASE)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_chats_parent_chat_id
+        ON chats(parent_chat_id)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_chats_branched_message_id
+        ON chats(branched_from_message_id)
     """)
 
     cursor.execute("""
@@ -293,6 +317,197 @@ def create_chat(title="New Chat"):
 
     return chat_id
 
+def create_chat_branch(
+    parent_chat_id: int,
+    message_id: int,
+    title: str | None = None,
+):
+    cleaned_title = str(
+        title or ""
+    ).strip()
+
+    if len(cleaned_title) > 200:
+        raise ValueError(
+            "Branch title cannot exceed 200 characters."
+        )
+
+    conn = get_connection(DB_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "BEGIN IMMEDIATE"
+        )
+
+        cursor.execute(
+            """
+            SELECT
+                title,
+                folder_id
+            FROM chats
+            WHERE id = ?
+            """,
+            (parent_chat_id,),
+        )
+
+        parent_chat = cursor.fetchone()
+
+        if parent_chat is None:
+            conn.rollback()
+            return None
+
+        cursor.execute(
+            """
+            SELECT
+                role,
+                content
+            FROM messages
+            WHERE id = ?
+              AND chat_id = ?
+            """,
+            (
+                message_id,
+                parent_chat_id,
+            ),
+        )
+
+        source_message = cursor.fetchone()
+
+        if source_message is None:
+            conn.rollback()
+            return None
+
+        if source_message[0] != "user":
+            raise ValueError(
+                "A conversation branch can only be created from a user message."
+            )
+
+        parent_title = parent_chat[0]
+        parent_folder_id = parent_chat[1]
+
+        branch_title = (
+            cleaned_title
+            or f"{parent_title} (Branch)"
+        )
+
+        branch_title = (
+            branch_title[:200].strip()
+            or "Branched Chat"
+        )
+
+        created_at = datetime.now().isoformat()
+
+        cursor.execute(
+            """
+            INSERT INTO chats (
+                title,
+                created_at,
+                is_pinned,
+                folder_id,
+                parent_chat_id,
+                branched_from_message_id
+            )
+            VALUES (?, ?, 0, ?, ?, ?)
+            """,
+            (
+                branch_title,
+                created_at,
+                parent_folder_id,
+                parent_chat_id,
+                message_id,
+            ),
+        )
+
+        branch_chat_id = cursor.lastrowid
+
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM messages
+            WHERE chat_id = ?
+              AND id <= ?
+            """,
+            (
+                parent_chat_id,
+                message_id,
+            ),
+        )
+
+        copied_message_count = cursor.fetchone()[0]
+
+        cursor.execute(
+            """
+            INSERT INTO messages (
+                chat_id,
+                role,
+                content,
+                created_at,
+                sources_json,
+                model_id,
+                attachment_json
+            )
+            SELECT
+                ?,
+                role,
+                content,
+                created_at,
+                sources_json,
+                model_id,
+                attachment_json
+            FROM messages
+            WHERE chat_id = ?
+              AND id <= ?
+            ORDER BY id ASC
+            """,
+            (
+                branch_chat_id,
+                parent_chat_id,
+                message_id,
+            ),
+        )
+        cursor.execute(
+            """
+            SELECT id
+            FROM messages
+            WHERE chat_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (branch_chat_id,),
+        )
+
+        branch_message_row = (
+            cursor.fetchone()
+        )
+
+        branch_message_id = (
+            branch_message_row[0]
+            if branch_message_row
+            else None
+        )
+
+        conn.commit()
+
+        return {
+            "chat_id": branch_chat_id,
+            "title": branch_title,
+            "parent_chat_id": parent_chat_id,
+            "parent_chat_title": parent_title,
+            "branched_from_message_id": message_id,
+            "branch_message_id": branch_message_id,
+            "branched_from_message_role": source_message[0],
+            "branched_from_message_content": source_message[1],
+            "copied_message_count": copied_message_count,
+            "folder_id": parent_folder_id,
+            "created_at": created_at,
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
 
 def get_chats():
     conn = get_connection(DB_PATH)
@@ -312,10 +527,20 @@ def get_chats():
                 WHERE messages.chat_id = chats.id
                 ORDER BY messages.id DESC
                 LIMIT 1
-            ) AS last_message
+            ) AS last_message,
+            chats.parent_chat_id,
+            parent_chats.title AS parent_chat_title,
+            chats.branched_from_message_id,
+            (
+                SELECT COUNT(*)
+                FROM chats AS child_chats
+                WHERE child_chats.parent_chat_id = chats.id
+            ) AS branch_count
         FROM chats
         LEFT JOIN folders
             ON folders.id = chats.folder_id
+        LEFT JOIN chats AS parent_chats
+            ON parent_chats.id = chats.parent_chat_id
         ORDER BY
             chats.is_pinned DESC,
             chats.id DESC
@@ -333,6 +558,11 @@ def get_chats():
             "folder_id": row[4],
             "folder_name": row[5],
             "last_message": row[6] if row[6] else "",
+            "parent_chat_id": row[7],
+            "parent_chat_title": row[8],
+            "branched_from_message_id": row[9],
+            "is_branch": row[7] is not None,
+            "branch_count": row[10],
         }
         for row in rows
     ]
@@ -1124,23 +1354,6 @@ def edit_user_message(
         # Edited message नंतरचे जुने responses
         # delete केले जातील, जेणेकरून नवीन
         # response योग्य context वर generate होईल.
-        cursor.execute(
-            """
-            DELETE FROM message_bookmarks
-            WHERE chat_id = ?
-              AND message_id IN (
-                  SELECT id
-                  FROM messages
-                  WHERE chat_id = ?
-                    AND id > ?
-              )
-            """,
-            (
-                chat_id,
-                chat_id,
-                message_id,
-            ),
-        )
 
         cursor.execute(
             """
@@ -1705,6 +1918,17 @@ def move_chat_to_folder(
 def delete_chat(chat_id: int):
     conn = get_connection(DB_PATH)
     cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE chats
+        SET
+            parent_chat_id = NULL,
+            branched_from_message_id = NULL
+        WHERE parent_chat_id = ?
+        """,
+        (chat_id,),
+    )
 
     cursor.execute(
         """

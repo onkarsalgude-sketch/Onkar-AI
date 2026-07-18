@@ -23,8 +23,9 @@ function Message({
   sources = [],
   regenerateResponse,
   onEditMessage,
-  onDeleteMessage,
-  onRegenerateMessage,
+onDeleteMessage,
+onRegenerateMessage,
+onCreateConversationBranch,
 
     isBookmarked = false,
   bookmarkNote = "",
@@ -237,6 +238,51 @@ function Message({
     }
   }
 
+  async function createConversationBranch() {
+  if (
+    !resolvedMessageId ||
+    !onCreateConversationBranch
+  ) {
+    return;
+  }
+
+  const enteredTitle =
+    window.prompt(
+      "Enter a title for the new branch (optional):",
+      ""
+    );
+
+  if (enteredTitle === null) {
+    return;
+  }
+
+  const cleanedTitle =
+    enteredTitle.trim();
+
+  if (cleanedTitle.length > 200) {
+    window.alert(
+      "Branch title must be 200 characters or fewer."
+    );
+
+    return;
+  }
+
+  try {
+    setLocalAction("branch");
+
+    await onCreateConversationBranch(
+      resolvedMessageId,
+      cleanedTitle || null
+    );
+  } catch (error) {
+    console.error(
+      "Create conversation branch failed:",
+      error
+    );
+  } finally {
+    setLocalAction(null);
+  }
+}
 
   async function regenerateLatestResponse() {
     if (!regenerateResponse) return;
@@ -723,6 +769,23 @@ function Message({
                     : "🔄 Regenerate"}
                 </button>
               )}
+
+              {isUser &&
+  onCreateConversationBranch &&
+  resolvedMessageId && (
+    <button
+      type="button"
+      onClick={
+        createConversationBranch
+      }
+      disabled={isBusy}
+      className="rounded-lg bg-teal-600 px-3 py-1 text-sm text-white transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {localAction === "branch"
+        ? "Branching..."
+        : "🌿 Branch"}
+    </button>
+  )}
 
             {!isUser &&
               isLast &&
