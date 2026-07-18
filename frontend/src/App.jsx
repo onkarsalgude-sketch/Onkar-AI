@@ -161,6 +161,8 @@ toggleChatPin={toggleChatPin}
 
      <ChatWindow
   activeChatId={activeChatId}
+  chats={chats}
+  selectChat={selectChat}
   documentRefreshKey={
     documentRefreshKey
   }

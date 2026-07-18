@@ -31,7 +31,8 @@ def init_db():
             is_pinned INTEGER NOT NULL DEFAULT 0,
             folder_id INTEGER DEFAULT NULL,
             parent_chat_id INTEGER DEFAULT NULL,
-            branched_from_message_id INTEGER DEFAULT NULL
+            branched_from_message_id INTEGER DEFAULT NULL,
+            branch_message_id INTEGER DEFAULT NULL
         )
     """)
 
@@ -111,6 +112,116 @@ def init_db():
             ALTER TABLE chats
             ADD COLUMN branched_from_message_id INTEGER DEFAULT NULL
         """)
+
+    if "branch_message_id" not in chat_columns:
+        cursor.execute("""
+            ALTER TABLE chats
+            ADD COLUMN branch_message_id INTEGER DEFAULT NULL
+        """)
+
+    # Best-effort backfill for branches created before branch_message_id
+    # was persisted. Only an exact, unique child-message match is safe.
+    cursor.execute("""
+        SELECT
+            id,
+            parent_chat_id,
+            branched_from_message_id
+        FROM chats
+        WHERE parent_chat_id IS NOT NULL
+          AND branched_from_message_id IS NOT NULL
+          AND branch_message_id IS NULL
+    """)
+
+    legacy_branch_rows = cursor.fetchall()
+
+    for (
+        branch_chat_id,
+        parent_chat_id,
+        source_message_id,
+    ) in legacy_branch_rows:
+        savepoint_name = (
+            f"backfill_branch_{branch_chat_id}"
+        )
+
+        try:
+            cursor.execute(
+                f"SAVEPOINT {savepoint_name}"
+            )
+
+            cursor.execute(
+                """
+                SELECT
+                    role,
+                    content,
+                    created_at
+                FROM messages
+                WHERE id = ?
+                  AND chat_id = ?
+                """,
+                (
+                    source_message_id,
+                    parent_chat_id,
+                ),
+            )
+
+            source_message = cursor.fetchone()
+
+            if source_message is not None:
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM messages
+                    WHERE chat_id = ?
+                      AND role = ?
+                      AND content = ?
+                      AND created_at = ?
+                    """,
+                    (
+                        branch_chat_id,
+                        source_message[0],
+                        source_message[1],
+                        source_message[2],
+                    ),
+                )
+
+                matching_messages = (
+                    cursor.fetchall()
+                )
+
+                if len(matching_messages) == 1:
+                    cursor.execute(
+                        """
+                        UPDATE chats
+                        SET branch_message_id = ?
+                        WHERE id = ?
+                          AND branch_message_id IS NULL
+                        """,
+                        (
+                            matching_messages[0][0],
+                            branch_chat_id,
+                        ),
+                    )
+
+            cursor.execute(
+                f"RELEASE SAVEPOINT {savepoint_name}"
+            )
+
+        except sqlite3.Error as error:
+            try:
+                cursor.execute(
+                    f"ROLLBACK TO SAVEPOINT {savepoint_name}"
+                )
+                cursor.execute(
+                    f"RELEASE SAVEPOINT {savepoint_name}"
+                )
+            except sqlite3.Error:
+                pass
+
+            print(
+                "BRANCH MESSAGE BACKFILL ERROR "
+                f"FOR CHAT {branch_chat_id}:",
+                error,
+            )
 
     # Add backup metadata columns to old messages table
     cursor.execute("PRAGMA table_info(messages)")
@@ -405,9 +516,10 @@ def create_chat_branch(
                 is_pinned,
                 folder_id,
                 parent_chat_id,
-                branched_from_message_id
+                branched_from_message_id,
+                branch_message_id
             )
-            VALUES (?, ?, 0, ?, ?, ?)
+            VALUES (?, ?, 0, ?, ?, ?, NULL)
             """,
             (
                 branch_title,
@@ -486,6 +598,28 @@ def create_chat_branch(
             else None
         )
 
+        if branch_message_id is None:
+            raise RuntimeError(
+                "Unable to identify the copied branch source message."
+            )
+
+        cursor.execute(
+            """
+            UPDATE chats
+            SET branch_message_id = ?
+            WHERE id = ?
+            """,
+            (
+                branch_message_id,
+                branch_chat_id,
+            ),
+        )
+
+        if cursor.rowcount != 1:
+            raise RuntimeError(
+                "Unable to persist the copied branch source message."
+            )
+
         conn.commit()
 
         return {
@@ -531,6 +665,7 @@ def get_chats():
             chats.parent_chat_id,
             parent_chats.title AS parent_chat_title,
             chats.branched_from_message_id,
+            chats.branch_message_id,
             (
                 SELECT COUNT(*)
                 FROM chats AS child_chats
@@ -561,8 +696,9 @@ def get_chats():
             "parent_chat_id": row[7],
             "parent_chat_title": row[8],
             "branched_from_message_id": row[9],
+            "branch_message_id": row[10],
             "is_branch": row[7] is not None,
-            "branch_count": row[10],
+            "branch_count": row[11],
         }
         for row in rows
     ]
@@ -1919,43 +2055,55 @@ def delete_chat(chat_id: int):
     conn = get_connection(DB_PATH)
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        UPDATE chats
-        SET
-            parent_chat_id = NULL,
-            branched_from_message_id = NULL
-        WHERE parent_chat_id = ?
-        """,
-        (chat_id,),
-    )
+    try:
+        cursor.execute(
+            "BEGIN IMMEDIATE"
+        )
 
-    cursor.execute(
-        """
-        DELETE FROM message_bookmarks
-        WHERE chat_id = ?
-        """,
-        (chat_id,),
-    )
+        cursor.execute(
+            """
+            UPDATE chats
+            SET
+                parent_chat_id = NULL,
+                branched_from_message_id = NULL,
+                branch_message_id = NULL
+            WHERE parent_chat_id = ?
+            """,
+            (chat_id,),
+        )
 
-    cursor.execute(
-        """
-        DELETE FROM messages
-        WHERE chat_id = ?
-        """,
-        (chat_id,),
-    )
+        cursor.execute(
+            """
+            DELETE FROM message_bookmarks
+            WHERE chat_id = ?
+            """,
+            (chat_id,),
+        )
 
-    cursor.execute(
-        """
-        DELETE FROM chats
-        WHERE id = ?
-        """,
-        (chat_id,),
-    )
+        cursor.execute(
+            """
+            DELETE FROM messages
+            WHERE chat_id = ?
+            """,
+            (chat_id,),
+        )
 
-    conn.commit()
-    conn.close()
+        cursor.execute(
+            """
+            DELETE FROM chats
+            WHERE id = ?
+            """,
+            (chat_id,),
+        )
+
+        conn.commit()
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
 
 
 def clear_history():

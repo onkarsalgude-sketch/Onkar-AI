@@ -7,12 +7,15 @@ import {
 import Message from "./Message";
 import MessageInput from "./MessageInput";
 import Thinking from "./Thinking";
+import BranchExplorer from "./BranchExplorer";
 import WelcomeScreen from "../Common/WelcomeScreen";
 import DocumentLibrary from "../Documents/DocumentLibrary";
 
 
 function ChatWindow({
   activeChatId,
+  chats = [],
+  selectChat,
   documentRefreshKey,
   messages,
   input,
@@ -426,6 +429,13 @@ messageActionLoadingId = null,
             : "Offline"}
         </div>
       </header>
+
+      <BranchExplorer
+        chats={chats}
+        activeChatId={activeChatId}
+        onSelectChat={selectChat}
+        theme={theme}
+      />
 
       <DocumentLibrary
         activeChatId={activeChatId}
