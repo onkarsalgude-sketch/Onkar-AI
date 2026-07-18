@@ -352,7 +352,8 @@ removeCurrentMessageBookmark,
 
  async function handleSelectChat(
   chatId,
-  messageId = null
+  messageId = null,
+  options = {}
 ) {
     setPendingFiles([]);
     setUploadSummary(null);
@@ -361,9 +362,10 @@ removeCurrentMessageBookmark,
     lastFailedRequestRef.current =
       null;
 
-    await selectChat(
+ await selectChat(
   chatId,
-  messageId
+  messageId,
+  options
 );
   }
 

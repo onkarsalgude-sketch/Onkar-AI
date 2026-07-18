@@ -246,7 +246,8 @@ export default function useChats(
 
   async function selectChat(
     chatId,
-    messageId = null
+    messageId = null,
+    options = {}
   ) {
     if (!chatId) {
       return;
@@ -284,9 +285,14 @@ export default function useChats(
         } else {
           clearMessageSearchTarget();
 
-          window.alert(
-            "The matching message could not be found in this chat."
-          );
+          if (
+            options.missingTargetBehavior !==
+            "silent"
+          ) {
+            window.alert(
+              "The matching message could not be found in this chat."
+            );
+          }
         }
       } else {
         clearMessageSearchTarget();
