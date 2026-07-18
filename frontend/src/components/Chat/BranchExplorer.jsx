@@ -6,6 +6,7 @@ import {
 } from "react";
 
 import BranchCompareModal from "./BranchCompareModal";
+import BranchMergePreviewModal from "./BranchMergePreviewModal";
 
 
 function toPositiveId(value) {
@@ -185,7 +186,16 @@ function BranchExplorer({
     useState(false);
   const [compareBranchChatId, setCompareBranchChatId] =
     useState(null);
+  const [
+    isMergePreviewOpen,
+    setIsMergePreviewOpen,
+  ] = useState(false);
+  const [
+    mergePreviewBranchChatId,
+    setMergePreviewBranchChatId,
+  ] = useState(null);
   const compareButtonRef = useRef(null);
+  const mergePreviewButtonRef = useRef(null);
   const isDark = theme === "dark";
   const normalizedActiveChatId =
     toPositiveId(activeChatId);
@@ -320,6 +330,21 @@ function BranchExplorer({
     normalizedActiveChatId,
   ]);
 
+  useEffect(() => {
+    if (
+      isMergePreviewOpen &&
+      mergePreviewBranchChatId !==
+        normalizedActiveChatId
+    ) {
+      setIsMergePreviewOpen(false);
+      setMergePreviewBranchChatId(null);
+    }
+  }, [
+    isMergePreviewOpen,
+    mergePreviewBranchChatId,
+    normalizedActiveChatId,
+  ]);
+
   if (!hierarchy?.tree) {
     return null;
   }
@@ -384,6 +409,24 @@ function BranchExplorer({
 
     window.requestAnimationFrame(() => {
       compareButtonRef.current?.focus();
+    });
+  }
+
+  function openMergePreview() {
+    if (!hierarchy.activeParent) return;
+
+    setMergePreviewBranchChatId(
+      hierarchy.activeChat.id
+    );
+    setIsMergePreviewOpen(true);
+  }
+
+  function closeMergePreview() {
+    setIsMergePreviewOpen(false);
+    setMergePreviewBranchChatId(null);
+
+    window.requestAnimationFrame(() => {
+      mergePreviewButtonRef.current?.focus();
     });
   }
 
@@ -478,6 +521,30 @@ function BranchExplorer({
                   >
                     Compare with parent
                   </button>
+
+                  <button
+                    ref={mergePreviewButtonRef}
+                    type="button"
+                    onClick={openMergePreview}
+                    title={
+                      "Preview merge into parent: " +
+                      (
+                        hierarchy.activeParent
+                          .title ||
+                        "New Chat"
+                      )
+                    }
+                    className={
+                      "rounded-lg px-2 py-1 text-xs font-medium transition " +
+                      (
+                        isDark
+                          ? "text-emerald-300 hover:bg-emerald-500/10"
+                          : "text-emerald-700 hover:bg-emerald-50"
+                      )
+                    }
+                  >
+                    Merge Preview
+                  </button>
                 </div>
               )}
 
@@ -502,6 +569,15 @@ function BranchExplorer({
         open={isCompareOpen}
         branchChatId={compareBranchChatId}
         onClose={closeComparison}
+        theme={theme}
+      />
+
+      <BranchMergePreviewModal
+        open={isMergePreviewOpen}
+        branchChatId={
+          mergePreviewBranchChatId
+        }
+        onClose={closeMergePreview}
         theme={theme}
       />
     </>

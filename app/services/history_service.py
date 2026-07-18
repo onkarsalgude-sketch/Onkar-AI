@@ -339,6 +339,38 @@ def _load_json(value, default):
         return default
 
 
+def _has_meaningful_json_metadata(value):
+    if value is None:
+        return False
+
+    try:
+        if isinstance(value, (bytes, bytearray)):
+            text = bytes(value).decode("utf-8").strip()
+        else:
+            text = str(value).strip()
+    except Exception:
+        return True
+
+    if not text:
+        return False
+
+    try:
+        parsed_value = json.loads(text)
+    except Exception:
+        return True
+
+    if parsed_value is None:
+        return False
+
+    if isinstance(
+        parsed_value,
+        (dict, list, str),
+    ):
+        return bool(parsed_value)
+
+    return True
+
+
 def _escape_like(value: str) -> str:
     return (
         value
@@ -672,6 +704,16 @@ def compare_chat_with_parent(
             "role": row[1],
             "content": row[2],
             "created_at": row[3],
+            "has_source_metadata": (
+                _has_meaningful_json_metadata(
+                    row[4]
+                )
+            ),
+            "has_attachment_metadata": (
+                _has_meaningful_json_metadata(
+                    row[5]
+                )
+            ),
         }
 
     try:
@@ -783,7 +825,9 @@ def compare_chat_with_parent(
                 id,
                 role,
                 content,
-                created_at
+                created_at,
+                sources_json,
+                attachment_json
             FROM messages
             WHERE id = ?
               AND chat_id = ?
@@ -806,7 +850,9 @@ def compare_chat_with_parent(
                 id,
                 role,
                 content,
-                created_at
+                created_at,
+                sources_json,
+                attachment_json
             FROM messages
             WHERE id = ?
               AND chat_id = ?
@@ -855,7 +901,9 @@ def compare_chat_with_parent(
                     id,
                     role,
                     content,
-                    created_at
+                    created_at,
+                    sources_json,
+                    attachment_json
                 FROM messages
                 WHERE chat_id = ?
                   AND id {operator} ?
