@@ -344,6 +344,8 @@ class ChatComparisonMessage(BaseModel):
     ]
     content: str
     created_at: str
+    has_attachment_metadata: bool = False
+    has_source_metadata: bool = False
 
 
 class ChatComparisonChatSummary(BaseModel):
