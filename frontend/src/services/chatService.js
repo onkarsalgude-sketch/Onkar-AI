@@ -49,6 +49,18 @@ export const getChatMessages = (chatId) =>
   api.get(`/chats/${chatId}/messages`);
 
 
+export const getBranchParentComparison = (
+  branchChatId,
+  options = {}
+) =>
+  api.get(
+    `/chats/${branchChatId}/compare-parent`,
+    {
+      signal: options.signal,
+    }
+  );
+
+
 export const deleteChat = (chatId) =>
   api.delete(`/chats/${chatId}`);
 

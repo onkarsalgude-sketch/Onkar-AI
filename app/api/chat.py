@@ -13,6 +13,7 @@ from app.models.chat import (
     ChatBackupImportResponse,
     ChatBranchRequest,
     ChatBranchResponse,
+    ChatCompareParentResponse,
     ChatRequest,
     ChatResponse,
     MessageBookmarkDeleteResponse,
@@ -25,6 +26,7 @@ from app.models.chat import (
 )
 from app.services.history_service import (
     clear_history,
+    compare_chat_with_parent,
     create_chat,
     create_chat_branch,
     create_folder,
@@ -312,6 +314,44 @@ def chat_messages(chat_id: int):
     return {
         "messages": get_messages(chat_id),
     }
+
+
+@router.get(
+    "/chats/{branch_chat_id}/compare-parent",
+    response_model=ChatCompareParentResponse,
+)
+def compare_parent_chat(
+    branch_chat_id: int,
+):
+    try:
+        result = compare_chat_with_parent(
+            branch_chat_id
+        )
+
+    except Exception as error:
+        print(
+            "CHAT COMPARISON ERROR:",
+            error,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Unable to compare the branch "
+                "with its parent."
+            ),
+        ) from error
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Branch chat not found.",
+        )
+
+    return ChatCompareParentResponse(
+        **result
+    )
+
 
 @router.put(
     "/chats/{chat_id}/messages/{message_id}/bookmark",
