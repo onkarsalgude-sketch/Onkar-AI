@@ -41,6 +41,7 @@ messageActionLoadingId,
 editMessage,
 deleteMessage,
 regenerateMessage,
+createConversationBranch,
 saveMessageBookmark,
 removeMessageBookmark,
 
@@ -193,6 +194,9 @@ toggleChatPin={toggleChatPin}
   onRegenerateMessage={
     regenerateMessage
   }
+  onCreateConversationBranch={
+  createConversationBranch
+}
   onSaveMessageBookmark={
   saveMessageBookmark
 }

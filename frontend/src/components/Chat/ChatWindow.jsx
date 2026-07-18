@@ -28,12 +28,13 @@ function ChatWindow({
    dismissUploadSummary,
   regenerateResponse,
 
-  onEditMessage,
-  onDeleteMessage,
-  onRegenerateMessage,
-  onSaveMessageBookmark,
+ onEditMessage,
+onDeleteMessage,
+onRegenerateMessage,
+onCreateConversationBranch,
+onSaveMessageBookmark,
 onRemoveMessageBookmark,
-  messageActionLoadingId = null,
+messageActionLoadingId = null,
 
   onOpenSidebar,
   theme = "dark",
@@ -513,6 +514,11 @@ onRemoveMessageBookmark,
       ? onRegenerateMessage
       : undefined
   }
+  onCreateConversationBranch={
+  message.role === "user"
+    ? onCreateConversationBranch
+    : undefined
+}
   isBookmarked={
   message.isBookmarked
 }

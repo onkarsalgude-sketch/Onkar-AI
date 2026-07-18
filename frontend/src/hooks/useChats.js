@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import {
   createChat,
+  createConversationBranch as createConversationBranchRequest,
   deleteChat,
   deleteMessage as deleteMessageRequest,
   editMessage as editMessageRequest,
@@ -735,6 +736,99 @@ async function regenerateCurrentMessage(
   }
 }
 
+async function createCurrentConversationBranch(
+  messageId,
+  title = null
+) {
+  if (!activeChatId) {
+    throw new Error(
+      "No active chat selected."
+    );
+  }
+
+  const cleanedTitle =
+    title === null
+      ? null
+      : String(title).trim() || null;
+
+  try {
+    setMessageActionLoadingId(
+      messageId
+    );
+
+    const response =
+      await createConversationBranchRequest(
+        activeChatId,
+        messageId,
+        cleanedTitle
+      );
+
+    const result =
+      response?.data;
+
+    const branchChatId =
+      result?.chat_id;
+
+    if (!branchChatId) {
+      throw new Error(
+        "The backend did not return a branch chat ID."
+      );
+    }
+
+    const chatsResponse =
+      await getChats();
+
+    setChats(
+      chatsResponse?.data?.chats || []
+    );
+
+    setActiveChatId(
+      branchChatId
+    );
+
+    const normalizedMessages =
+      await loadMessages(
+        branchChatId
+      );
+
+    const branchMessageId =
+      result?.branch_message_id;
+
+    if (
+      branchMessageId &&
+      normalizedMessages.some(
+        (message) =>
+          Number(message.id) ===
+          Number(branchMessageId)
+      )
+    ) {
+      createMessageSearchTarget(
+        branchMessageId
+      );
+    } else {
+      clearMessageSearchTarget();
+    }
+
+    setInput("");
+
+    return result;
+  } catch (error) {
+    console.error(
+      "Create conversation branch error:",
+      error
+    );
+
+    window.alert(
+      error?.response?.data?.detail ||
+        error?.message ||
+        "Unable to create the conversation branch."
+    );
+
+    throw error;
+  } finally {
+    setMessageActionLoadingId(null);
+  }
+}
 async function saveCurrentMessageBookmark(
   messageId,
   note = ""
@@ -948,7 +1042,8 @@ async function removeCurrentMessageBookmark(
   editCurrentMessage,
   deleteCurrentMessage,
   regenerateCurrentMessage,
-    saveCurrentMessageBookmark,
+  createCurrentConversationBranch,
+  saveCurrentMessageBookmark,
   removeCurrentMessageBookmark,
 
   loadChats,

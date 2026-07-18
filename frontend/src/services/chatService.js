@@ -376,3 +376,14 @@ export const getBookmarks = (
     }
   );
 };
+export const createConversationBranch = (
+  chatId,
+  messageId,
+  title = null
+) =>
+  api.post(
+    `/chats/${chatId}/messages/${messageId}/branch`,
+    {
+      title,
+    }
+  );
