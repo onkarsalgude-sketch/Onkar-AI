@@ -643,6 +643,298 @@ def create_chat_branch(
     finally:
         conn.close()
 
+
+def compare_chat_with_parent(
+    branch_chat_id: int,
+):
+    conn = get_connection(DB_PATH)
+    cursor = conn.cursor()
+
+    def positive_id(value):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+        ):
+            return None
+
+        return (
+            value
+            if value > 0
+            else None
+        )
+
+    def comparison_message(row):
+        if row is None:
+            return None
+
+        return {
+            "id": row[0],
+            "role": row[1],
+            "content": row[2],
+            "created_at": row[3],
+        }
+
+    try:
+        cursor.execute("BEGIN")
+
+        cursor.execute(
+            """
+            SELECT
+                branch_chats.id,
+                branch_chats.title,
+                branch_chats.parent_chat_id,
+                branch_chats.branched_from_message_id,
+                branch_chats.branch_message_id,
+                parent_chats.id,
+                parent_chats.title
+            FROM chats AS branch_chats
+            LEFT JOIN chats AS parent_chats
+                ON parent_chats.id = branch_chats.parent_chat_id
+            WHERE branch_chats.id = ?
+            """,
+            (branch_chat_id,),
+        )
+
+        chat_row = cursor.fetchone()
+
+        if chat_row is None:
+            conn.commit()
+            return None
+
+        branch_summary = {
+            "id": chat_row[0],
+            "title": chat_row[1],
+        }
+
+        parent_chat_id = positive_id(
+            chat_row[2]
+        )
+        parent_message_id = positive_id(
+            chat_row[3]
+        )
+        branch_message_id = positive_id(
+            chat_row[4]
+        )
+
+        parent_summary = (
+            {
+                "id": chat_row[5],
+                "title": chat_row[6],
+            }
+            if chat_row[5] is not None
+            else None
+        )
+
+        def unavailable(
+            reason,
+            *,
+            parent_source_message=None,
+            branch_source_message=None,
+        ):
+            result = {
+                "comparable": False,
+                "reason": reason,
+                "parent_chat": parent_summary,
+                "branch_chat": branch_summary,
+                "branched_from_message_id": (
+                    parent_message_id
+                ),
+                "branch_message_id": (
+                    branch_message_id
+                ),
+                "parent_source_message": (
+                    parent_source_message
+                ),
+                "branch_source_message": (
+                    branch_source_message
+                ),
+                "common_messages": [],
+                "parent_only_messages": [],
+                "branch_only_messages": [],
+                "counts": None,
+            }
+
+            conn.commit()
+            return result
+
+        if parent_chat_id is None:
+            return unavailable(
+                "detached_branch"
+            )
+
+        if parent_summary is None:
+            return unavailable(
+                "parent_missing"
+            )
+
+        if parent_message_id is None:
+            return unavailable(
+                "parent_boundary_missing"
+            )
+
+        if branch_message_id is None:
+            return unavailable(
+                "branch_boundary_missing"
+            )
+
+        cursor.execute(
+            """
+            SELECT
+                id,
+                role,
+                content,
+                created_at
+            FROM messages
+            WHERE id = ?
+              AND chat_id = ?
+            """,
+            (
+                parent_message_id,
+                parent_chat_id,
+            ),
+        )
+
+        parent_source_message = (
+            comparison_message(
+                cursor.fetchone()
+            )
+        )
+
+        cursor.execute(
+            """
+            SELECT
+                id,
+                role,
+                content,
+                created_at
+            FROM messages
+            WHERE id = ?
+              AND chat_id = ?
+            """,
+            (
+                branch_message_id,
+                branch_chat_id,
+            ),
+        )
+
+        branch_source_message = (
+            comparison_message(
+                cursor.fetchone()
+            )
+        )
+
+        if parent_source_message is None:
+            return unavailable(
+                "parent_source_message_missing",
+                branch_source_message=(
+                    branch_source_message
+                ),
+            )
+
+        if branch_source_message is None:
+            return unavailable(
+                "branch_source_message_missing",
+                parent_source_message=(
+                    parent_source_message
+                ),
+            )
+
+        def load_messages(
+            chat_id,
+            operator,
+            boundary_message_id,
+        ):
+            if operator not in {"<=", ">"}:
+                raise ValueError(
+                    "Invalid comparison operator."
+                )
+
+            cursor.execute(
+                f"""
+                SELECT
+                    id,
+                    role,
+                    content,
+                    created_at
+                FROM messages
+                WHERE chat_id = ?
+                  AND id {operator} ?
+                ORDER BY id ASC
+                """,
+                (
+                    chat_id,
+                    boundary_message_id,
+                ),
+            )
+
+            return [
+                comparison_message(row)
+                for row in cursor.fetchall()
+            ]
+
+        common_messages = load_messages(
+            branch_chat_id,
+            "<=",
+            branch_message_id,
+        )
+
+        parent_only_messages = load_messages(
+            parent_chat_id,
+            ">",
+            parent_message_id,
+        )
+
+        branch_only_messages = load_messages(
+            branch_chat_id,
+            ">",
+            branch_message_id,
+        )
+
+        result = {
+            "comparable": True,
+            "reason": None,
+            "parent_chat": parent_summary,
+            "branch_chat": branch_summary,
+            "branched_from_message_id": (
+                parent_message_id
+            ),
+            "branch_message_id": (
+                branch_message_id
+            ),
+            "parent_source_message": (
+                parent_source_message
+            ),
+            "branch_source_message": (
+                branch_source_message
+            ),
+            "common_messages": common_messages,
+            "parent_only_messages": (
+                parent_only_messages
+            ),
+            "branch_only_messages": (
+                branch_only_messages
+            ),
+            "counts": {
+                "common": len(common_messages),
+                "parent_only": len(
+                    parent_only_messages
+                ),
+                "branch_only": len(
+                    branch_only_messages
+                ),
+            },
+        }
+
+        conn.commit()
+        return result
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
 def get_chats():
     conn = get_connection(DB_PATH)
     cursor = conn.cursor()

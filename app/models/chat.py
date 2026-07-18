@@ -329,3 +329,60 @@ class ChatBranchResponse(BaseModel):
     copied_message_count: int = 0
     folder_id: Optional[int] = None
     created_at: str
+
+
+# -------------------------
+# Branch comparison models
+# -------------------------
+
+class ChatComparisonMessage(BaseModel):
+    id: int
+    role: Literal[
+        "user",
+        "assistant",
+        "system",
+    ]
+    content: str
+    created_at: str
+
+
+class ChatComparisonChatSummary(BaseModel):
+    id: int
+    title: str
+
+
+class ChatComparisonCounts(BaseModel):
+    common: int
+    parent_only: int
+    branch_only: int
+
+
+class ChatCompareParentResponse(BaseModel):
+    comparable: bool
+    reason: Optional[str] = None
+    parent_chat: Optional[
+        ChatComparisonChatSummary
+    ] = None
+    branch_chat: ChatComparisonChatSummary
+    branched_from_message_id: Optional[
+        int
+    ] = None
+    branch_message_id: Optional[int] = None
+    parent_source_message: Optional[
+        ChatComparisonMessage
+    ] = None
+    branch_source_message: Optional[
+        ChatComparisonMessage
+    ] = None
+    common_messages: list[
+        ChatComparisonMessage
+    ] = Field(default_factory=list)
+    parent_only_messages: list[
+        ChatComparisonMessage
+    ] = Field(default_factory=list)
+    branch_only_messages: list[
+        ChatComparisonMessage
+    ] = Field(default_factory=list)
+    counts: Optional[
+        ChatComparisonCounts
+    ] = None
