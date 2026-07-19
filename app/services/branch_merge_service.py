@@ -15,7 +15,15 @@ import json
 import sqlite3
 from datetime import datetime
 
-from app.database.db import get_connection
+from app.database.db import (
+    DATABASE_INTEGRITY_ERRORS,
+    DATABASE_OPERATIONAL_ERRORS,
+    acquire_branch_merge_lock,
+    begin_write_transaction,
+    configure_busy_timeout,
+    get_runtime_connection as get_connection,
+    is_database_busy_error,
+)
 from app.models.chat import (
     BranchMergeRequest,
     BranchMergeResponse,
@@ -1400,24 +1408,7 @@ def _insert_parent_message(
 
 
 def _is_busy_error(error):
-    error_code = getattr(
-        error,
-        "sqlite_errorcode",
-        None,
-    )
-
-    if error_code in {
-        sqlite3.SQLITE_BUSY,
-        sqlite3.SQLITE_LOCKED,
-    }:
-        return True
-
-    error_text = str(error).casefold()
-
-    return (
-        "database is locked" in error_text
-        or "database is busy" in error_text
-    )
+    return is_database_busy_error(error)
 
 
 def execute_branch_merge(
@@ -1449,10 +1440,9 @@ def execute_branch_merge(
         connection = get_connection(db_path)
         connection.row_factory = sqlite3.Row
         cursor = connection.cursor()
-        cursor.execute(
-            "PRAGMA busy_timeout = 5000"
-        )
-        cursor.execute("BEGIN IMMEDIATE")
+        configure_busy_timeout(connection, 5000)
+        begin_write_transaction(connection)
+        acquire_branch_merge_lock(connection)
 
         request_fingerprint = (
             _build_branch_merge_request_fingerprint(
@@ -1654,7 +1644,7 @@ def execute_branch_merge(
                             created_message_fingerprint,
                         ),
                     )
-                except sqlite3.IntegrityError:
+                except DATABASE_INTEGRITY_ERRORS:
                     cursor.execute(
                         """
                         SELECT merge_operation_id
@@ -1788,7 +1778,7 @@ def execute_branch_merge(
             connection.rollback()
         raise
 
-    except sqlite3.OperationalError as error:
+    except DATABASE_OPERATIONAL_ERRORS as error:
         if (
             connection is not None
             and connection.in_transaction

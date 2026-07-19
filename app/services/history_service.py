@@ -3,7 +3,24 @@ import sqlite3
 from datetime import datetime
 
 from app.config.settings import CHAT_DB
-from app.database.db import get_connection
+from app.config.database import (
+    load_database_settings,
+)
+from app.database.db import (
+    DATABASE_INTEGRITY_ERRORS,
+    begin_write_transaction,
+    get_connection as get_legacy_connection,
+    get_runtime_connection,
+)
+from app.database.engine import (
+    build_database_engine,
+)
+from app.database.migrations import (
+    SchemaVersionError,
+    get_schema_version,
+    validate_existing_schema,
+)
+from app.database.schema import SCHEMA_VERSION
 from app.services.branch_merge_service import (
     BRANCH_MERGE_PREVIEW_VERSION,
     _build_branch_merge_preview_token,
@@ -16,7 +33,7 @@ DB_PATH = str(CHAT_DB)
 
 
 def init_db():
-    conn = get_connection(DB_PATH)
+    conn = get_legacy_connection(DB_PATH)
     cursor = conn.cursor()
 
     # Chat folders
@@ -390,6 +407,37 @@ def init_db():
     conn.close()
 
 
+
+
+_legacy_init_db = init_db
+
+
+def init_db():
+    """Initialize SQLite or validate the PostgreSQL schema."""
+    settings = load_database_settings(
+        default_sqlite_path=DB_PATH,
+    )
+
+    if settings.is_sqlite:
+        return _legacy_init_db()
+
+    engine = build_database_engine(
+        settings
+    )
+
+    try:
+        validate_existing_schema(engine)
+
+        if (
+            get_schema_version(engine)
+            != SCHEMA_VERSION
+        ):
+            raise SchemaVersionError()
+
+    finally:
+        engine.dispose()
+
+
 def _to_iso_datetime(value):
     if value is None:
         return datetime.now().isoformat()
@@ -510,7 +558,7 @@ def _build_search_snippet(
 
 
 def create_chat(title="New Chat"):
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -550,13 +598,11 @@ def create_chat_branch(
             "Branch title cannot exceed 200 characters."
         )
 
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     try:
-        cursor.execute(
-            "BEGIN IMMEDIATE"
-        )
+        begin_write_transaction(conn)
 
         cursor.execute(
             """
@@ -755,7 +801,7 @@ def create_chat_branch(
 def compare_chat_with_parent(
     branch_chat_id: int,
 ):
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     def positive_id(value):
@@ -1168,7 +1214,7 @@ def compare_chat_with_parent(
         conn.close()
 
 def get_chats():
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -1394,7 +1440,7 @@ def search_chats(
         safe_limit
     )
 
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -1440,7 +1486,7 @@ def save_message(
     attachment=None,
     created_at=None,
 ):
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     sources_json = json.dumps(
@@ -1489,7 +1535,7 @@ def get_messages(
     chat_id: int,
     limit: int = 1000,
 ):
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -1575,7 +1621,7 @@ def get_message(
     chat_id: int,
     message_id: int,
 ):
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -1651,13 +1697,11 @@ def save_message_bookmark(
             "Bookmark note cannot exceed 1000 characters."
         )
 
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     try:
-        cursor.execute(
-            "BEGIN IMMEDIATE"
-        )
+        begin_write_transaction(conn)
 
         cursor.execute(
             """
@@ -1767,7 +1811,7 @@ def remove_message_bookmark(
     chat_id: int,
     message_id: int,
 ):
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -1885,7 +1929,7 @@ def get_message_bookmarks(
 
     parameters.append(safe_limit)
 
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -1965,13 +2009,11 @@ def edit_user_message(
             "Message content cannot be empty."
         )
 
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     try:
-        cursor.execute(
-            "BEGIN IMMEDIATE"
-        )
+        begin_write_transaction(conn)
 
         cursor.execute(
             """
@@ -2066,13 +2108,11 @@ def delete_message(
     chat_id: int,
     message_id: int,
 ):
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     try:
-        cursor.execute(
-            "BEGIN IMMEDIATE"
-        )
+        begin_write_transaction(conn)
 
         cursor.execute(
             """
@@ -2166,7 +2206,7 @@ def restore_chat_backup(
         model_data.get("selected_id")
     )
 
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     try:
@@ -2323,7 +2363,7 @@ def rename_chat(
     chat_id: int,
     title: str,
 ):
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -2343,7 +2383,7 @@ def rename_chat(
 
 
 def toggle_pin_chat(chat_id: int):
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -2387,7 +2427,7 @@ def toggle_pin_chat(chat_id: int):
 # -------------------------
 
 def get_folders():
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -2426,7 +2466,7 @@ def create_folder(name: str):
     if not folder_name:
         return None
 
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     try:
@@ -2457,7 +2497,7 @@ def create_folder(name: str):
             "chat_count": 0,
         }
 
-    except sqlite3.IntegrityError:
+    except DATABASE_INTEGRITY_ERRORS:
         conn.rollback()
         return None
 
@@ -2474,7 +2514,7 @@ def rename_folder(
     if not folder_name:
         return False
 
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     try:
@@ -2495,7 +2535,7 @@ def rename_folder(
         conn.commit()
         return updated
 
-    except sqlite3.IntegrityError:
+    except DATABASE_INTEGRITY_ERRORS:
         conn.rollback()
         return False
 
@@ -2504,7 +2544,7 @@ def rename_folder(
 
 
 def delete_folder(folder_id: int):
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     # Folder delete करण्यापूर्वी chats बाहेर काढणे
@@ -2537,7 +2577,7 @@ def move_chat_to_folder(
     chat_id: int,
     folder_id: int | None,
 ):
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     # folder_id None असेल तर chat folder मधून remove होईल
@@ -2576,13 +2616,11 @@ def move_chat_to_folder(
 
 
 def delete_chat(chat_id: int):
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     try:
-        cursor.execute(
-            "BEGIN IMMEDIATE"
-        )
+        begin_write_transaction(conn)
 
         cursor.execute(
             """
@@ -2631,7 +2669,7 @@ def delete_chat(chat_id: int):
 
 
 def clear_history():
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
