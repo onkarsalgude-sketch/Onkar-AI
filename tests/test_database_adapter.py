@@ -1,13 +1,16 @@
-﻿import sqlite3
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from app.database.db import (
+    DATABASE_INTEGRITY_ERRORS,
     PortableConnection,
     PortableRow,
     _convert_qmark_placeholders,
+    _convert_sql_for_postgresql,
+    begin_write_transaction,
     get_runtime_connection,
 )
 
@@ -33,6 +36,11 @@ class FakeCursor:
     ):
         self.executed_sql = sql
         self.executed_parameters = parameters
+
+        if sql.strip().upper() == (
+            "SELECT LASTVAL()"
+        ):
+            self._rows = [(41,)]
 
     def executemany(
         self,
@@ -269,6 +277,76 @@ class DatabaseAdapterTests(unittest.TestCase):
             "%s",
             fake_engine.raw.cursor_instance.executed_sql,
         )
+
+    def test_nocase_like_becomes_postgresql_ilike(
+        self,
+    ):
+        converted = (
+            _convert_sql_for_postgresql(
+                """
+                SELECT id
+                FROM chats
+                WHERE title
+                    LIKE ? ESCAPE '\\'
+                    COLLATE NOCASE
+                """
+            )
+        )
+
+        self.assertIn(
+            "ILIKE %s",
+            converted,
+        )
+        self.assertNotIn(
+            "COLLATE NOCASE",
+            converted.upper(),
+        )
+
+    def test_postgresql_lastrowid_uses_lastval(
+        self,
+    ):
+        raw = FakeRawConnection()
+        connection = PortableConnection(raw)
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO chats (
+                title
+            )
+            VALUES (?)
+            """,
+            ("Test",),
+        )
+
+        self.assertEqual(
+            cursor.lastrowid,
+            41,
+        )
+
+    def test_portable_write_transaction_uses_begin(
+        self,
+    ):
+        raw = FakeRawConnection()
+        connection = PortableConnection(raw)
+
+        begin_write_transaction(
+            connection
+        )
+
+        self.assertEqual(
+            raw.cursor_instance.executed_sql,
+            "BEGIN",
+        )
+
+    def test_integrity_error_tuple_supports_sqlite(
+        self,
+    ):
+        self.assertIn(
+            sqlite3.IntegrityError,
+            DATABASE_INTEGRITY_ERRORS,
+        )
+
 
     def test_context_manager_commits_and_closes(
         self,

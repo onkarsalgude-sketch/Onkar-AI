@@ -1,4 +1,4 @@
-﻿"""Database connection helpers.
+"""Database connection helpers.
 
 Legacy SQLite services continue using get_connection().
 Migrated services use get_runtime_connection(), which supports SQLite
@@ -7,11 +7,13 @@ locally and PostgreSQL through Psycopg in production.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections.abc import Iterator, Mapping, Sequence
 from threading import Lock
 from typing import Any
 
+from psycopg import IntegrityError as PsycopgIntegrityError
 from sqlalchemy.engine import Engine
 
 from app.config.database import (
@@ -27,6 +29,12 @@ _ENGINE_CACHE: dict[
 ] = {}
 
 _ENGINE_CACHE_LOCK = Lock()
+
+
+DATABASE_INTEGRITY_ERRORS = (
+    sqlite3.IntegrityError,
+    PsycopgIntegrityError,
+)
 
 
 def get_connection(db_path: str):
@@ -160,6 +168,39 @@ def _convert_qmark_placeholders(
     return "".join(result)
 
 
+_NOCASE_LIKE_PATTERN = re.compile(
+    r"\bLIKE\s+%s"
+    r"(?P<escape>\s+ESCAPE\s+'\\')?"
+    r"\s+COLLATE\s+NOCASE\b",
+    re.IGNORECASE,
+)
+
+
+def _convert_sql_for_postgresql(
+    sql: str,
+) -> str:
+    """Convert shared SQLite-style SQL into PostgreSQL SQL."""
+    converted = _convert_qmark_placeholders(
+        sql
+    )
+
+    def replace_nocase_like(match):
+        escape_clause = (
+            match.group("escape")
+            or ""
+        )
+
+        return (
+            "ILIKE %s"
+            + escape_clause
+        )
+
+    return _NOCASE_LIKE_PATTERN.sub(
+        replace_nocase_like,
+        converted,
+    )
+
+
 class PortableRow(Sequence[Any]):
     """Tuple-like row supporting numeric and column-name access."""
 
@@ -214,7 +255,7 @@ class PortableCursor:
         parameters: Any = None,
     ):
         portable_sql = (
-            _convert_qmark_placeholders(sql)
+            _convert_sql_for_postgresql(sql)
         )
 
         if parameters is None:
@@ -235,7 +276,7 @@ class PortableCursor:
         parameter_sets,
     ):
         self._raw_cursor.executemany(
-            _convert_qmark_placeholders(sql),
+            _convert_sql_for_postgresql(sql),
             parameter_sets,
         )
 
@@ -315,11 +356,35 @@ class PortableCursor:
 
     @property
     def lastrowid(self):
-        return getattr(
+        native_value = getattr(
             self._raw_cursor,
             "lastrowid",
             None,
         )
+
+        if native_value is not None:
+            return native_value
+
+        lookup_cursor = (
+            self._owner
+            ._raw_connection
+            .cursor()
+        )
+
+        try:
+            lookup_cursor.execute(
+                "SELECT LASTVAL()"
+            )
+
+            row = lookup_cursor.fetchone()
+
+            if row is None:
+                return None
+
+            return row[0]
+
+        finally:
+            lookup_cursor.close()
 
     def __iter__(self):
         for row in self._raw_cursor:
@@ -375,6 +440,23 @@ class PortableConnection:
             self.close()
 
         return False
+
+
+
+def begin_write_transaction(
+    connection,
+) -> None:
+    """Begin a portable write transaction."""
+    if isinstance(
+        connection,
+        sqlite3.Connection,
+    ):
+        connection.execute(
+            "BEGIN IMMEDIATE"
+        )
+        return
+
+    connection.execute("BEGIN")
 
 
 def _get_runtime_engine(
