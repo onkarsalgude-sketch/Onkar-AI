@@ -4,6 +4,12 @@ from datetime import datetime
 
 from app.config.settings import CHAT_DB
 from app.database.db import get_connection
+from app.services.branch_merge_service import (
+    BRANCH_MERGE_PREVIEW_VERSION,
+    _build_branch_merge_preview_token,
+    _build_canonical_branch_turns,
+    _is_positive_integer,
+)
 
 
 DB_PATH = str(CHAT_DB)
@@ -78,6 +84,56 @@ def init_db():
             uploaded_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             UNIQUE(chat_id, filename)
+        )
+    """)
+
+    # Branch merge audit and idempotency state. These tables intentionally
+    # omit foreign keys so completed audit records can survive chat deletion.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS branch_merge_operations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            idempotency_key TEXT NOT NULL UNIQUE,
+            request_fingerprint TEXT NOT NULL,
+            preview_token TEXT NOT NULL,
+            branch_chat_id INTEGER NOT NULL,
+            parent_chat_id INTEGER NOT NULL,
+            branched_from_message_id INTEGER NOT NULL,
+            branch_message_id INTEGER NOT NULL,
+            expected_parent_last_message_id INTEGER NOT NULL,
+            expected_branch_last_message_id INTEGER NOT NULL,
+            status TEXT NOT NULL CHECK(
+                status IN ('pending', 'completed')
+            ),
+            inserted_turn_count INTEGER NOT NULL DEFAULT 0,
+            inserted_message_count INTEGER NOT NULL DEFAULT 0,
+            first_created_parent_message_id INTEGER DEFAULT NULL,
+            last_created_parent_message_id INTEGER DEFAULT NULL,
+            created_at TEXT NOT NULL,
+            completed_at TEXT DEFAULT NULL
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS branch_merge_message_mappings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            merge_operation_id INTEGER NOT NULL,
+            branch_chat_id INTEGER NOT NULL,
+            parent_chat_id INTEGER NOT NULL,
+            turn_key TEXT NOT NULL,
+            turn_position INTEGER NOT NULL,
+            message_position INTEGER NOT NULL,
+            source_branch_message_id INTEGER NOT NULL,
+            created_parent_message_id INTEGER NOT NULL UNIQUE,
+            created_message_fingerprint TEXT NOT NULL,
+            UNIQUE(
+                merge_operation_id,
+                source_branch_message_id
+            ),
+            UNIQUE(
+                branch_chat_id,
+                parent_chat_id,
+                source_branch_message_id
+            )
         )
     """)
 
@@ -308,6 +364,26 @@ def init_db():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_documents_hash
         ON documents(chat_id, file_hash)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_branch_merge_operations_branch
+        ON branch_merge_operations(branch_chat_id, completed_at)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_branch_merge_operations_parent
+        ON branch_merge_operations(parent_chat_id, completed_at)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_branch_merge_mappings_operation
+        ON branch_merge_message_mappings(merge_operation_id)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_branch_merge_mappings_chats
+        ON branch_merge_message_mappings(branch_chat_id, parent_chat_id)
     """)
 
     conn.commit()
@@ -683,15 +759,9 @@ def compare_chat_with_parent(
     cursor = conn.cursor()
 
     def positive_id(value):
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, int)
-        ):
-            return None
-
         return (
             value
-            if value > 0
+            if _is_positive_integer(value)
             else None
         )
 
@@ -794,6 +864,7 @@ def compare_chat_with_parent(
                 "parent_only_messages": [],
                 "branch_only_messages": [],
                 "counts": None,
+                "merge_preview": None,
             }
 
             conn.commit()
@@ -938,6 +1009,106 @@ def compare_chat_with_parent(
             branch_message_id,
         )
 
+        cursor.execute(
+            """
+            SELECT source_branch_message_id
+            FROM branch_merge_message_mappings
+            WHERE branch_chat_id = ?
+              AND parent_chat_id = ?
+            ORDER BY source_branch_message_id ASC
+            """,
+            (
+                branch_chat_id,
+                parent_chat_id,
+            ),
+        )
+
+        already_merged_message_ids = [
+            row[0]
+            for row in cursor.fetchall()
+        ]
+
+        cursor.execute(
+            """
+            SELECT COALESCE(MAX(id), 0)
+            FROM messages
+            WHERE chat_id = ?
+            """,
+            (parent_chat_id,),
+        )
+        expected_parent_last_message_id = (
+            cursor.fetchone()[0]
+        )
+
+        cursor.execute(
+            """
+            SELECT COALESCE(MAX(id), 0)
+            FROM messages
+            WHERE chat_id = ?
+            """,
+            (branch_chat_id,),
+        )
+        expected_branch_last_message_id = (
+            cursor.fetchone()[0]
+        )
+
+        merge_preview_turns = (
+            _build_canonical_branch_turns(
+                branch_message_id,
+                branch_source_message,
+                branch_only_messages,
+                already_merged_message_ids,
+            )
+        )
+
+        preview_token = (
+            _build_branch_merge_preview_token(
+                version=(
+                    BRANCH_MERGE_PREVIEW_VERSION
+                ),
+                branch_chat_id=(
+                    branch_summary["id"]
+                ),
+                branch_chat_title=(
+                    branch_summary["title"]
+                ),
+                parent_chat_id=(
+                    parent_summary["id"]
+                ),
+                parent_chat_title=(
+                    parent_summary["title"]
+                ),
+                branched_from_message_id=(
+                    parent_message_id
+                ),
+                branch_message_id=(
+                    branch_message_id
+                ),
+                parent_source_message=(
+                    parent_source_message
+                ),
+                branch_source_message=(
+                    branch_source_message
+                ),
+                parent_only_messages=(
+                    parent_only_messages
+                ),
+                branch_only_messages=(
+                    branch_only_messages
+                ),
+                expected_parent_last_message_id=(
+                    expected_parent_last_message_id
+                ),
+                expected_branch_last_message_id=(
+                    expected_branch_last_message_id
+                ),
+                already_merged_source_message_ids=(
+                    already_merged_message_ids
+                ),
+                turns=merge_preview_turns,
+            )
+        )
+
         result = {
             "comparable": True,
             "reason": None,
@@ -970,6 +1141,19 @@ def compare_chat_with_parent(
                 "branch_only": len(
                     branch_only_messages
                 ),
+            },
+            "merge_preview": {
+                "version": (
+                    BRANCH_MERGE_PREVIEW_VERSION
+                ),
+                "preview_token": preview_token,
+                "expected_parent_last_message_id": (
+                    expected_parent_last_message_id
+                ),
+                "expected_branch_last_message_id": (
+                    expected_branch_last_message_id
+                ),
+                "turns": merge_preview_turns,
             },
         }
 

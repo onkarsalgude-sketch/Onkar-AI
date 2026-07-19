@@ -61,6 +61,130 @@ export const getBranchParentComparison = (
   );
 
 
+export class BranchMergeRequestError extends Error {
+  constructor({
+    status = null,
+    code = "MERGE_REQUEST_FAILED",
+    message = "The branch merge request could not be completed safely.",
+    retryable = false,
+    refreshPreview = false,
+    operationId = null,
+    retryAfter = null,
+    canceled = false,
+  } = {}) {
+    super(message);
+    this.name = canceled
+      ? "AbortError"
+      : "BranchMergeRequestError";
+    this.status = status;
+    this.code = canceled
+      ? "ERR_CANCELED"
+      : code;
+    this.retryable = retryable;
+    this.refresh_preview = refreshPreview;
+    this.operation_id = operationId;
+    this.retry_after = retryAfter;
+  }
+}
+
+
+export async function mergeBranchIntoParent(
+  branchChatId,
+  requestBody,
+  credential,
+  { signal } = {}
+) {
+  try {
+    const response = await api.post(
+      `/chats/${branchChatId}/merge-parent`,
+      requestBody,
+      {
+        signal,
+        headers: {
+          Authorization: `Bearer ${credential}`,
+          "X-Onkar-Merge-Intent": "v1",
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    return response.data;
+  } catch (requestError) {
+    if (
+      signal?.aborted ||
+      requestError?.code === "ERR_CANCELED" ||
+      requestError?.name === "CanceledError"
+    ) {
+      throw new BranchMergeRequestError({
+        canceled: true,
+        message: "The branch merge request was canceled.",
+      });
+    }
+
+    const status = Number(
+      requestError?.response?.status
+    ) || null;
+    const rawDetail =
+      requestError?.response?.data?.detail;
+    const detail =
+      rawDetail &&
+      typeof rawDetail === "object" &&
+      !Array.isArray(rawDetail)
+        ? rawDetail
+        : {};
+    const fallbackMessages = {
+      401: "The merge credential was rejected.",
+      403: "The merge request was rejected by the origin or intent security policy.",
+      404: "Merge execution is disabled or unavailable.",
+      413: "The merge request is too large.",
+      415: "The client and server disagree about the merge request media type.",
+      422: "The canonical selection or merge request is invalid.",
+      429: "The merge rate limit was reached.",
+      500: "The merge result is uncertain because the backend returned an internal error.",
+      503: "The merge result is uncertain because the backend is busy or unavailable.",
+    };
+    const resultIsUncertain =
+      status === null ||
+      status === 500 ||
+      status === 503;
+    const safeMessage = resultIsUncertain
+      ? status === null
+        ? "The merge result is uncertain because the server response was not received."
+        : fallbackMessages[status]
+      : typeof detail.message === "string" &&
+          detail.message.trim()
+        ? detail.message.trim()
+        : fallbackMessages[status] ||
+          "The branch merge request was rejected safely.";
+    const retryAfterHeader =
+      requestError?.response?.headers?.[
+        "retry-after"
+      ];
+
+    throw new BranchMergeRequestError({
+      status,
+      code:
+        typeof detail.code === "string"
+          ? detail.code
+          : "MERGE_REQUEST_FAILED",
+      message: safeMessage,
+      retryable: detail.retryable === true,
+      refreshPreview:
+        detail.refresh_preview === true,
+      operationId:
+        Number.isInteger(detail.operation_id) &&
+        detail.operation_id > 0
+          ? detail.operation_id
+          : null,
+      retryAfter:
+        typeof retryAfterHeader === "string"
+          ? retryAfterHeader
+          : null,
+    });
+  }
+}
+
+
 export const deleteChat = (chatId) =>
   api.delete(`/chats/${chatId}`);
 

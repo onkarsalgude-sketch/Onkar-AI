@@ -7,7 +7,20 @@ import {
 
 import {
   getBranchParentComparison,
+  mergeBranchIntoParent,
 } from "../../services/chatService";
+import {
+  BRANCH_MERGE_PENDING_KEY,
+  buildBranchMergeRequest,
+  buildCanonicalMergeUnits,
+  createPendingBranchMerge,
+  evaluateCanonicalMergeSelection,
+  getBranchMergeFailurePolicy,
+  getMergedMessageNavigationTarget,
+  isCompletedBranchMergeResponse,
+  parsePendingBranchMerge,
+  selectedKeysFromPending,
+} from "../../utils/branchMerge";
 
 
 const PAGE_SIZE = 20;
@@ -101,6 +114,10 @@ function isCancellation(error, signal) {
 
 
 function buildConversationUnits(comparison) {
+  if (comparison?.merge_preview) {
+    return buildCanonicalMergeUnits(comparison);
+  }
+
   const sourceMessage =
     comparison?.branch_source_message || null;
   const sourceId = toPositiveId(
@@ -334,7 +351,12 @@ function buildConversationUnits(comparison) {
     });
   }
 
-  return units;
+  return units.map((unit) => ({
+    ...unit,
+    selectable: false,
+    reason:
+      "A fresh server-provided canonical merge unit is unavailable. This local grouping is read-only.",
+  }));
 }
 
 
@@ -661,6 +683,7 @@ function TurnUnitCard({
   selected,
   onToggle,
   isDark,
+  disabled = false,
 }) {
   const checkboxId =
     "merge-preview-" +
@@ -719,6 +742,7 @@ function TurnUnitCard({
               id={checkboxId}
               type="checkbox"
               checked={selected}
+              disabled={disabled}
               onChange={() =>
                 onToggle(unit.key)
               }
@@ -899,6 +923,12 @@ function BranchMergePreviewModal({
   open,
   branchChatId,
   onClose,
+  onSelectChat,
+  onMergeCompleted,
+  mergeCredential = "",
+  hasMergeCredential = false,
+  onRememberMergeCredential,
+  onForgetMergeCredential,
   theme = "dark",
 }) {
   const [comparison, setComparison] =
@@ -917,19 +947,90 @@ function BranchMergePreviewModal({
     useState(createVisibleLimits);
   const [isCommonExpanded, setIsCommonExpanded] =
     useState(false);
+  const [step, setStep] = useState("preview");
+  const [acknowledged, setAcknowledged] =
+    useState(false);
+  const [credentialInput, setCredentialInput] =
+    useState("");
+  const [pendingMerge, setPendingMerge] =
+    useState(null);
+  const [resumeAvailable, setResumeAvailable] =
+    useState(false);
+  const [submitting, setSubmitting] =
+    useState(false);
+  const [submissionError, setSubmissionError] =
+    useState(null);
+  const [success, setSuccess] = useState(null);
+  const [previewNotice, setPreviewNotice] =
+    useState(null);
   const dialogRef = useRef(null);
   const closeButtonRef = useRef(null);
+  const confirmationHeadingRef = useRef(null);
+  const credentialErrorRef = useRef(null);
+  const successHeadingRef = useRef(null);
   const requestIdRef = useRef(0);
+  const submissionRequestIdRef = useRef(0);
+  const submissionControllerRef = useRef(null);
+  const submittingRef = useRef(false);
+  const reloadNoticeRef = useRef(null);
   const isDark = theme === "dark";
+
+  function readPendingStorage() {
+    try {
+      return window.sessionStorage.getItem(
+        BRANCH_MERGE_PENDING_KEY
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  function removePendingStorage() {
+    try {
+      window.sessionStorage.removeItem(
+        BRANCH_MERGE_PENDING_KEY
+      );
+    } catch {
+      // The in-memory copy is still cleared below.
+    }
+
+    setPendingMerge(null);
+    setResumeAvailable(false);
+  }
+
+  function savePendingStorage(pending) {
+    try {
+      window.sessionStorage.setItem(
+        BRANCH_MERGE_PENDING_KEY,
+        JSON.stringify(pending)
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   function discardLocalState() {
     requestIdRef.current += 1;
+    submissionRequestIdRef.current += 1;
+    submissionControllerRef.current?.abort();
+    submissionControllerRef.current = null;
+    submittingRef.current = false;
     setComparison(null);
     setLoading(false);
     setError(null);
     setSelectedUnitKeys(new Set());
     setVisibleLimits(createVisibleLimits());
     setIsCommonExpanded(false);
+    setStep("preview");
+    setAcknowledged(false);
+    setCredentialInput("");
+    setPendingMerge(null);
+    setResumeAvailable(false);
+    setSubmitting(false);
+    setSubmissionError(null);
+    setSuccess(null);
+    setPreviewNotice(null);
   }
 
   function requestClose() {
@@ -941,12 +1042,25 @@ function BranchMergePreviewModal({
     if (open) return;
 
     requestIdRef.current += 1;
+    submissionRequestIdRef.current += 1;
+    submissionControllerRef.current?.abort();
+    submissionControllerRef.current = null;
+    submittingRef.current = false;
     setComparison(null);
     setLoading(false);
     setError(null);
     setSelectedUnitKeys(new Set());
     setVisibleLimits(createVisibleLimits());
     setIsCommonExpanded(false);
+    setStep("preview");
+    setAcknowledged(false);
+    setCredentialInput("");
+    setPendingMerge(null);
+    setResumeAvailable(false);
+    setSubmitting(false);
+    setSubmissionError(null);
+    setSuccess(null);
+    setPreviewNotice(null);
   }, [open]);
 
   useEffect(() => {
@@ -982,6 +1096,13 @@ function BranchMergePreviewModal({
     setSelectedUnitKeys(new Set());
     setVisibleLimits(createVisibleLimits());
     setIsCommonExpanded(false);
+    setStep("preview");
+    setAcknowledged(false);
+    setCredentialInput("");
+    setPendingMerge(null);
+    setResumeAvailable(false);
+    setSubmissionError(null);
+    setSuccess(null);
 
     if (numericBranchChatId === null) {
       setLoading(false);
@@ -1017,9 +1138,37 @@ function BranchMergePreviewModal({
           createVisibleLimits()
         );
         setIsCommonExpanded(false);
-        setComparison(
-          response?.data || null
+        const loadedComparison =
+          response?.data || null;
+        const serializedPending =
+          readPendingStorage();
+        const restoredPending =
+          parsePendingBranchMerge(
+            serializedPending,
+            numericBranchChatId,
+            loadedComparison
+          );
+
+        const pendingWasDiscarded =
+          serializedPending &&
+          !restoredPending;
+
+        if (pendingWasDiscarded) {
+          removePendingStorage();
+        }
+
+        setPendingMerge(restoredPending);
+        setResumeAvailable(
+          Boolean(restoredPending)
         );
+        setPreviewNotice(
+          reloadNoticeRef.current ||
+            (pendingWasDiscarded
+              ? "A saved pending request no longer matched this branch preview and was discarded. Fresh selection and confirmation are required."
+              : null)
+        );
+        reloadNoticeRef.current = null;
+        setComparison(loadedComparison);
       })
       .catch((requestError) => {
         if (
@@ -1056,13 +1205,22 @@ function BranchMergePreviewModal({
     retryKey,
   ]);
 
-  const turnUnits = useMemo(
+  const selectionEvaluation = useMemo(
     () =>
-      comparison?.comparable
-        ? buildConversationUnits(comparison)
-        : [],
-    [comparison]
+      evaluateCanonicalMergeSelection(
+        comparison,
+        selectedUnitKeys
+      ),
+    [comparison, selectedUnitKeys]
   );
+
+  const turnUnits = useMemo(() => {
+    if (!comparison?.comparable) return [];
+
+    return comparison.merge_preview
+      ? selectionEvaluation.units
+      : buildConversationUnits(comparison);
+  }, [comparison, selectionEvaluation.units]);
 
   const selectableUnits = useMemo(
     () =>
@@ -1072,26 +1230,10 @@ function BranchMergePreviewModal({
     [turnUnits]
   );
 
-  const selectedUnits = useMemo(
-    () =>
-      selectableUnits.filter((unit) =>
-        selectedUnitKeys.has(unit.key)
-      ),
-    [selectableUnits, selectedUnitKeys]
-  );
-
-  const selectedMessages = useMemo(
-    () =>
-      selectedUnits
-        .flatMap((unit) => unit.messages)
-        .slice()
-        .sort(
-          (left, right) =>
-            toPositiveId(left.id) -
-            toPositiveId(right.id)
-        ),
-    [selectedUnits]
-  );
+  const selectedUnits =
+    selectionEvaluation.selectedUnits;
+  const selectedMessages =
+    selectionEvaluation.selectedMessages;
 
   useEffect(() => {
     setVisibleLimits((current) => ({
@@ -1101,123 +1243,19 @@ function BranchMergePreviewModal({
   }, [selectedUnitKeys]);
 
   const issues = useMemo(() => {
-    const blocking = [];
-    const warning = [];
+    const blocking = [
+      ...selectionEvaluation.blocking,
+    ];
+    const warning = [
+      ...selectionEvaluation.warning,
+    ];
     const information = [
       {
-        id: "preview-only",
+        id: "append-only",
         message:
-          "This preview is local and performs no database changes.",
+          "Execution is append-only and still requires a separate acknowledged confirmation.",
       },
     ];
-
-    if (selectedUnits.length === 0) {
-      blocking.push({
-        id: "empty-selection",
-        message:
-          "Nothing is selected. Select at least one eligible conversation turn to build a preview.",
-      });
-    }
-
-    for (const unit of selectedUnits) {
-      const hasNonUserMessage =
-        unit.messages.some(
-          (message) =>
-            message.role === "assistant" ||
-            message.role === "system"
-        );
-      const hasValidOwnPrompt =
-        unit.type === "turn" &&
-        unit.anchor?.role === "user" &&
-        toPositiveId(unit.anchor?.id) !==
-          null;
-      const hasValidSourcePrompt =
-        unit.type === "source" &&
-        unit.anchor?.role === "user" &&
-        toPositiveId(unit.anchor?.id) ===
-          toPositiveId(
-            comparison?.branch_message_id
-          );
-
-      if (
-        hasNonUserMessage &&
-        !hasValidOwnPrompt &&
-        !hasValidSourcePrompt
-      ) {
-        blocking.push({
-          id:
-            "missing-prompt:" +
-            unit.key,
-          message:
-            "A selected unit contains assistant or system messages without an exact user prompt anchor.",
-        });
-      }
-    }
-
-    const selectedIdCounts = new Map();
-
-    for (const message of selectedMessages) {
-      const id = toPositiveId(message?.id);
-
-      if (id === null) {
-        blocking.push({
-          id:
-            "invalid-selected-id:" +
-            blocking.length,
-          message:
-            "A selected message has a missing or nonpositive ID.",
-        });
-        continue;
-      }
-
-      selectedIdCounts.set(
-        id,
-        (selectedIdCounts.get(id) || 0) + 1
-      );
-    }
-
-    for (const [id, count] of
-      selectedIdCounts.entries()) {
-      if (count > 1) {
-        blocking.push({
-          id: "duplicate-selected-id:" + id,
-          message:
-            "Multiple selected messages share message ID " +
-            id +
-            ".",
-        });
-      }
-    }
-
-    const parentContentKeys = new Set(
-      (
-        comparison?.parent_only_messages ||
-        []
-      ).map((message) =>
-        JSON.stringify([
-          message?.role,
-          message?.content,
-        ])
-      )
-    );
-    const duplicateContentCount =
-      selectedMessages.filter((message) =>
-        parentContentKeys.has(
-          JSON.stringify([
-            message?.role,
-            message?.content,
-          ])
-        )
-      ).length;
-
-    if (duplicateContentCount > 0) {
-      warning.push({
-        id: "duplicate-parent-content",
-        message:
-          duplicateContentCount +
-          " selected message(s) have the same raw role and content as a parent-only message. They remain separate and selected.",
-      });
-    }
 
     let previousValidTimestamp = null;
     let hasTimestampInversion = false;
@@ -1320,17 +1358,319 @@ function BranchMergePreviewModal({
       information,
     };
   }, [
-    comparison,
+    selectionEvaluation,
     selectedMessages,
     selectedUnits,
   ]);
 
   if (!open) return null;
 
+  const canEnterConfirmation =
+    selectionEvaluation.canEnterConfirmation &&
+    issues.blocking.length === 0 &&
+    !submitting &&
+    !resumeAvailable;
+
+  function focusSoon(ref) {
+    window.requestAnimationFrame(() => {
+      ref.current?.focus();
+    });
+  }
+
+  function enterConfirmation() {
+    if (!canEnterConfirmation) return;
+
+    setAcknowledged(false);
+    setSubmissionError(null);
+    setStep("confirm");
+    focusSoon(confirmationHeadingRef);
+  }
+
+  function returnToPreview() {
+    if (submitting) return;
+
+    setAcknowledged(false);
+    setCredentialInput("");
+    setSubmissionError(null);
+    setResumeAvailable(
+      Boolean(pendingMerge)
+    );
+    setStep("preview");
+  }
+
+  function resumePendingRequest() {
+    if (!pendingMerge || submitting) return;
+
+    setSelectedUnitKeys(
+      selectedKeysFromPending(pendingMerge)
+    );
+    setResumeAvailable(false);
+    setAcknowledged(false);
+    setSubmissionError(null);
+    setStep("confirm");
+    focusSoon(confirmationHeadingRef);
+  }
+
+  function discardPendingRequest() {
+    if (submitting) return;
+
+    removePendingStorage();
+    setPreviewNotice(
+      "The previous pending request was discarded. Make a fresh selection and confirmation."
+    );
+  }
+
+  function safeDismiss() {
+    if (step === "confirm" && !submitting) {
+      returnToPreview();
+      return;
+    }
+
+    requestClose();
+  }
+
+  async function submitMergeRequest() {
+    if (
+      submitting ||
+      submittingRef.current ||
+      !acknowledged ||
+      !comparison?.merge_preview
+    ) {
+      return;
+    }
+
+    const credentialToUse = hasMergeCredential
+      ? mergeCredential
+      : credentialInput;
+
+    if (!credentialToUse) {
+      setSubmissionError({
+        code: "MERGE_AUTH_REQUIRED",
+        message:
+          "Enter the runtime merge authorization credential.",
+        retrySame: Boolean(pendingMerge),
+      });
+      focusSoon(credentialErrorRef);
+      return;
+    }
+
+    let pendingToSubmit = pendingMerge;
+
+    if (!pendingToSubmit) {
+      try {
+        const immutableRequest =
+          buildBranchMergeRequest({
+            comparison,
+            selectedTurnKeys: selectedUnitKeys,
+          });
+
+        pendingToSubmit =
+          createPendingBranchMerge({
+            branchChatId,
+            request: immutableRequest,
+            selectedTurnCount:
+              selectedUnits.length,
+            selectedMessageCount:
+              selectedMessages.length,
+          });
+      } catch (requestError) {
+        setSubmissionError({
+          code: "INVALID_MERGE_REQUEST",
+          message:
+            requestError?.message ||
+            "A safe merge request could not be built.",
+          retrySame: false,
+        });
+        return;
+      }
+
+      if (!savePendingStorage(pendingToSubmit)) {
+        setSubmissionError({
+          code: "PENDING_STORAGE_UNAVAILABLE",
+          message:
+            "The exact pending request could not be saved for safe retry. No merge request was sent.",
+          retrySame: false,
+        });
+        return;
+      }
+
+      setPendingMerge(pendingToSubmit);
+    }
+
+    if (!hasMergeCredential) {
+      onRememberMergeCredential?.(
+        credentialToUse
+      );
+      setCredentialInput("");
+    }
+
+    const controller = new AbortController();
+    const submissionRequestId =
+      submissionRequestIdRef.current + 1;
+
+    submissionRequestIdRef.current =
+      submissionRequestId;
+    submissionControllerRef.current =
+      controller;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setSubmissionError(null);
+
+    try {
+      const result = await mergeBranchIntoParent(
+        branchChatId,
+        pendingToSubmit.request,
+        credentialToUse,
+        {
+          signal: controller.signal,
+        }
+      );
+
+      if (
+        controller.signal.aborted ||
+        submissionRequestIdRef.current !==
+          submissionRequestId
+      ) {
+        return;
+      }
+
+      if (!isCompletedBranchMergeResponse(result)) {
+        throw new Error(
+          "The merge result is uncertain because the completion response was invalid."
+        );
+      }
+
+      removePendingStorage();
+      setSuccess(result);
+      setAcknowledged(false);
+      setStep("success");
+      onMergeCompleted?.(branchChatId);
+      focusSoon(successHeadingRef);
+    } catch (requestError) {
+      if (
+        controller.signal.aborted ||
+        submissionRequestIdRef.current !==
+          submissionRequestId
+      ) {
+        return;
+      }
+
+      const status = requestError?.status;
+      const code = requestError?.code;
+      const operationId =
+        requestError?.operation_id || null;
+      const retryAfter =
+        requestError?.retry_after || null;
+      const safeMessage =
+        requestError?.message ||
+        "The merge result is uncertain. Retry the same request.";
+      const failurePolicy =
+        getBranchMergeFailurePolicy(
+          requestError
+        );
+
+      if (status === 401) {
+        onForgetMergeCredential?.();
+        setCredentialInput("");
+        setSubmissionError({
+          code,
+          message:
+            "The merge credential was rejected and cleared from memory. Enter it again to retry the same request.",
+          retrySame: true,
+        });
+        focusSoon(credentialErrorRef);
+      } else if (
+        status === 409 &&
+        code === "STALE_PREVIEW"
+      ) {
+        removePendingStorage();
+        setSelectedUnitKeys(new Set());
+        reloadNoticeRef.current =
+          "STALE_PREVIEW: The preview became stale. Select again from the freshly loaded canonical preview.";
+        retryRequest();
+      } else if (
+        status === 409 &&
+        code === "IDEMPOTENCY_KEY_REUSED"
+      ) {
+        removePendingStorage();
+        setSelectedUnitKeys(new Set());
+        reloadNoticeRef.current =
+          "IDEMPOTENCY_KEY_REUSED: The key belongs to another request. A fresh preview and confirmation are required.";
+        retryRequest();
+      } else if (
+        status === 409 &&
+        code === "MERGE_ALREADY_COMPLETED"
+      ) {
+        removePendingStorage();
+        setSelectedUnitKeys(new Set());
+        reloadNoticeRef.current =
+          "MERGE_ALREADY_COMPLETED: The selected messages were already merged" +
+          (operationId
+            ? ` by operation ${operationId}.`
+            : ".") +
+          " No automatic resubmission occurred.";
+        onMergeCompleted?.(branchChatId);
+        retryRequest();
+      } else if (
+        failurePolicy.keepPending
+      ) {
+        setSubmissionError({
+          code,
+          message:
+            status === 429 && retryAfter
+              ? `${safeMessage} Retry-After: ${retryAfter} seconds.`
+              : safeMessage,
+          retrySame: true,
+          operationId,
+        });
+      } else {
+        removePendingStorage();
+        setSelectedUnitKeys(new Set());
+        setAcknowledged(false);
+        setStep("preview");
+        setPreviewNotice(
+          `${code ? `${code}: ` : ""}${safeMessage} The invalid pending request was cleared; review the current preview before trying again.`
+        );
+      }
+    } finally {
+      if (
+        submissionRequestIdRef.current ===
+        submissionRequestId
+      ) {
+        setSubmitting(false);
+        submittingRef.current = false;
+        submissionControllerRef.current = null;
+      }
+    }
+  }
+
+  function openMergedParent() {
+    if (!success) return;
+
+    const parentChatId = toPositiveId(
+      success.parent_chat_id
+    );
+    const targetMessageId =
+      getMergedMessageNavigationTarget(
+        success
+      );
+
+    if (parentChatId === null) return;
+
+    requestClose();
+    onSelectChat?.(
+      parentChatId,
+      targetMessageId,
+      {
+        missingTargetBehavior: "silent",
+      }
+    );
+  }
+
   function handleDialogKeyDown(event) {
     if (event.key === "Escape") {
       event.preventDefault();
-      requestClose();
+      safeDismiss();
       return;
     }
 
@@ -1378,6 +1718,10 @@ function BranchMergePreviewModal({
   }
 
   function toggleUnit(unitKey) {
+    if (submitting || step !== "preview") {
+      return;
+    }
+
     setSelectedUnitKeys((current) => {
       const next = new Set(current);
 
@@ -1392,6 +1736,10 @@ function BranchMergePreviewModal({
   }
 
   function selectAllUnits() {
+    if (submitting || step !== "preview") {
+      return;
+    }
+
     setSelectedUnitKeys(
       new Set(
         selectableUnits.map(
@@ -1402,6 +1750,10 @@ function BranchMergePreviewModal({
   }
 
   function clearSelection() {
+    if (submitting || step !== "preview") {
+      return;
+    }
+
     setSelectedUnitKeys(new Set());
   }
 
@@ -1428,6 +1780,16 @@ function BranchMergePreviewModal({
     setSelectedUnitKeys(new Set());
     setVisibleLimits(createVisibleLimits());
     setIsCommonExpanded(false);
+    setStep("preview");
+    setAcknowledged(false);
+    setCredentialInput("");
+    setPendingMerge(null);
+    setResumeAvailable(false);
+    setSubmitting(false);
+    submittingRef.current = false;
+    setSubmissionError(null);
+    setSuccess(null);
+    setPreviewNotice(null);
     setRetryKey(
       (current) => current + 1
     );
@@ -1463,7 +1825,7 @@ function BranchMergePreviewModal({
       className="fixed inset-0 z-[75] flex items-center justify-center bg-black/70 p-2 backdrop-blur-sm sm:p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
-          requestClose();
+          safeDismiss();
         }
       }}
     >
@@ -1473,7 +1835,9 @@ function BranchMergePreviewModal({
         aria-modal="true"
         aria-labelledby="branch-merge-preview-title"
         aria-describedby="branch-merge-preview-description"
-        aria-busy={isLoadingState}
+        aria-busy={
+          isLoadingState || submitting
+        }
         tabIndex={-1}
         onKeyDown={handleDialogKeyDown}
         onMouseDown={(event) =>
@@ -1502,9 +1866,21 @@ function BranchMergePreviewModal({
             <div className="flex flex-wrap items-center gap-2">
               <h2
                 id="branch-merge-preview-title"
+                ref={
+                  step === "confirm"
+                    ? confirmationHeadingRef
+                    : step === "success"
+                      ? successHeadingRef
+                      : null
+                }
                 className="text-lg font-bold"
+                tabIndex={-1}
               >
-                Branch Merge Preview
+                {step === "confirm"
+                  ? "Confirm Branch Merge"
+                  : step === "success"
+                    ? "Branch Merge Completed"
+                    : "Branch Merge Preview"}
               </h2>
               <span
                 className={
@@ -1516,7 +1892,11 @@ function BranchMergePreviewModal({
                   )
                 }
               >
-                Preview only
+                {step === "preview"
+                  ? "Review"
+                  : step === "confirm"
+                    ? "Final confirmation"
+                    : "Completed"}
               </span>
             </div>
 
@@ -1670,8 +2050,136 @@ function BranchMergePreviewModal({
 
           {!isLoadingState &&
             !error &&
-            comparison?.comparable && (
+            comparison?.comparable &&
+            step === "preview" && (
               <div className="space-y-4">
+                {previewNotice && (
+                  <section
+                    role="status"
+                    aria-live="polite"
+                    className={
+                      "rounded-xl border p-3 text-sm " +
+                      (
+                        isDark
+                          ? "border-blue-500/40 bg-blue-500/10 text-blue-100"
+                          : "border-blue-200 bg-blue-50 text-blue-900"
+                      )
+                    }
+                  >
+                    {previewNotice}
+                  </section>
+                )}
+
+                {resumeAvailable &&
+                  pendingMerge && (
+                    <section
+                      className={
+                        "rounded-xl border p-4 " +
+                        (
+                          isDark
+                            ? "border-amber-500/40 bg-amber-500/10"
+                            : "border-amber-200 bg-amber-50"
+                        )
+                      }
+                    >
+                      <h3 className="font-semibold">
+                        Pending merge request found
+                      </h3>
+                      <p className="mt-1 text-sm">
+                        Its preview boundaries still
+                        match this branch. Resume it
+                        with the exact same request and
+                        idempotency key, or discard it
+                        before making a new request.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={resumePendingRequest}
+                          disabled={submitting}
+                          className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Resume pending merge
+                        </button>
+                        <button
+                          type="button"
+                          onClick={discardPendingRequest}
+                          disabled={submitting}
+                          className={
+                            "rounded-lg px-3 py-1.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 " +
+                            (
+                              isDark
+                                ? "bg-slate-800 text-slate-200 hover:bg-slate-700"
+                                : "bg-white text-slate-700 hover:bg-slate-100"
+                            )
+                          }
+                        >
+                          Discard pending request
+                        </button>
+                      </div>
+                    </section>
+                  )}
+
+                {hasMergeCredential && (
+                  <section
+                    className={
+                      "flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 text-sm " +
+                      (
+                        isDark
+                          ? "border-slate-700 bg-slate-900"
+                          : "border-slate-200 bg-slate-50"
+                      )
+                    }
+                  >
+                    <p>
+                      A merge credential is currently
+                      held in page memory. Its value is
+                      not displayed.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={
+                        onForgetMergeCredential
+                      }
+                      disabled={submitting}
+                      className={
+                        "rounded-lg px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 " +
+                        (
+                          isDark
+                            ? "bg-slate-800 text-slate-200 hover:bg-slate-700"
+                            : "bg-white text-slate-700 hover:bg-slate-100"
+                        )
+                      }
+                    >
+                      Forget merge credential
+                    </button>
+                  </section>
+                )}
+
+                {!comparison.merge_preview && (
+                  <section
+                    role="alert"
+                    className={
+                      "rounded-xl border p-4 " +
+                      (
+                        isDark
+                          ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
+                          : "border-amber-200 bg-amber-50 text-amber-900"
+                      )
+                    }
+                  >
+                    <h3 className="font-semibold">
+                      Fresh merge-capable preview unavailable
+                    </h3>
+                    <p className="mt-1 text-sm">
+                      Read-only comparison data remains
+                      available, but execution is
+                      disabled because canonical server
+                      turns are missing.
+                    </p>
+                  </section>
+                )}
+
                 <section
                   className={
                     "rounded-xl border p-4 " +
@@ -1696,8 +2204,10 @@ function BranchMergePreviewModal({
                       )
                     }
                   >
-                    No messages or database records
-                    will be changed.
+                    Review the server-provided
+                    canonical turns below. Nothing is
+                    written until a separate final
+                    confirmation is acknowledged.
                   </p>
                 </section>
 
@@ -1952,6 +2462,7 @@ function BranchMergePreviewModal({
                         type="button"
                         onClick={selectAllUnits}
                         disabled={
+                          submitting ||
                           selectableUnits.length === 0
                         }
                         className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1962,6 +2473,7 @@ function BranchMergePreviewModal({
                         type="button"
                         onClick={clearSelection}
                         disabled={
+                          submitting ||
                           selectedUnitKeys.size === 0
                         }
                         className={
@@ -2022,6 +2534,7 @@ function BranchMergePreviewModal({
                               )}
                               onToggle={toggleUnit}
                               isDark={isDark}
+                              disabled={submitting}
                             />
                           )
                         )}
@@ -2193,6 +2706,370 @@ function BranchMergePreviewModal({
                 </section>
               </div>
             )}
+
+          {!isLoadingState &&
+            !error &&
+            comparison?.comparable &&
+            step === "confirm" && (
+              <section
+                aria-labelledby="branch-merge-confirmation-heading"
+                aria-busy={submitting}
+                className="mx-auto max-w-3xl space-y-4"
+              >
+                <div
+                  className={
+                    "rounded-xl border p-4 " +
+                    (
+                      isDark
+                        ? "border-red-500/40 bg-red-500/10"
+                        : "border-red-200 bg-red-50"
+                    )
+                  }
+                >
+                  <h3
+                    id="branch-merge-confirmation-heading"
+                    className="text-lg font-bold"
+                  >
+                    Final append confirmation
+                  </h3>
+                  <dl className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wide opacity-70">
+                        Immediate destination
+                      </dt>
+                      <dd className="mt-1 break-words font-semibold">
+                        {parentTitle}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wide opacity-70">
+                        Source branch
+                      </dt>
+                      <dd className="mt-1 break-words font-semibold">
+                        {branchTitle}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wide opacity-70">
+                        Selected turns
+                      </dt>
+                      <dd className="mt-1 font-semibold">
+                        {selectedUnits.length}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wide opacity-70">
+                        Selected messages
+                      </dt>
+                      <dd className="mt-1 font-semibold">
+                        {selectedMessages.length}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <ul className="mt-4 list-disc space-y-1 pl-5 text-sm">
+                    <li>
+                      Selected turns are appended to
+                      the immediate parent only.
+                    </li>
+                    <li>
+                      The source branch remains
+                      unchanged and present.
+                    </li>
+                    <li>
+                      Existing parent history remains
+                      unchanged.
+                    </li>
+                    <li>
+                      There is no Undo in v2.23.
+                    </li>
+                  </ul>
+                </div>
+
+                <div
+                  className={
+                    "rounded-xl border p-4 " +
+                    (
+                      isDark
+                        ? "border-slate-700 bg-slate-900"
+                        : "border-slate-200 bg-slate-50"
+                    )
+                  }
+                >
+                  <h3 className="font-semibold">
+                    Excluded from the append
+                  </h3>
+                  <p className="mt-1 text-sm">
+                    Attachments, physical files,
+                    source/citation metadata, PDFs,
+                    documents, bookmarks, RAG/Chroma
+                    data, branch metadata, and model
+                    metadata are not copied.
+                  </p>
+                </div>
+
+                <div
+                  className={
+                    "rounded-xl border p-4 " +
+                    (
+                      isDark
+                        ? "border-slate-700 bg-slate-900"
+                        : "border-slate-200 bg-white"
+                    )
+                  }
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold">
+                        Runtime merge credential
+                      </h3>
+                      <p className="mt-1 text-xs opacity-70">
+                        Kept in browser memory only and
+                        sent only with this merge POST.
+                      </p>
+                    </div>
+                    {hasMergeCredential && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onForgetMergeCredential?.();
+                          setCredentialInput("");
+                        }}
+                        disabled={submitting}
+                        className={
+                          "rounded-lg px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 " +
+                          (
+                            isDark
+                              ? "bg-slate-800 text-slate-200 hover:bg-slate-700"
+                              : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                          )
+                        }
+                      >
+                        Forget merge credential
+                      </button>
+                    )}
+                  </div>
+
+                  {hasMergeCredential ? (
+                    <p
+                      className="mt-3 text-sm text-emerald-500"
+                      role="status"
+                    >
+                      A merge credential is available
+                      in memory. Its value is not
+                      displayed.
+                    </p>
+                  ) : (
+                    <div className="mt-3">
+                      <label
+                        htmlFor="branch-merge-credential"
+                        className="text-sm font-semibold"
+                      >
+                        Merge authorization credential
+                      </label>
+                      <input
+                        id="branch-merge-credential"
+                        type="password"
+                        value={credentialInput}
+                        onChange={(event) =>
+                          setCredentialInput(
+                            event.target.value
+                          )
+                        }
+                        disabled={submitting}
+                        autoComplete="off"
+                        spellCheck="false"
+                        className={
+                          "mt-2 w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 " +
+                          (
+                            isDark
+                              ? "border-slate-700 bg-slate-950 text-white"
+                              : "border-slate-300 bg-white text-slate-900"
+                          )
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {submissionError && (
+                  <div
+                    ref={credentialErrorRef}
+                    role="alert"
+                    aria-live="assertive"
+                    tabIndex={-1}
+                    className={
+                      "rounded-xl border p-4 " +
+                      (
+                        isDark
+                          ? "border-red-500/40 bg-red-500/10 text-red-100"
+                          : "border-red-200 bg-red-50 text-red-900"
+                      )
+                    }
+                  >
+                    <h3 className="font-semibold">
+                      Merge request needs attention
+                    </h3>
+                    <p className="mt-1 break-words text-sm">
+                      {submissionError.message}
+                    </p>
+                    {submissionError.code && (
+                      <p className="mt-2 text-xs font-semibold">
+                        Code: {submissionError.code}
+                      </p>
+                    )}
+                    {submissionError.operationId && (
+                      <p className="mt-1 text-xs">
+                        Operation: {submissionError.operationId}
+                      </p>
+                    )}
+                    {submissionError.retrySame && (
+                      <p className="mt-2 text-xs font-semibold">
+                        Retry same request. The exact
+                        body and idempotency key will be
+                        reused.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <label
+                  className={
+                    "flex items-start gap-3 rounded-xl border p-4 text-sm " +
+                    (
+                      isDark
+                        ? "border-slate-700 bg-slate-900"
+                        : "border-slate-200 bg-white"
+                    )
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    checked={acknowledged}
+                    onChange={(event) =>
+                      setAcknowledged(
+                        event.target.checked
+                      )
+                    }
+                    disabled={submitting}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-400 text-red-600 focus:ring-red-500"
+                  />
+                  <span>
+                    I understand this is an append-only
+                    operation with no Undo in v2.23,
+                    and that the excluded metadata and
+                    files will not be copied.
+                  </span>
+                </label>
+              </section>
+            )}
+
+          {!isLoadingState &&
+            !error &&
+            step === "success" &&
+            success && (
+              <section
+                aria-live="polite"
+                className="mx-auto max-w-3xl space-y-4"
+              >
+                <div
+                  className={
+                    "rounded-xl border p-5 " +
+                    (
+                      isDark
+                        ? "border-emerald-500/40 bg-emerald-500/10"
+                        : "border-emerald-200 bg-emerald-50"
+                    )
+                  }
+                >
+                  <h3 className="text-lg font-bold">
+                    Completed
+                  </h3>
+                  <p className="mt-1 text-sm">
+                    {success.replayed
+                      ? "The backend safely replayed the existing completed operation."
+                      : "The selected canonical turns were appended successfully."}
+                  </p>
+                  <dl className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                    <div>
+                      <dt className="text-xs uppercase opacity-70">
+                        Operation ID
+                      </dt>
+                      <dd className="font-semibold">
+                        {success.operation_id}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase opacity-70">
+                        Replayed operation
+                      </dt>
+                      <dd className="font-semibold">
+                        {success.replayed ? "Yes" : "No"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase opacity-70">
+                        Destination parent
+                      </dt>
+                      <dd className="font-semibold">
+                        {parentTitle}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase opacity-70">
+                        Inserted turns
+                      </dt>
+                      <dd className="font-semibold">
+                        {success.inserted_turn_count}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase opacity-70">
+                        Inserted messages
+                      </dt>
+                      <dd className="font-semibold">
+                        {success.inserted_message_count}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase opacity-70">
+                        First created message
+                      </dt>
+                      <dd className="font-semibold">
+                        {success.first_created_parent_message_id ??
+                          "Unavailable"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase opacity-70">
+                        Last created message
+                      </dt>
+                      <dd className="font-semibold">
+                        {success.last_created_parent_message_id ??
+                          "Unavailable"}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <div
+                  className={
+                    "rounded-xl border p-4 text-sm " +
+                    (
+                      isDark
+                        ? "border-slate-700 bg-slate-900"
+                        : "border-slate-200 bg-slate-50"
+                    )
+                  }
+                >
+                  The source branch remains unchanged.
+                  Attachments, files, source metadata,
+                  PDFs, documents, bookmarks,
+                  RAG/Chroma data, branch metadata, and
+                  model metadata were not copied.
+                </div>
+              </section>
+            )}
         </div>
 
         <footer
@@ -2205,14 +3082,99 @@ function BranchMergePreviewModal({
             )
           }
         >
-          <button
-            type="button"
-            onClick={requestClose}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
-            aria-label="Close Branch Merge Preview"
-          >
-            Close
-          </button>
+          {step === "preview" && (
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={requestClose}
+                className={
+                  "rounded-lg px-4 py-2 text-sm font-semibold transition " +
+                  (
+                    isDark
+                      ? "bg-slate-800 text-slate-200 hover:bg-slate-700"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  )
+                }
+              >
+                Close
+              </button>
+              {comparison?.comparable && (
+                <button
+                  type="button"
+                  onClick={enterConfirmation}
+                  disabled={!canEnterConfirmation}
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Review final confirmation
+                </button>
+              )}
+            </div>
+          )}
+
+          {step === "confirm" && (
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={returnToPreview}
+                disabled={submitting}
+                className={
+                  "rounded-lg px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 " +
+                  (
+                    isDark
+                      ? "bg-slate-800 text-slate-200 hover:bg-slate-700"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  )
+                }
+              >
+                Back to preview
+              </button>
+              <button
+                type="button"
+                onClick={submitMergeRequest}
+                disabled={
+                  submitting ||
+                  !acknowledged ||
+                  (
+                    !hasMergeCredential &&
+                    !credentialInput
+                  )
+                }
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submitting
+                  ? "Appending selected turnsâ€¦"
+                  : submissionError?.retrySame
+                    ? "Retry same request"
+                    : "Append selected turns to parent"}
+              </button>
+            </div>
+          )}
+
+          {step === "success" && (
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={requestClose}
+                className={
+                  "rounded-lg px-4 py-2 text-sm font-semibold transition " +
+                  (
+                    isDark
+                      ? "bg-slate-800 text-slate-200 hover:bg-slate-700"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  )
+                }
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={openMergedParent}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+              >
+                Open parent and highlight merged messages
+              </button>
+            </div>
+          )}
         </footer>
       </div>
     </div>
