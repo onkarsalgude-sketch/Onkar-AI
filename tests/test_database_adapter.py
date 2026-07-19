@@ -4,6 +4,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from psycopg.pq import TransactionStatus
+
 from app.database.db import (
     DATABASE_INTEGRITY_ERRORS,
     PortableConnection,
@@ -345,6 +347,34 @@ class DatabaseAdapterTests(unittest.TestCase):
         self.assertIn(
             sqlite3.IntegrityError,
             DATABASE_INTEGRITY_ERRORS,
+        )
+
+
+    def test_postgresql_transaction_state_is_exposed(
+        self,
+    ):
+        class ConnectionInfo:
+            transaction_status = (
+                TransactionStatus.INTRANS
+            )
+
+        class RawConnection:
+            info = ConnectionInfo()
+
+        connection = PortableConnection(
+            RawConnection()
+        )
+
+        self.assertTrue(
+            connection.in_transaction
+        )
+
+        ConnectionInfo.transaction_status = (
+            TransactionStatus.IDLE
+        )
+
+        self.assertFalse(
+            connection.in_transaction
         )
 
 

@@ -17,6 +17,7 @@ from psycopg import (
     IntegrityError as PsycopgIntegrityError,
     OperationalError as PsycopgOperationalError,
 )
+from psycopg.pq import TransactionStatus
 from sqlalchemy.engine import Engine
 
 from app.config.database import (
@@ -413,6 +414,80 @@ class PortableConnection:
     def __init__(self, raw_connection):
         self._raw_connection = raw_connection
         self.row_factory = None
+
+
+    @property
+    def in_transaction(self) -> bool:
+        """Return whether the wrapped DBAPI connection has a transaction."""
+        raw_connection = (
+            self._raw_connection
+        )
+
+        driver_connection = (
+            getattr(
+                raw_connection,
+                "driver_connection",
+                None,
+            )
+            or getattr(
+                raw_connection,
+                "dbapi_connection",
+                None,
+            )
+            or raw_connection
+        )
+
+        connection_info = getattr(
+            driver_connection,
+            "info",
+            None,
+        )
+
+        transaction_status = getattr(
+            connection_info,
+            "transaction_status",
+            None,
+        )
+
+        if transaction_status is None:
+            status_getter = getattr(
+                driver_connection,
+                "get_transaction_status",
+                None,
+            )
+
+            if callable(status_getter):
+                transaction_status = (
+                    status_getter()
+                )
+
+        if transaction_status is None:
+            return False
+
+        try:
+            return (
+                TransactionStatus(
+                    transaction_status
+                )
+                != TransactionStatus.IDLE
+            )
+        except (
+            TypeError,
+            ValueError,
+        ):
+            status_name = str(
+                getattr(
+                    transaction_status,
+                    "name",
+                    transaction_status,
+                )
+            ).upper()
+
+            return status_name not in {
+                "IDLE",
+                "0",
+                "TRANSACTIONSTATUS.IDLE",
+            }
 
     def cursor(self) -> PortableCursor:
         return PortableCursor(
