@@ -4,7 +4,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.config.settings import CHAT_DB
-from app.database.db import get_connection
+from app.database.db import get_runtime_connection
 
 
 DB_PATH = str(CHAT_DB)
@@ -18,7 +18,7 @@ def get_document(
     document_id: str,
     chat_id: int,
 ) -> dict | None:
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -72,7 +72,7 @@ def get_document_by_filename(
     chat_id: int,
     filename: str,
 ) -> dict | None:
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -104,7 +104,7 @@ def find_duplicate_document(
     chat_id: int,
     file_hash: str,
 ) -> dict | None:
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -149,7 +149,7 @@ def create_document(
         filename=safe_filename,
     )
 
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     if existing_document:
@@ -228,7 +228,7 @@ def mark_document_ready(
     page_count: int,
     chunk_count: int,
 ) -> dict | None:
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -264,7 +264,7 @@ def mark_document_failed(
     document_id: str,
     chat_id: int,
 ) -> dict | None:
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -293,7 +293,7 @@ def mark_document_failed(
 
 
 def list_documents(chat_id: int) -> list[dict]:
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -332,7 +332,7 @@ def set_document_selected(
     chat_id: int,
     is_selected: bool,
 ) -> dict | None:
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -370,7 +370,7 @@ def delete_document_record(
     document_id: str,
     chat_id: int,
 ) -> bool:
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -394,7 +394,7 @@ def delete_document_record(
 
 
 def delete_chat_documents(chat_id: int) -> int:
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -415,7 +415,7 @@ def delete_chat_documents(chat_id: int) -> int:
 def get_selected_document_filenames(
     chat_id: int,
 ) -> list[str]:
-    conn = get_connection(DB_PATH)
+    conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute(
