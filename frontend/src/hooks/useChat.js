@@ -366,7 +366,24 @@ removeCurrentMessageBookmark,
   chatId,
   messageId,
   options
-);
+ );
+  }
+
+
+  async function handleBranchMergeCompleted(
+    branchChatId
+  ) {
+    await loadChats();
+
+    if (branchChatId) {
+      await selectChat(
+        branchChatId,
+        null,
+        {
+          missingTargetBehavior: "silent",
+        }
+      );
+    }
   }
 
   async function syncLatestPersistedMessages(
@@ -1483,6 +1500,9 @@ loadFolders,
     loadAvailableModels,
 
     loadChats,
+
+    refreshAfterBranchMerge:
+      handleBranchMergeCompleted,
 
     selectChat:
       handleSelectChat,

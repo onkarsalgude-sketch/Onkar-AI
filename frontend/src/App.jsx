@@ -46,6 +46,7 @@ saveMessageBookmark,
 removeMessageBookmark,
 
 selectChat,
+refreshAfterBranchMerge,
 renameCurrentChat,
 deleteCurrentChat,
 restoreChatBackup,
@@ -163,6 +164,9 @@ toggleChatPin={toggleChatPin}
   activeChatId={activeChatId}
   chats={chats}
   selectChat={selectChat}
+  onMergeCompleted={
+    refreshAfterBranchMerge
+  }
   documentRefreshKey={
     documentRefreshKey
   }

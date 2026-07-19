@@ -7,6 +7,7 @@ import {
 
 import BranchCompareModal from "./BranchCompareModal";
 import BranchMergePreviewModal from "./BranchMergePreviewModal";
+import useBranchMergeCredential from "../../hooks/useBranchMergeCredential";
 
 
 function toPositiveId(value) {
@@ -178,6 +179,7 @@ function BranchExplorer({
   chats = [],
   activeChatId,
   onSelectChat,
+  onMergeCompleted,
   theme = "dark",
 }) {
   const [isExpanded, setIsExpanded] =
@@ -196,6 +198,12 @@ function BranchExplorer({
   ] = useState(null);
   const compareButtonRef = useRef(null);
   const mergePreviewButtonRef = useRef(null);
+  const {
+    credential: mergeCredential,
+    hasCredential: hasMergeCredential,
+    rememberCredential,
+    forgetCredential,
+  } = useBranchMergeCredential();
   const isDark = theme === "dark";
   const normalizedActiveChatId =
     toPositiveId(activeChatId);
@@ -578,6 +586,16 @@ function BranchExplorer({
           mergePreviewBranchChatId
         }
         onClose={closeMergePreview}
+        onSelectChat={onSelectChat}
+        onMergeCompleted={onMergeCompleted}
+        mergeCredential={mergeCredential}
+        hasMergeCredential={hasMergeCredential}
+        onRememberMergeCredential={
+          rememberCredential
+        }
+        onForgetMergeCredential={
+          forgetCredential
+        }
         theme={theme}
       />
     </>

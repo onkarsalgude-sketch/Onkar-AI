@@ -16,6 +16,7 @@ function ChatWindow({
   activeChatId,
   chats = [],
   selectChat,
+  onMergeCompleted,
   documentRefreshKey,
   messages,
   input,
@@ -434,6 +435,9 @@ messageActionLoadingId = null,
         chats={chats}
         activeChatId={activeChatId}
         onSelectChat={selectChat}
+        onMergeCompleted={
+          onMergeCompleted
+        }
         theme={theme}
       />
 

@@ -1,10 +1,17 @@
 from datetime import datetime
-from typing import Literal, Optional
+from typing import (
+    Annotated,
+    Literal,
+    Optional,
+)
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     field_validator,
+    model_validator,
 )
 
 
@@ -359,6 +366,31 @@ class ChatComparisonCounts(BaseModel):
     branch_only: int
 
 
+class BranchMergePreviewTurn(BaseModel):
+    turn_key: str
+    type: Literal[
+        "source",
+        "turn",
+        "locked",
+    ]
+    selectable: bool
+    anchor_message_id: Optional[int] = None
+    message_ids: list[int] = Field(
+        default_factory=list
+    )
+    reason: Optional[str] = None
+
+
+class BranchMergePreviewSnapshot(BaseModel):
+    version: int
+    preview_token: str
+    expected_parent_last_message_id: int
+    expected_branch_last_message_id: int
+    turns: list[
+        BranchMergePreviewTurn
+    ] = Field(default_factory=list)
+
+
 class ChatCompareParentResponse(BaseModel):
     comparable: bool
     reason: Optional[str] = None
@@ -387,4 +419,166 @@ class ChatCompareParentResponse(BaseModel):
     ] = Field(default_factory=list)
     counts: Optional[
         ChatComparisonCounts
+    ] = None
+    merge_preview: Optional[
+        BranchMergePreviewSnapshot
+    ] = None
+
+
+# -------------------------
+# Internal branch merge models
+# -------------------------
+
+StrictPositiveInt = Annotated[
+    int,
+    Field(strict=True, gt=0),
+]
+
+StrictNonnegativeInt = Annotated[
+    int,
+    Field(strict=True, ge=0),
+]
+
+
+class StrictBranchMergeModel(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+    )
+
+
+class BranchMergeExpectedState(
+    StrictBranchMergeModel
+):
+    parent_chat_id: StrictPositiveInt
+    branched_from_message_id: StrictPositiveInt
+    branch_message_id: StrictPositiveInt
+    parent_last_message_id: StrictPositiveInt
+    branch_last_message_id: StrictPositiveInt
+
+
+class BranchMergeSelectedTurn(
+    StrictBranchMergeModel
+):
+    turn_key: str = Field(
+        min_length=1,
+        max_length=200,
+    )
+    message_ids: list[
+        StrictPositiveInt
+    ] = Field(
+        default_factory=list,
+        max_length=20_000,
+    )
+
+    @field_validator("turn_key")
+    @classmethod
+    def validate_turn_key(cls, value: str):
+        if value != value.strip():
+            raise ValueError(
+                "Turn key must not contain leading or trailing whitespace."
+            )
+
+        return value
+
+
+class BranchMergeRequest(
+    StrictBranchMergeModel
+):
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=64,
+    )
+    preview_token: str = Field(
+        min_length=64,
+        max_length=64,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    expected: BranchMergeExpectedState
+    selected_turns: list[
+        BranchMergeSelectedTurn
+    ] = Field(max_length=5_000)
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def validate_idempotency_key(
+        cls,
+        value: str,
+    ):
+        if value != value.strip():
+            raise ValueError(
+                "Idempotency key must not contain whitespace."
+            )
+
+        try:
+            UUID(value)
+        except (ValueError, AttributeError) as error:
+            raise ValueError(
+                "Idempotency key must be a valid UUID string."
+            ) from error
+
+        return value
+
+    @model_validator(mode="after")
+    def validate_total_message_limit(self):
+        total_message_count = sum(
+            len(turn.message_ids)
+            for turn in self.selected_turns
+        )
+
+        if total_message_count > 20_000:
+            raise ValueError(
+                "A merge request may select at most 20,000 messages."
+            )
+
+        return self
+
+
+class BranchMergeTurnResult(
+    StrictBranchMergeModel
+):
+    turn_key: str = Field(
+        min_length=1,
+        max_length=200,
+    )
+    source_branch_message_ids: list[
+        StrictPositiveInt
+    ] = Field(default_factory=list)
+    created_parent_message_ids: list[
+        StrictPositiveInt
+    ] = Field(default_factory=list)
+
+
+class BranchMergeResponse(
+    StrictBranchMergeModel
+):
+    status: Literal["completed"]
+    replayed: bool
+    operation_id: StrictPositiveInt
+    idempotency_key: str
+    branch_chat_id: StrictPositiveInt
+    parent_chat_id: StrictPositiveInt
+    inserted_turn_count: StrictNonnegativeInt
+    inserted_message_count: StrictNonnegativeInt
+    first_created_parent_message_id: Optional[
+        StrictPositiveInt
+    ] = None
+    last_created_parent_message_id: Optional[
+        StrictPositiveInt
+    ] = None
+    completed_at: str = Field(min_length=1)
+    turns: list[
+        BranchMergeTurnResult
+    ] = Field(default_factory=list)
+
+
+class BranchMergeErrorDetail(
+    StrictBranchMergeModel
+):
+    code: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+    retryable: bool = False
+    refresh_preview: bool = False
+    operation_id: Optional[
+        StrictPositiveInt
     ] = None
