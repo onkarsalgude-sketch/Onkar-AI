@@ -13,7 +13,10 @@ from collections.abc import Iterator, Mapping, Sequence
 from threading import Lock
 from typing import Any
 
-from psycopg import IntegrityError as PsycopgIntegrityError
+from psycopg import (
+    IntegrityError as PsycopgIntegrityError,
+    OperationalError as PsycopgOperationalError,
+)
 from sqlalchemy.engine import Engine
 
 from app.config.database import (
@@ -34,6 +37,19 @@ _ENGINE_CACHE_LOCK = Lock()
 DATABASE_INTEGRITY_ERRORS = (
     sqlite3.IntegrityError,
     PsycopgIntegrityError,
+)
+
+DATABASE_OPERATIONAL_ERRORS = (
+    sqlite3.OperationalError,
+    PsycopgOperationalError,
+)
+
+_RETRYABLE_POSTGRESQL_SQLSTATES = frozenset(
+    {
+        "40001",
+        "40P01",
+        "55P03",
+    }
 )
 
 
@@ -457,6 +473,78 @@ def begin_write_transaction(
         return
 
     connection.execute("BEGIN")
+
+
+
+def configure_busy_timeout(
+    connection,
+    milliseconds: int,
+) -> None:
+    """Configure SQLite busy waiting; PostgreSQL uses server locking."""
+    if isinstance(
+        connection,
+        sqlite3.Connection,
+    ):
+        connection.execute(
+            "PRAGMA busy_timeout = "
+            f"{int(milliseconds)}"
+        )
+
+
+def acquire_branch_merge_lock(
+    connection,
+) -> None:
+    """Serialize branch merge execution like SQLite BEGIN IMMEDIATE."""
+    if isinstance(
+        connection,
+        sqlite3.Connection,
+    ):
+        return
+
+    connection.execute(
+        "SELECT pg_advisory_xact_lock(?)",
+        (752024,),
+    )
+
+
+def is_database_busy_error(
+    error: BaseException,
+) -> bool:
+    """Recognize retryable SQLite and PostgreSQL locking errors."""
+    sqlite_error_code = getattr(
+        error,
+        "sqlite_errorcode",
+        None,
+    )
+
+    if sqlite_error_code in {
+        sqlite3.SQLITE_BUSY,
+        sqlite3.SQLITE_LOCKED,
+    }:
+        return True
+
+    sqlstate = (
+        getattr(error, "sqlstate", None)
+        or getattr(error, "pgcode", None)
+    )
+
+    if sqlstate in (
+        _RETRYABLE_POSTGRESQL_SQLSTATES
+    ):
+        return True
+
+    error_text = str(error).casefold()
+
+    return any(
+        marker in error_text
+        for marker in (
+            "database is locked",
+            "database is busy",
+            "could not obtain lock",
+            "deadlock detected",
+            "serialization failure",
+        )
+    )
 
 
 def _get_runtime_engine(
