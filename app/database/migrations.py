@@ -1,0 +1,587 @@
+﻿"""Explicit schema initialization and version validation."""
+
+from datetime import datetime, timezone
+import re
+
+from sqlalchemy import insert, inspect, select
+from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
+
+from app.database.schema import (
+    EXPECTED_TABLE_NAMES,
+    SCHEMA_VERSION,
+    branch_merge_message_mappings,
+    branch_merge_operations,
+    chats,
+    create_schema,
+    documents,
+    folders,
+    message_bookmarks,
+    messages,
+    schema_migrations,
+)
+
+
+class SchemaVersionError(RuntimeError):
+    """Raised when an explicit database migration is required."""
+
+    def __init__(self):
+        super().__init__(
+            "Database schema version is incompatible."
+        )
+
+
+class SchemaCompatibilityError(RuntimeError):
+    """Raised when an existing schema cannot be safely adopted."""
+
+    def __init__(self):
+        super().__init__(
+            "Existing database schema is incompatible."
+        )
+
+
+_APPLICATION_TABLES = (
+    folders,
+    chats,
+    messages,
+    message_bookmarks,
+    documents,
+    branch_merge_operations,
+    branch_merge_message_mappings,
+)
+
+_LEGACY_TABLE_NAMES = frozenset(
+    table.name
+    for table in _APPLICATION_TABLES
+)
+
+_REQUIRED_UNIQUE_COLUMN_SETS = {
+    folders.name: {
+        frozenset({"name"}),
+    },
+    message_bookmarks.name: {
+        frozenset({"message_id"}),
+    },
+    documents.name: {
+        frozenset(
+            {
+                "chat_id",
+                "filename",
+            }
+        ),
+    },
+    branch_merge_operations.name: {
+        frozenset({"idempotency_key"}),
+    },
+    branch_merge_message_mappings.name: {
+        frozenset(
+            {
+                "created_parent_message_id",
+            }
+        ),
+        frozenset(
+            {
+                "merge_operation_id",
+                "source_branch_message_id",
+            }
+        ),
+        frozenset(
+            {
+                "branch_chat_id",
+                "parent_chat_id",
+                "source_branch_message_id",
+            }
+        ),
+    },
+}
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _read_recorded_versions(
+    engine: Engine,
+) -> tuple[int, ...]:
+    inspector = inspect(engine)
+
+    if schema_migrations.name not in (
+        inspector.get_table_names()
+    ):
+        return ()
+
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(
+                schema_migrations.c.version
+            ).order_by(
+                schema_migrations.c.version
+            )
+        ).scalars()
+
+        return tuple(
+            int(version)
+            for version in rows
+        )
+
+
+def get_schema_version(engine: Engine) -> int:
+    """Return zero when the schema has not been versioned."""
+    versions = _read_recorded_versions(engine)
+
+    if not versions:
+        return 0
+
+    return max(versions)
+
+
+def _validate_recorded_version(
+    versions: tuple[int, ...],
+) -> None:
+    if not versions:
+        return
+
+    if len(set(versions)) != len(versions):
+        raise SchemaVersionError()
+
+    if max(versions) != SCHEMA_VERSION:
+        raise SchemaVersionError()
+
+
+def _normalize_sql_definition(
+    value: str,
+) -> str:
+    return re.sub(
+        r'[\s"`\[\]]+',
+        "",
+        str(value).casefold(),
+    )
+
+
+def _quote_sqlite_identifier(
+    value: str,
+) -> str:
+    return (
+        '"'
+        + str(value).replace('"', '""')
+        + '"'
+    )
+
+
+def _sqlite_unique_metadata(
+    engine: Engine,
+    table_name: str,
+) -> tuple[
+    set[frozenset[str]],
+    tuple[str, ...],
+]:
+    unique_column_sets = set()
+    index_definitions = []
+
+    quoted_table = _quote_sqlite_identifier(
+        table_name
+    )
+
+    with engine.connect() as connection:
+        index_rows = connection.exec_driver_sql(
+            f"PRAGMA index_list({quoted_table})"
+        ).fetchall()
+
+        for index_row in index_rows:
+            index_name = index_row[1]
+            is_unique = bool(index_row[2])
+
+            if not is_unique:
+                continue
+
+            quoted_index = (
+                _quote_sqlite_identifier(
+                    index_name
+                )
+            )
+
+            column_rows = (
+                connection.exec_driver_sql(
+                    f"PRAGMA index_info("
+                    f"{quoted_index})"
+                ).fetchall()
+            )
+
+            column_names = [
+                row[2]
+                for row in column_rows
+            ]
+
+            if (
+                column_names
+                and all(column_names)
+            ):
+                unique_column_sets.add(
+                    frozenset(column_names)
+                )
+
+            definition_row = (
+                connection.exec_driver_sql(
+                    """
+                    SELECT sql
+                    FROM sqlite_master
+                    WHERE type = 'index'
+                      AND name = ?
+                    """,
+                    (index_name,),
+                ).fetchone()
+            )
+
+            if (
+                definition_row is not None
+                and definition_row[0]
+            ):
+                index_definitions.append(
+                    _normalize_sql_definition(
+                        definition_row[0]
+                    )
+                )
+
+    return (
+        unique_column_sets,
+        tuple(index_definitions),
+    )
+
+
+def _generic_unique_metadata(
+    inspector,
+    table_name: str,
+) -> tuple[
+    set[frozenset[str]],
+    tuple[str, ...],
+]:
+    unique_column_sets = set()
+    index_definitions = []
+
+    for constraint in (
+        inspector.get_unique_constraints(
+            table_name
+        )
+    ):
+        column_names = (
+            constraint.get(
+                "column_names"
+            )
+            or []
+        )
+
+        if (
+            column_names
+            and all(column_names)
+        ):
+            unique_column_sets.add(
+                frozenset(column_names)
+            )
+
+    for index in inspector.get_indexes(
+        table_name
+    ):
+        if not index.get("unique"):
+            continue
+
+        column_names = (
+            index.get("column_names")
+            or []
+        )
+
+        if (
+            column_names
+            and all(column_names)
+        ):
+            unique_column_sets.add(
+                frozenset(column_names)
+            )
+
+        expressions = (
+            index.get("expressions")
+            or []
+        )
+
+        if expressions:
+            index_definitions.append(
+                _normalize_sql_definition(
+                    " ".join(
+                        str(expression)
+                        for expression
+                        in expressions
+                    )
+                )
+            )
+
+    return (
+        unique_column_sets,
+        tuple(index_definitions),
+    )
+
+
+def _collect_unique_metadata(
+    engine: Engine,
+    inspector,
+    table_name: str,
+) -> tuple[
+    set[frozenset[str]],
+    tuple[str, ...],
+]:
+    if engine.dialect.name == "sqlite":
+        return _sqlite_unique_metadata(
+            engine,
+            table_name,
+        )
+
+    return _generic_unique_metadata(
+        inspector,
+        table_name,
+    )
+
+
+def _expression_unique_requirement_met(
+    table_name: str,
+    required_columns: frozenset[str],
+    definitions: tuple[str, ...],
+) -> bool:
+    if (
+        table_name == folders.name
+        and required_columns
+        == frozenset({"name"})
+    ):
+        return any(
+            "lower(" in definition
+            and "name" in definition
+            for definition in definitions
+        )
+
+    if (
+        table_name == documents.name
+        and required_columns
+        == frozenset(
+            {
+                "chat_id",
+                "filename",
+            }
+        )
+    ):
+        return any(
+            "chat_id" in definition
+            and "lower(" in definition
+            and "filename" in definition
+            for definition in definitions
+        )
+
+    return False
+
+
+def _required_unique_sets_are_present(
+    engine: Engine,
+    inspector,
+    table_name: str,
+    required_unique_sets: set[
+        frozenset[str]
+    ],
+) -> bool:
+    (
+        actual_unique_sets,
+        index_definitions,
+    ) = _collect_unique_metadata(
+        engine,
+        inspector,
+        table_name,
+    )
+
+    for required_columns in (
+        required_unique_sets
+    ):
+        if required_columns in (
+            actual_unique_sets
+        ):
+            continue
+
+        if _expression_unique_requirement_met(
+            table_name,
+            required_columns,
+            index_definitions,
+        ):
+            continue
+
+        return False
+
+    return True
+
+
+def validate_existing_schema(
+    engine: Engine,
+) -> None:
+    """Validate an existing app schema before version adoption."""
+    inspector = inspect(engine)
+    table_names = set(
+        inspector.get_table_names()
+    )
+
+    present_application_tables = (
+        table_names
+        & EXPECTED_TABLE_NAMES
+    )
+
+    if not present_application_tables:
+        return
+
+    if schema_migrations.name in (
+        present_application_tables
+    ):
+        required_table_names = (
+            EXPECTED_TABLE_NAMES
+        )
+        tables_to_validate = (
+            *_APPLICATION_TABLES,
+            schema_migrations,
+        )
+    else:
+        required_table_names = (
+            _LEGACY_TABLE_NAMES
+        )
+        tables_to_validate = (
+            _APPLICATION_TABLES
+        )
+
+    missing_tables = (
+        required_table_names
+        - present_application_tables
+    )
+
+    if missing_tables:
+        raise SchemaCompatibilityError()
+
+    for table in tables_to_validate:
+        actual_columns = {
+            column["name"]
+            for column in inspector.get_columns(
+                table.name
+            )
+        }
+
+        required_columns = set(
+            table.c.keys()
+        )
+
+        if not required_columns.issubset(
+            actual_columns
+        ):
+            raise SchemaCompatibilityError()
+
+        expected_primary_key = tuple(
+            column.name
+            for column
+            in table.primary_key.columns
+        )
+
+        actual_primary_key = tuple(
+            inspector.get_pk_constraint(
+                table.name
+            ).get(
+                "constrained_columns"
+            )
+            or ()
+        )
+
+        if (
+            actual_primary_key
+            != expected_primary_key
+        ):
+            raise SchemaCompatibilityError()
+
+        required_unique_sets = (
+            _REQUIRED_UNIQUE_COLUMN_SETS.get(
+                table.name,
+                set(),
+            )
+        )
+
+        if (
+            required_unique_sets
+            and not (
+                _required_unique_sets_are_present(
+                    engine,
+                    inspector,
+                    table.name,
+                    required_unique_sets,
+                )
+            )
+        ):
+            raise SchemaCompatibilityError()
+
+
+def initialize_schema(engine: Engine) -> int:
+    """Create or safely adopt the current non-destructive schema.
+
+    Existing unversioned databases are adopted only after their tables,
+    columns, primary keys, and critical unique constraints are validated.
+    Older or newer recorded versions require an explicit migration.
+    """
+    validate_existing_schema(engine)
+
+    existing_versions = (
+        _read_recorded_versions(engine)
+    )
+    _validate_recorded_version(
+        existing_versions
+    )
+
+    create_schema(engine)
+    validate_existing_schema(engine)
+
+    try:
+        with engine.begin() as connection:
+            recorded_versions = tuple(
+                int(version)
+                for version in connection.execute(
+                    select(
+                        schema_migrations.c.version
+                    ).order_by(
+                        schema_migrations.c.version
+                    )
+                ).scalars()
+            )
+
+            _validate_recorded_version(
+                recorded_versions
+            )
+
+            if not recorded_versions:
+                connection.execute(
+                    insert(
+                        schema_migrations
+                    ).values(
+                        version=SCHEMA_VERSION,
+                        description=(
+                            "Initial cross-database "
+                            "chat persistence schema"
+                        ),
+                        applied_at=_utc_now_iso(),
+                    )
+                )
+
+    except IntegrityError:
+        final_versions = (
+            _read_recorded_versions(engine)
+        )
+        _validate_recorded_version(
+            final_versions
+        )
+
+        if SCHEMA_VERSION not in (
+            final_versions
+        ):
+            raise
+
+    final_version = get_schema_version(
+        engine
+    )
+
+    if final_version != SCHEMA_VERSION:
+        raise SchemaVersionError()
+
+    return final_version
