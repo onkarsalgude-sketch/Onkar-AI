@@ -32,8 +32,14 @@ def create_app(
     validate_branch_merge_settings(
         merge_settings
     )
+    document_storage = (
+        get_document_storage()
+    )
 
     application = FastAPI(title="Onkar AI")
+    application.state.document_storage = (
+        document_storage
+    )
 
     application.add_middleware(
         CORSMiddleware,
