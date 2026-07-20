@@ -8,6 +8,7 @@ from app.config.settings import (
     load_branch_merge_settings,
     validate_branch_merge_settings,
 )
+from app.services.document_object_service import get_document_storage
 
 
 def root():

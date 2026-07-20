@@ -1,4 +1,7 @@
+import logging
 from pathlib import Path
+from urllib.parse import quote
+from uuid import uuid4
 
 from fastapi import (
     APIRouter,
@@ -7,7 +10,7 @@ from fastapi import (
     Form,
     HTTPException,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.config.settings import UPLOAD_DIR
@@ -24,10 +27,23 @@ from app.services.document_service import (
     set_document_selected,
     delete_document_record,
 )
+from app.services.document_object_service import (
+    delete_document_object,
+    get_document_storage,
+    materialize_pdf_bytes,
+    read_document_bytes,
+    restore_document_vectors,
+    store_document_bytes,
+)
+from app.storage.document_storage import (
+    DocumentNotFoundError,
+    DocumentStorageError,
+)
 
 
 router = APIRouter()
 rag = RAGService()
+logger = logging.getLogger(__name__)
 
 
 class DocumentSelectionRequest(BaseModel):
@@ -45,13 +61,26 @@ def get_safe_pdf_filename(
 
     safe_filename = Path(filename).name
 
-    if safe_filename != filename:
+    if (
+        safe_filename != filename
+        or len(safe_filename) > 255
+        or any(
+            ord(character) < 32
+            or ord(character) == 127
+            for character in safe_filename
+        )
+    ):
         raise HTTPException(
             status_code=400,
             detail="Invalid filename",
         )
 
-    if Path(safe_filename).suffix.lower() != ".pdf":
+    if (
+        Path(safe_filename)
+        .suffix
+        .lower()
+        != ".pdf"
+    ):
         raise HTTPException(
             status_code=400,
             detail="Only PDF files are allowed",
@@ -109,12 +138,15 @@ async def upload_pdf(
     file: UploadFile = File(...),
     chat_id: int = Form(...),
 ):
+    if chat_id <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid chat ID",
+        )
+
     safe_filename = get_safe_pdf_filename(
         file.filename
     )
-
-    chat_directory = get_chat_directory(chat_id)
-    file_path = chat_directory / safe_filename
 
     file_content = await file.read()
 
@@ -124,94 +156,234 @@ async def upload_pdf(
             detail="Uploaded PDF is empty",
         )
 
-    file_hash = calculate_file_hash(file_content)
+    if b"%PDF-" not in file_content[:1024]:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file is not a valid PDF",
+        )
 
-    duplicate_document = find_duplicate_document(
-        chat_id=chat_id,
-        file_hash=file_hash,
+    file_hash = calculate_file_hash(
+        file_content
+    )
+
+    duplicate_document = (
+        find_duplicate_document(
+            chat_id=chat_id,
+            file_hash=file_hash,
+        )
     )
 
     if duplicate_document:
         raise HTTPException(
             status_code=409,
             detail={
-                "message": "This PDF is already uploaded",
-                "document_id": duplicate_document[
-                    "document_id"
-                ],
-                "filename": duplicate_document[
-                    "filename"
-                ],
+                "message": (
+                    "This PDF is already uploaded"
+                ),
+                "document_id": (
+                    duplicate_document[
+                        "document_id"
+                    ]
+                ),
+                "filename": (
+                    duplicate_document[
+                        "filename"
+                    ]
+                ),
             },
         )
 
-    # Delete old vectors when replacing a PDF
-    # having the same filename.
-    rag.delete_pdf(
-        safe_filename,
-        chat_id=chat_id,
+    previous_document = (
+        get_document_by_filename(
+            chat_id=chat_id,
+            filename=safe_filename,
+        )
     )
 
-    with open(file_path, "wb") as saved_file:
-        saved_file.write(file_content)
-
-    document = create_document(
-        chat_id=chat_id,
-        filename=safe_filename,
-        file_path=file_path,
-        file_hash=file_hash,
-        file_size=len(file_content),
+    document_id = (
+        str(
+            previous_document[
+                "document_id"
+            ]
+        )
+        if previous_document
+        else uuid4().hex
     )
+
+    storage = get_document_storage()
 
     try:
-        result = rag.add_pdf(
-            file_path=file_path,
+        object_key = store_document_bytes(
             chat_id=chat_id,
-            document_id=document["document_id"],
+            document_id=document_id,
+            filename=safe_filename,
+            file_hash=file_hash,
+            data=file_content,
+            storage=storage,
+        )
+    except DocumentStorageError as error:
+        logger.exception(
+            "Document object upload failed"
         )
 
-        if result["chunks"] <= 0:
-            mark_document_failed(
-                document_id=document["document_id"],
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Document storage is unavailable"
+            ),
+        ) from error
+
+    document_written = False
+
+    try:
+        rag.delete_pdf(
+            safe_filename,
+            chat_id=chat_id,
+        )
+
+        with materialize_pdf_bytes(
+            file_content,
+            safe_filename,
+        ) as temporary_path:
+            result = rag.add_pdf(
+                file_path=temporary_path,
                 chat_id=chat_id,
+                document_id=document_id,
             )
 
+        if int(
+            result.get(
+                "chunks",
+                0,
+            )
+            or 0
+        ) <= 0:
             raise HTTPException(
                 status_code=422,
-                detail="No readable text found in PDF",
+                detail=(
+                    "No readable text found in PDF"
+                ),
             )
 
-        ready_document = mark_document_ready(
-            document_id=document["document_id"],
+        document = create_document(
             chat_id=chat_id,
-            page_count=result["pages"],
-            chunk_count=result["chunks"],
+            filename=safe_filename,
+            file_path=object_key,
+            file_hash=file_hash,
+            file_size=len(file_content),
+            document_id=document_id,
         )
 
-    except HTTPException:
-        raise
+        document_written = True
+
+        ready_document = mark_document_ready(
+            document_id=document[
+                "document_id"
+            ],
+            chat_id=chat_id,
+            page_count=int(
+                result.get(
+                    "pages",
+                    0,
+                )
+                or 0
+            ),
+            chunk_count=int(
+                result.get(
+                    "chunks",
+                    0,
+                )
+                or 0
+            ),
+        )
+
+        if ready_document is None:
+            raise RuntimeError(
+                "Document ready state was not saved."
+            )
 
     except Exception as error:
-        mark_document_failed(
-            document_id=document["document_id"],
-            chat_id=chat_id,
-        )
-
-        if file_path.exists():
-            file_path.unlink()
+        try:
+            rag.delete_pdf(
+                safe_filename,
+                chat_id=chat_id,
+            )
+        except Exception:
+            logger.exception(
+                "New document vector cleanup failed"
+            )
 
         try:
-            chat_directory.rmdir()
-        except OSError:
-            pass
+            storage.delete(
+                object_key
+            )
+        except Exception:
+            logger.exception(
+                "New document object cleanup failed"
+            )
+
+        if previous_document is not None:
+            try:
+                restore_document_vectors(
+                    previous_document,
+                    rag=rag,
+                    storage=storage,
+                )
+            except Exception:
+                logger.exception(
+                    "Previous document vector rollback failed"
+                )
+
+        if document_written:
+            try:
+                mark_document_failed(
+                    document_id=document_id,
+                    chat_id=chat_id,
+                )
+            except Exception:
+                logger.exception(
+                    "Document failure state could not be saved"
+                )
+
+        if isinstance(
+            error,
+            HTTPException,
+        ):
+            raise
+
+        logger.exception(
+            "PDF indexing failed"
+        )
 
         raise HTTPException(
             status_code=500,
-            detail=f"PDF indexing failed: {error}",
+            detail="PDF indexing failed",
+        ) from error
+
+    if previous_document is not None:
+        previous_reference = str(
+            previous_document.get(
+                "file_path",
+                "",
+            )
         )
 
+        if previous_reference != object_key:
+            try:
+                delete_document_object(
+                    previous_document,
+                    storage=storage,
+                )
+            except DocumentStorageError:
+                logger.warning(
+                    "Previous document object cleanup failed",
+                    exc_info=True,
+                )
+
     return {
-        "message": "PDF uploaded and indexed successfully",
+        "message": (
+            "PDF uploaded and indexed successfully"
+        ),
         "document": ready_document,
     }
 
@@ -294,9 +466,8 @@ async def preview_pdf(
     filename: str,
     chat_id: int,
 ):
-    file_path, safe_filename = resolve_chat_pdf_path(
-        chat_id=chat_id,
-        filename=filename,
+    safe_filename = get_safe_pdf_filename(
+        filename
     )
 
     document = get_document_by_filename(
@@ -310,17 +481,51 @@ async def preview_pdf(
             detail="Document not found",
         )
 
-    if not file_path.is_file():
+    try:
+        file_content = read_document_bytes(
+            document
+        )
+    except DocumentNotFoundError as error:
         raise HTTPException(
             status_code=404,
             detail="Document not found",
+        ) from error
+    except DocumentStorageError as error:
+        logger.exception(
+            "Document preview storage failure"
         )
 
-    return FileResponse(
-        path=file_path,
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Document storage is unavailable"
+            ),
+        ) from error
+
+    encoded_filename = quote(
+        safe_filename,
+        safe="",
+    )
+
+    return Response(
+        content=file_content,
         media_type="application/pdf",
-        filename=safe_filename,
-        content_disposition_type="inline",
+        headers={
+            "Content-Disposition": (
+                "inline; "
+                "filename*=UTF-8''"
+                f"{encoded_filename}"
+            ),
+            "Content-Length": str(
+                len(file_content)
+            ),
+            "Cache-Control": (
+                "private, no-store"
+            ),
+            "X-Content-Type-Options": (
+                "nosniff"
+            ),
+        },
     )
 
 
@@ -333,49 +538,67 @@ async def delete_document(
         filename
     )
 
-    chat_directory = get_chat_directory(chat_id)
-    file_path = chat_directory / safe_filename
-
     document = get_document_by_filename(
         chat_id=chat_id,
         filename=safe_filename,
     )
+
+    file_deleted = False
+
+    if document is not None:
+        try:
+            file_deleted = (
+                delete_document_object(
+                    document
+                )
+            )
+        except DocumentStorageError as error:
+            logger.exception(
+                "Document object deletion failed"
+            )
+
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Document storage is unavailable"
+                ),
+            ) from error
 
     vector_result = rag.delete_pdf(
         safe_filename,
         chat_id=chat_id,
     )
 
-    file_deleted = False
     record_deleted = False
 
-    if file_path.exists():
-        file_path.unlink()
-        file_deleted = True
-
-    if document:
-        record_deleted = delete_document_record(
-            document_id=document["document_id"],
-            chat_id=chat_id,
+    if document is not None:
+        record_deleted = (
+            delete_document_record(
+                document_id=document[
+                    "document_id"
+                ],
+                chat_id=chat_id,
+            )
         )
-
-    try:
-        chat_directory.rmdir()
-    except OSError:
-        pass
 
     if (
         not file_deleted
         and not record_deleted
-        and vector_result["deleted_chunks"] == 0
+        and vector_result[
+            "deleted_chunks"
+        ] == 0
     ):
         raise HTTPException(
             status_code=404,
-            detail="Document not found in this chat",
+            detail=(
+                "Document not found in this chat"
+            ),
         )
 
     return {
-        "message": "Document deleted successfully",
+        "message": (
+            "Document deleted successfully"
+        ),
         "filename": safe_filename,
         "chat_id": chat_id,
         "file_deleted": file_deleted,

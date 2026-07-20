@@ -140,6 +140,7 @@ def create_document(
     file_path: str | Path,
     file_hash: str,
     file_size: int,
+    document_id: str | None = None,
 ) -> dict:
     safe_filename = Path(filename).name
     now = datetime.now().isoformat()
@@ -153,7 +154,9 @@ def create_document(
     cursor = conn.cursor()
 
     if existing_document:
-        document_id = existing_document["document_id"]
+        document_id = existing_document[
+            "document_id"
+        ]
 
         cursor.execute(
             """
@@ -181,7 +184,10 @@ def create_document(
         )
 
     else:
-        document_id = uuid4().hex
+        document_id = (
+            document_id
+            or uuid4().hex
+        )
 
         cursor.execute(
             """
@@ -199,7 +205,10 @@ def create_document(
                 uploaded_at,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, 0, 0, 'processing', 1, ?, ?)
+            VALUES (
+                ?, ?, ?, ?, ?, ?,
+                0, 0, 'processing', 1, ?, ?
+            )
             """,
             (
                 document_id,

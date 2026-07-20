@@ -1,12 +1,10 @@
 import json
-import shutil
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.agents.brain import Brain
-from app.config.settings import UPLOAD_DIR
 from app.memory.memory import clear
 from app.models.chat import (
     ChatBackupImportRequest,
@@ -49,6 +47,12 @@ from app.services.history_service import (
     save_message_bookmark,
     search_chats,
     toggle_pin_chat,
+)
+from app.services.document_object_service import (
+    delete_chat_document_objects,
+)
+from app.storage.document_storage import (
+    DocumentStorageError,
 )
 
 
@@ -681,26 +685,42 @@ def regenerate_message_response(
 
 @router.delete("/chats/{chat_id}")
 def remove_chat(chat_id: int):
-    # त्या chat चे ChromaDB chunks delete करणे
-    vector_result = brain.rag.delete_chat(chat_id)
+    try:
+        object_result = (
+            delete_chat_document_objects(
+                chat_id
+            )
+        )
+    except DocumentStorageError as error:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Document storage is unavailable"
+            ),
+        ) from error
 
-    # त्या chat चा uploaded PDF folder delete करणे
-    chat_directory = (
-        UPLOAD_DIR / f"chat_{chat_id}"
+    vector_result = brain.rag.delete_chat(
+        chat_id
     )
 
-    if chat_directory.exists():
-        shutil.rmtree(chat_directory)
-
-    # SQLite मधून chat आणि messages delete करणे
     delete_chat(chat_id)
 
     return {
-        "message": "Chat deleted successfully",
+        "message": (
+            "Chat deleted successfully"
+        ),
         "chat_id": chat_id,
-        "deleted_pdf_chunks": vector_result[
-            "deleted_chunks"
-        ],
+        "deleted_pdf_files": (
+            object_result["deleted"]
+        ),
+        "missing_pdf_files": (
+            object_result["missing"]
+        ),
+        "deleted_pdf_chunks": (
+            vector_result[
+                "deleted_chunks"
+            ]
+        ),
     }
 
 
