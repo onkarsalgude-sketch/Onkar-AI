@@ -8,6 +8,8 @@ from app.config.settings import (
     load_branch_merge_settings,
     validate_branch_merge_settings,
 )
+from app.services.document_object_service import get_document_storage
+from app.services.rag_runtime import initialize_rag_runtime
 
 
 def root():
@@ -31,8 +33,22 @@ def create_app(
     validate_branch_merge_settings(
         merge_settings
     )
+    document_storage = (
+        get_document_storage()
+    )
+
+    rag_runtime = (
+        initialize_rag_runtime()
+    )
 
     application = FastAPI(title="Onkar AI")
+    application.state.document_storage = (
+        document_storage
+    )
+
+    application.state.rag_runtime = (
+        rag_runtime
+    )
 
     application.add_middleware(
         CORSMiddleware,

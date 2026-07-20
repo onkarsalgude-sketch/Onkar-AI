@@ -1,7 +1,6 @@
 import hashlib
 import json
 import os
-import shutil
 import stat
 import tempfile
 import zipfile
@@ -12,7 +11,6 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from app.config.settings import UPLOAD_DIR
 from app.models.chat import ChatBackupImportRequest
 from app.services.document_service import (
     calculate_file_hash,
@@ -29,6 +27,16 @@ from app.services.history_service import (
     restore_chat_backup,
 )
 from app.services.rag_service import RAGService
+from uuid import uuid4
+from app.services.document_object_service import (
+    get_document_storage,
+    materialize_pdf_bytes,
+    read_document_bytes,
+    store_document_bytes,
+)
+from app.storage.document_storage import (
+    DocumentNotFoundError,
+)
 
 
 FULL_BACKUP_SCHEMA_VERSION = 1
@@ -179,40 +187,63 @@ def _build_backup_messages(
     return backup_messages
 
 
-def _resolve_document_path(
-    chat_id: int,
+def _read_backup_document_content(
     document: dict[str, Any],
-) -> Path:
-    safe_filename = _safe_pdf_filename(
-        str(document.get("filename", ""))
+    storage,
+) -> bytes:
+    filename = _safe_pdf_filename(
+        str(
+            document.get(
+                "filename",
+                "",
+            )
+        )
     )
 
-    expected_directory = (
-        UPLOAD_DIR / f"chat_{chat_id}"
-    ).resolve(strict=False)
-
-    stored_path = Path(
-        str(document.get("file_path", ""))
-    ).resolve(strict=False)
-
-    expected_path = (
-        expected_directory / safe_filename
-    ).resolve(strict=False)
+    try:
+        file_content = read_document_bytes(
+            document,
+            storage=storage,
+        )
+    except DocumentNotFoundError as error:
+        raise BackupValidationError(
+            f"Document file is missing: "
+            f"{filename}."
+        ) from error
 
     if (
-        not stored_path.is_relative_to(expected_directory)
-        or stored_path != expected_path
+        not file_content
+        or not file_content.startswith(
+            b"%PDF-"
+        )
     ):
         raise BackupValidationError(
-            f"Unsafe document path detected for {safe_filename}."
+            f"{filename} is not a valid "
+            f"PDF file."
         )
 
-    if not stored_path.is_file():
+    actual_hash = calculate_file_hash(
+        file_content
+    )
+
+    stored_hash = str(
+        document.get(
+            "file_hash",
+            "",
+        )
+        or ""
+    ).strip().casefold()
+
+    if (
+        stored_hash
+        and stored_hash != actual_hash
+    ):
         raise BackupValidationError(
-            f"Document file is missing: {safe_filename}."
+            f"Integrity check failed for "
+            f"{filename}."
         )
 
-    return stored_path
+    return file_content
 
 
 def _build_manifest(
@@ -259,75 +290,135 @@ def create_full_chat_backup(
     chat_id: int,
 ) -> tuple[Path, str]:
     chat = _find_chat(chat_id)
-    messages = _build_backup_messages(chat_id)
+    messages = _build_backup_messages(
+        chat_id
+    )
 
-    document_records = list_documents(chat_id)
+    document_records = list_documents(
+        chat_id
+    )
+
+    storage = get_document_storage()
 
     archive_documents = []
-    files_to_add: list[tuple[Path, str]] = []
+
+    files_to_add: list[
+        tuple[str, bytes]
+    ] = []
+
     warnings = []
     seen_filenames = set()
 
     for document in document_records:
         filename = _safe_pdf_filename(
-            str(document.get("filename", ""))
+            str(
+                document.get(
+                    "filename",
+                    "",
+                )
+            )
         )
 
-        filename_key = filename.casefold()
+        filename_key = (
+            filename.casefold()
+        )
 
         if filename_key in seen_filenames:
             raise BackupValidationError(
-                "Duplicate document filenames were found."
+                "Duplicate document "
+                "filenames were found."
             )
 
-        seen_filenames.add(filename_key)
+        seen_filenames.add(
+            filename_key
+        )
 
-        if document.get("status") != "ready":
+        if (
+            document.get("status")
+            != "ready"
+        ):
             warnings.append(
-                f"{filename} was skipped because it is not ready."
+                f"{filename} was skipped "
+                f"because it is not ready."
             )
             continue
 
-        file_path = _resolve_document_path(
-            chat_id,
-            document,
+        file_content = (
+            _read_backup_document_content(
+                document,
+                storage,
+            )
         )
 
-        file_size = file_path.stat().st_size
+        file_size = len(
+            file_content
+        )
 
-        if file_size > MAX_PDF_SIZE_BYTES:
+        if (
+            file_size
+            > MAX_PDF_SIZE_BYTES
+        ):
             raise BackupValidationError(
-                f"{filename} is larger than the 25 MB per-file limit."
+                f"{filename} is larger "
+                f"than the 25 MB "
+                f"per-file limit."
             )
 
-        file_content = file_path.read_bytes()
-        file_hash = calculate_file_hash(file_content)
+        file_hash = calculate_file_hash(
+            file_content
+        )
 
-        archive_path = f"{DOCUMENTS_PREFIX}{filename}"
+        archive_path = (
+            f"{DOCUMENTS_PREFIX}"
+            f"{filename}"
+        )
 
         archive_documents.append(
             {
                 "filename": filename,
-                "archive_path": archive_path,
+                "archive_path": (
+                    archive_path
+                ),
                 "file_hash": file_hash,
                 "file_size": file_size,
                 "page_count": int(
-                    document.get("page_count", 0) or 0
+                    document.get(
+                        "page_count",
+                        0,
+                    )
+                    or 0
                 ),
                 "chunk_count": int(
-                    document.get("chunk_count", 0) or 0
+                    document.get(
+                        "chunk_count",
+                        0,
+                    )
+                    or 0
                 ),
                 "is_selected": bool(
-                    document.get("is_selected", True)
+                    document.get(
+                        "is_selected",
+                        True,
+                    )
                 ),
             }
         )
 
-        files_to_add.append((file_path, archive_path))
+        files_to_add.append(
+            (
+                archive_path,
+                file_content,
+            )
+        )
 
-    if len(files_to_add) > MAX_PDF_COUNT:
+    if (
+        len(files_to_add)
+        > MAX_PDF_COUNT
+    ):
         raise BackupValidationError(
-            f"A maximum of {MAX_PDF_COUNT} PDFs can be backed up at once."
+            f"A maximum of "
+            f"{MAX_PDF_COUNT} PDFs "
+            f"can be backed up at once."
         )
 
     manifest = _build_manifest(
@@ -337,19 +428,29 @@ def create_full_chat_backup(
         warnings=warnings,
     )
 
-    file_descriptor, temporary_name = tempfile.mkstemp(
+    (
+        file_descriptor,
+        temporary_name,
+    ) = tempfile.mkstemp(
         prefix="onkar_ai_backup_",
         suffix=".zip",
     )
-    os.close(file_descriptor)
 
-    temporary_path = Path(temporary_name)
+    os.close(
+        file_descriptor
+    )
+
+    temporary_path = Path(
+        temporary_name
+    )
 
     try:
         with zipfile.ZipFile(
             temporary_path,
             mode="w",
-            compression=zipfile.ZIP_DEFLATED,
+            compression=(
+                zipfile.ZIP_DEFLATED
+            ),
             compresslevel=6,
         ) as archive:
             archive.writestr(
@@ -361,27 +462,47 @@ def create_full_chat_backup(
                 ),
             )
 
-            for file_path, archive_path in files_to_add:
-                archive.write(
-                    file_path,
-                    arcname=archive_path,
+            for (
+                archive_path,
+                file_content,
+            ) in files_to_add:
+                archive.writestr(
+                    archive_path,
+                    file_content,
                 )
 
-        if temporary_path.stat().st_size > MAX_ZIP_SIZE_BYTES:
+        if (
+            temporary_path.stat().st_size
+            > MAX_ZIP_SIZE_BYTES
+        ):
             raise BackupValidationError(
-                "The generated backup is larger than the 50 MB limit."
+                "The generated backup is "
+                "larger than the 50 MB "
+                "limit."
             )
 
     except Exception:
-        temporary_path.unlink(missing_ok=True)
+        temporary_path.unlink(
+            missing_ok=True
+        )
         raise
 
-    download_name = _safe_download_name(
-        str(chat.get("title") or "chat"),
-        chat_id,
+    download_name = (
+        _safe_download_name(
+            str(
+                chat.get(
+                    "title"
+                )
+                or "chat"
+            ),
+            chat_id,
+        )
     )
 
-    return temporary_path, download_name
+    return (
+        temporary_path,
+        download_name,
+    )
 
 
 def _is_symlink(info: zipfile.ZipInfo) -> bool:
@@ -658,15 +779,24 @@ def restore_full_chat_backup(
             "The uploaded ZIP is empty."
         )
 
-    if len(archive_content) > MAX_ZIP_SIZE_BYTES:
+    if (
+        len(archive_content)
+        > MAX_ZIP_SIZE_BYTES
+    ):
         raise BackupValidationError(
-            "The ZIP is larger than the 50 MB limit."
+            "The ZIP is larger than "
+            "the 50 MB limit."
         )
 
     try:
-        archive_stream = BytesIO(archive_content)
+        archive_stream = BytesIO(
+            archive_content
+        )
 
-        with zipfile.ZipFile(archive_stream, mode="r") as archive:
+        with zipfile.ZipFile(
+            archive_stream,
+            mode="r",
+        ) as archive:
             entries = archive.infolist()
 
             if not entries:
@@ -678,60 +808,99 @@ def restore_full_chat_backup(
             total_extracted_size = 0
 
             for info in entries:
-                _validate_archive_entry(info)
-
-                if info.filename in names:
-                    raise BackupValidationError(
-                        "The ZIP contains duplicate entries."
-                    )
-
-                names.add(info.filename)
-
-                if not info.is_dir():
-                    total_extracted_size += info.file_size
-
-            if total_extracted_size > MAX_EXTRACTED_SIZE_BYTES:
-                raise BackupValidationError(
-                    "The extracted backup would exceed the 100 MB limit."
+                _validate_archive_entry(
+                    info
                 )
 
-            manifest = _read_and_validate_manifest(
-                archive,
-                names,
+                if (
+                    info.filename
+                    in names
+                ):
+                    raise (
+                        BackupValidationError(
+                            "The ZIP contains "
+                            "duplicate entries."
+                        )
+                    )
+
+                names.add(
+                    info.filename
+                )
+
+                if not info.is_dir():
+                    total_extracted_size += (
+                        info.file_size
+                    )
+
+            if (
+                total_extracted_size
+                > MAX_EXTRACTED_SIZE_BYTES
+            ):
+                raise BackupValidationError(
+                    "The extracted backup "
+                    "would exceed the "
+                    "100 MB limit."
+                )
+
+            manifest = (
+                _read_and_validate_manifest(
+                    archive,
+                    names,
+                )
             )
 
-            document_payloads = _read_document_payloads(
-                archive,
-                manifest,
-                names,
+            document_payloads = (
+                _read_document_payloads(
+                    archive,
+                    manifest,
+                    names,
+                )
             )
 
     except zipfile.BadZipFile as error:
         raise BackupValidationError(
-            "The uploaded file is not a valid ZIP backup."
+            "The uploaded file is not "
+            "a valid ZIP backup."
         ) from error
 
     new_chat_id = None
-    chat_directory = None
     rag = RAGService()
+    storage = get_document_storage()
+
+    stored_object_keys: list[str] = []
 
     try:
         chat_payload = {
-            "schema_version": manifest["schema_version"],
-            "application": manifest["application"],
-            "exported_at": manifest["exported_at"],
+            "schema_version": (
+                manifest[
+                    "schema_version"
+                ]
+            ),
+            "application": (
+                manifest[
+                    "application"
+                ]
+            ),
+            "exported_at": (
+                manifest[
+                    "exported_at"
+                ]
+            ),
             "chat": manifest["chat"],
             "model": manifest["model"],
-            "messages": manifest["messages"],
+            "messages": (
+                manifest["messages"]
+            ),
         }
 
-        restore_result = restore_chat_backup(chat_payload)
-        new_chat_id = int(restore_result["chat_id"])
+        restore_result = (
+            restore_chat_backup(
+                chat_payload
+            )
+        )
 
-        chat_directory = UPLOAD_DIR / f"chat_{new_chat_id}"
-        chat_directory.mkdir(
-            parents=True,
-            exist_ok=False,
+        new_chat_id = int(
+            restore_result["chat_id"]
         )
 
         restored_documents = []
@@ -739,94 +908,250 @@ def restore_full_chat_backup(
         total_chunks = 0
 
         for payload in document_payloads:
-            filename = payload["filename"]
-            file_path = chat_directory / filename
+            filename = payload[
+                "filename"
+            ]
 
-            with open(file_path, "xb") as output_file:
-                output_file.write(payload["content"])
+            document_id = uuid4().hex
+
+            object_key = (
+                store_document_bytes(
+                    chat_id=new_chat_id,
+                    document_id=(
+                        document_id
+                    ),
+                    filename=filename,
+                    file_hash=payload[
+                        "file_hash"
+                    ],
+                    data=payload[
+                        "content"
+                    ],
+                    storage=storage,
+                )
+            )
+
+            stored_object_keys.append(
+                object_key
+            )
 
             document = create_document(
                 chat_id=new_chat_id,
                 filename=filename,
-                file_path=file_path,
-                file_hash=payload["file_hash"],
-                file_size=payload["file_size"],
+                file_path=object_key,
+                file_hash=payload[
+                    "file_hash"
+                ],
+                file_size=payload[
+                    "file_size"
+                ],
+                document_id=document_id,
             )
 
-            indexing_result = rag.add_pdf(
-                file_path=file_path,
-                chat_id=new_chat_id,
-                document_id=document["document_id"],
-            )
+            with materialize_pdf_bytes(
+                payload["content"],
+                filename,
+            ) as temporary_pdf:
+                indexing_result = (
+                    rag.add_pdf(
+                        file_path=(
+                            temporary_pdf
+                        ),
+                        chat_id=new_chat_id,
+                        document_id=(
+                            document[
+                                "document_id"
+                            ]
+                        ),
+                    )
+                )
 
-            if indexing_result["chunks"] <= 0:
+            if (
+                int(
+                    indexing_result.get(
+                        "chunks",
+                        0,
+                    )
+                    or 0
+                )
+                <= 0
+            ):
                 raise BackupValidationError(
-                    f"No readable text was found in {filename}."
+                    "No readable text was "
+                    f"found in {filename}."
                 )
 
-            ready_document = mark_document_ready(
-                document_id=document["document_id"],
-                chat_id=new_chat_id,
-                page_count=indexing_result["pages"],
-                chunk_count=indexing_result["chunks"],
+            ready_document = (
+                mark_document_ready(
+                    document_id=(
+                        document[
+                            "document_id"
+                        ]
+                    ),
+                    chat_id=new_chat_id,
+                    page_count=int(
+                        indexing_result.get(
+                            "pages",
+                            0,
+                        )
+                        or 0
+                    ),
+                    chunk_count=int(
+                        indexing_result.get(
+                            "chunks",
+                            0,
+                        )
+                        or 0
+                    ),
+                )
             )
 
-            if not payload["is_selected"]:
-                ready_document = set_document_selected(
-                    document_id=document["document_id"],
-                    chat_id=new_chat_id,
-                    is_selected=False,
+            if ready_document is None:
+                raise RuntimeError(
+                    "Restored document "
+                    "state was not saved."
                 )
 
-            total_pages += indexing_result["pages"]
-            total_chunks += indexing_result["chunks"]
-            restored_documents.append(ready_document)
+            if not payload[
+                "is_selected"
+            ]:
+                ready_document = (
+                    set_document_selected(
+                        document_id=(
+                            document[
+                                "document_id"
+                            ]
+                        ),
+                        chat_id=(
+                            new_chat_id
+                        ),
+                        is_selected=False,
+                    )
+                )
+
+            total_pages += int(
+                indexing_result.get(
+                    "pages",
+                    0,
+                )
+                or 0
+            )
+
+            total_chunks += int(
+                indexing_result.get(
+                    "chunks",
+                    0,
+                )
+                or 0
+            )
+
+            restored_documents.append(
+                ready_document
+            )
 
         json_restore_warnings = [
             str(warning)
-            for warning in restore_result.get("warnings", [])
-            if "pdf" not in str(warning).lower()
-            and "rag" not in str(warning).lower()
+            for warning
+            in restore_result.get(
+                "warnings",
+                [],
+            )
+            if (
+                "pdf"
+                not in str(
+                    warning
+                ).lower()
+                and "rag"
+                not in str(
+                    warning
+                ).lower()
+            )
         ]
 
-        manifest_warnings = manifest.get("warnings", [])
+        manifest_warnings = (
+            manifest.get(
+                "warnings",
+                [],
+            )
+        )
 
-        if not isinstance(manifest_warnings, list):
+        if not isinstance(
+            manifest_warnings,
+            list,
+        ):
             manifest_warnings = []
 
         return {
             **restore_result,
-            "document_count": len(restored_documents),
-            "total_pages": total_pages,
-            "total_chunks": total_chunks,
-            "documents": restored_documents,
+            "document_count": len(
+                restored_documents
+            ),
+            "total_pages": (
+                total_pages
+            ),
+            "total_chunks": (
+                total_chunks
+            ),
+            "documents": (
+                restored_documents
+            ),
             "warnings": [
                 *json_restore_warnings,
-                *[str(item) for item in manifest_warnings],
+                *[
+                    str(item)
+                    for item
+                    in manifest_warnings
+                ],
             ],
         }
 
     except Exception:
         if new_chat_id is not None:
             try:
-                rag.delete_chat(new_chat_id)
-            except Exception as cleanup_error:
-                print("RAG CLEANUP ERROR:", cleanup_error)
+                rag.delete_chat(
+                    new_chat_id
+                )
+            except Exception as error:
+                print(
+                    "RAG CLEANUP ERROR:",
+                    type(error).__name__,
+                )
+
+            for object_key in reversed(
+                stored_object_keys
+            ):
+                try:
+                    storage.delete(
+                        object_key
+                    )
+                except Exception as error:
+                    print(
+                        "DOCUMENT OBJECT "
+                        "CLEANUP ERROR:",
+                        type(
+                            error
+                        ).__name__,
+                    )
 
             try:
-                delete_chat_documents(new_chat_id)
-            except Exception as cleanup_error:
-                print("DOCUMENT CLEANUP ERROR:", cleanup_error)
+                delete_chat_documents(
+                    new_chat_id
+                )
+            except Exception as error:
+                print(
+                    "DOCUMENT RECORD "
+                    "CLEANUP ERROR:",
+                    type(error).__name__,
+                )
 
             try:
-                delete_chat(new_chat_id)
-            except Exception as cleanup_error:
-                print("CHAT CLEANUP ERROR:", cleanup_error)
-
-        if chat_directory is not None and chat_directory.exists():
-            shutil.rmtree(
-                chat_directory,
-                ignore_errors=True,
-            )
+                delete_chat(
+                    new_chat_id
+                )
+            except Exception as error:
+                print(
+                    "CHAT CLEANUP ERROR:",
+                    type(error).__name__,
+                )
 
         raise
