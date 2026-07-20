@@ -1,4 +1,4 @@
-﻿"""Safe migration of legacy Chroma embeddings into PostgreSQL pgvector."""
+"""Safe migration of legacy Chroma embeddings into PostgreSQL pgvector."""
 
 from __future__ import annotations
 
@@ -421,9 +421,9 @@ def _load_legacy_records(
             documents[index]
             if index < len(documents)
             else ""
-        ).strip()
+        )
 
-        if not content:
+        if not content.strip():
             raise LegacyRAGMigrationError()
 
         filename = _safe_filename(
