@@ -77,6 +77,7 @@ class FakeRAG:
 
 
 def build_minimal_archive() -> bytes:
+    """Build a valid ZIP shell for mocked restore tests."""
     stream = BytesIO()
 
     with zipfile.ZipFile(
@@ -87,8 +88,8 @@ def build_minimal_archive() -> bytes:
         ),
     ) as archive:
         archive.writestr(
-            "placeholder.txt",
-            "safe",
+            MANIFEST_NAME,
+            "{}",
         )
 
     return stream.getvalue()
