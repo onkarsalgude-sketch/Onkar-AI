@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import (
     CORSMiddleware,
@@ -10,6 +12,7 @@ from app.config.settings import (
 )
 from app.services.document_object_service import get_document_storage
 from app.services.rag_runtime import initialize_rag_runtime
+from app.services.document_recovery_runtime import run_document_recovery_startup
 
 
 def root():
@@ -24,6 +27,9 @@ def create_app(
     branch_merge_db_path=None,
     branch_merge_executor=None,
     branch_merge_rate_limiter=None,
+    document_recovery_settings=None,
+    document_recovery_runner=None,
+    document_recovery_rag=None,
 ):
     merge_settings = (
         branch_merge_settings
@@ -41,7 +47,39 @@ def create_app(
         initialize_rag_runtime()
     )
 
-    application = FastAPI(title="Onkar AI")
+    resolved_recovery_runner = (
+        document_recovery_runner
+        if document_recovery_runner is not None
+        else run_document_recovery_startup
+    )
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        from app.api.documents import (
+            rag as default_document_recovery_rag,
+        )
+
+        resolved_recovery_rag = (
+            document_recovery_rag
+            if document_recovery_rag is not None
+            else default_document_recovery_rag
+        )
+
+        report = resolved_recovery_runner(
+            rag=resolved_recovery_rag,
+            settings=document_recovery_settings,
+        )
+
+        application.state.document_recovery_report = (
+            report
+        )
+
+        yield
+
+    application = FastAPI(
+        title="Onkar AI",
+        lifespan=lifespan,
+    )
     application.state.document_storage = (
         document_storage
     )
@@ -90,6 +128,8 @@ def create_app(
     application.include_router(documents_router)
     application.include_router(image_router)
     application.include_router(backups_router)
+
+    application.state.document_recovery_report = None
 
     if merge_settings.enabled:
         from app.api.branch_merge import (
