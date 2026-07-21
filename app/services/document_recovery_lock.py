@@ -45,6 +45,27 @@ def _safe_close(
         pass
 
 
+def _safe_invalidate(
+    connection: Any,
+) -> None:
+    try:
+        invalidate = getattr(
+            connection,
+            "invalidate",
+            None,
+        )
+
+        if callable(invalidate):
+            invalidate()
+            return
+    except Exception:
+        pass
+
+    _safe_close(
+        connection
+    )
+
+
 def _first_row_value(
     row: Any,
 ) -> Any:
@@ -247,16 +268,33 @@ def _try_acquire_postgresql_lock(
                 ),
             )
 
-            cursor.fetchone()
+            unlocked = bool(
+                _first_row_value(
+                    cursor.fetchone()
+                )
+            )
+
+            if not unlocked:
+                raise RuntimeError(
+                    "PostgreSQL document recovery "
+                    "lock was not released."
+                )
+
             connection.commit()
         except Exception:
             _safe_rollback(
                 connection
             )
-        finally:
-            _safe_close(
+
+            _safe_invalidate(
                 connection
             )
+
+            return
+
+        _safe_close(
+            connection
+        )
 
     return DocumentRecoveryLockLease(
         acquired=True,

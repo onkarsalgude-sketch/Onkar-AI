@@ -16,6 +16,9 @@ from app.config.database import (
 from app.config.document_recovery import (
     DocumentRecoverySettings,
 )
+from app.database.db import (
+    PortableConnection,
+)
 from app.services.document_recovery_lock import (
     DOCUMENT_RECOVERY_ADVISORY_LOCK_ID,
     document_recovery_lock,
@@ -83,11 +86,15 @@ class FakeConnection:
     def __init__(
         self,
         acquired: bool,
+        *,
+        fail_unlock: bool = False,
     ):
         self.acquired = acquired
+        self.fail_unlock = fail_unlock
         self.executed = []
         self.commit_count = 0
         self.rollback_count = 0
+        self.invalidate_count = 0
         self.closed = False
 
     def execute(
@@ -110,6 +117,11 @@ class FakeConnection:
             )
 
         if "pg_advisory_unlock" in sql:
+            if self.fail_unlock:
+                raise RuntimeError(
+                    "Temporary advisory unlock failure"
+                )
+
             return FakeCursor(
                 (
                     True,
@@ -128,6 +140,22 @@ class FakeConnection:
 
     def close(self):
         self.closed = True
+
+    def invalidate(self):
+        self.invalidate_count += 1
+        self.closed = True
+
+
+class FakeRawPoolConnection:
+    def __init__(self):
+        self.invalidate_count = 0
+        self.close_count = 0
+
+    def invalidate(self):
+        self.invalidate_count += 1
+
+    def close(self):
+        self.close_count += 1
 
 
 def empty_recovery_run():
@@ -154,6 +182,33 @@ def fake_lock_context(
         acquired=acquired,
         backend="test",
     )
+
+
+class DocumentRecoveryPortableConnectionTests(
+    unittest.TestCase
+):
+    def test_portable_connection_forwards_invalidation(
+        self,
+    ):
+        raw_connection = (
+            FakeRawPoolConnection()
+        )
+
+        connection = PortableConnection(
+            raw_connection
+        )
+
+        connection.invalidate()
+
+        self.assertEqual(
+            raw_connection.invalidate_count,
+            1,
+        )
+
+        self.assertEqual(
+            raw_connection.close_count,
+            0,
+        )
 
 
 class DocumentRecoverySQLiteLockTests(
@@ -339,6 +394,48 @@ class DocumentRecoveryPostgreSQLLockTests(
         )
 
 
+    def test_postgresql_unlock_failure_invalidates_session(
+        self,
+    ):
+        connection = FakeConnection(
+            acquired=True,
+            fail_unlock=True,
+        )
+
+        lease = (
+            try_acquire_document_recovery_lock(
+                settings_loader=(
+                    settings_loader(
+                        postgresql_settings()
+                    )
+                ),
+                connection_factory=Mock(
+                    return_value=connection
+                ),
+            )
+        )
+
+        self.assertTrue(
+            lease.acquired
+        )
+
+        lease.release()
+
+        self.assertEqual(
+            connection.rollback_count,
+            1,
+        )
+
+        self.assertEqual(
+            connection.invalidate_count,
+            1,
+        )
+
+        self.assertTrue(
+            connection.closed
+        )
+
+
 class DocumentRecoveryRuntimeLockTests(
     unittest.TestCase
 ):
@@ -448,6 +545,62 @@ class DocumentRecoveryRuntimeLockTests(
         self.assertEqual(
             report.failure_count,
             1,
+        )
+
+
+    def test_recovery_failure_still_releases_lock(
+        self,
+    ):
+        lifecycle = []
+
+        @contextmanager
+        def tracked_lock():
+            lifecycle.append(
+                "acquired"
+            )
+
+            try:
+                yield SimpleNamespace(
+                    acquired=True,
+                    backend="test",
+                )
+            finally:
+                lifecycle.append(
+                    "released"
+                )
+
+        report = (
+            run_document_recovery_startup(
+                rag=object(),
+                settings=(
+                    DocumentRecoverySettings(
+                        enabled=True,
+                        stale_after_seconds=900,
+                        batch_size=25,
+                    )
+                ),
+                recover_fn=Mock(
+                    side_effect=RuntimeError(
+                        "Temporary recovery failure"
+                    )
+                ),
+                lock_context_factory=(
+                    tracked_lock
+                ),
+            )
+        )
+
+        self.assertEqual(
+            report.status,
+            "failed",
+        )
+
+        self.assertEqual(
+            lifecycle,
+            [
+                "acquired",
+                "released",
+            ],
         )
 
 
