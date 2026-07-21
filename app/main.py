@@ -20,6 +20,10 @@ from app.services.rag_runtime import initialize_rag_runtime
 from app.services.document_recovery_history_runtime import (
     run_document_recovery_startup_with_history as run_document_recovery_startup,
 )
+from app.config.system_health_monitoring import (
+    load_system_health_monitoring_settings,
+    validate_system_health_monitoring_settings,
+)
 
 
 def root():
@@ -38,6 +42,8 @@ def create_app(
     document_recovery_runner=None,
     document_recovery_rag=None,
     document_recovery_monitoring_settings=None,
+    system_health_monitoring_settings=None,
+    system_health_definitions_provider=None,
 ):
     merge_settings = (
         branch_merge_settings
@@ -56,6 +62,16 @@ def create_app(
 
     validate_document_recovery_monitoring_settings(
         recovery_monitoring_settings
+    )
+
+    system_health_settings = (
+        system_health_monitoring_settings
+        if system_health_monitoring_settings is not None
+        else load_system_health_monitoring_settings()
+    )
+
+    validate_system_health_monitoring_settings(
+        system_health_settings
     )
 
     document_storage = (
@@ -176,6 +192,44 @@ def create_app(
 
         application.include_router(
             recovery_history_admin_router
+        )
+
+    if system_health_settings.enabled:
+        from app.api.system_health_admin import (
+            create_system_health_admin_router,
+        )
+        from app.services.system_health_checks import (
+            build_default_health_check_definitions,
+        )
+
+        def default_system_health_definitions_provider(
+            request,
+        ):
+            return build_default_health_check_definitions(
+                recovery_report_provider=lambda: getattr(
+                    request.app.state,
+                    "document_recovery_report",
+                    None,
+                )
+            )
+
+        resolved_system_health_definitions_provider = (
+            system_health_definitions_provider
+            if system_health_definitions_provider is not None
+            else default_system_health_definitions_provider
+        )
+
+        system_health_router = (
+            create_system_health_admin_router(
+                system_health_settings,
+                definitions_provider=(
+                    resolved_system_health_definitions_provider
+                ),
+            )
+        )
+
+        application.include_router(
+            system_health_router
         )
 
     if merge_settings.enabled:
