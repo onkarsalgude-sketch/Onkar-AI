@@ -154,6 +154,9 @@ def create_app(
         from app.api.document_recovery_admin import (
             create_document_recovery_admin_router,
         )
+        from app.api.document_recovery_history_admin import (
+            create_document_recovery_history_admin_router,
+        )
 
         recovery_admin_router = (
             create_document_recovery_admin_router(
@@ -161,18 +164,14 @@ def create_app(
             )
         )
 
-        application.include_router(
-            recovery_admin_router
-        )
-
-        from app.api.document_recovery_history_admin import (
-            create_document_recovery_history_admin_router,
-        )
-
         recovery_history_admin_router = (
             create_document_recovery_history_admin_router(
                 recovery_monitoring_settings
             )
+        )
+
+        application.include_router(
+            recovery_admin_router
         )
 
         application.include_router(
