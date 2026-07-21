@@ -458,9 +458,14 @@ async def update_document_selection(
     }
 
 
-@router.api_route(
+@router.get(
     "/documents/{filename}/preview",
-    methods=["GET", "HEAD"],
+    operation_id="preview_pdf_get",
+)
+@router.head(
+    "/documents/{filename}/preview",
+    operation_id="preview_pdf_head",
+    include_in_schema=False,
 )
 async def preview_pdf(
     filename: str,
