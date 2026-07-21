@@ -301,6 +301,40 @@ def mark_document_failed(
     )
 
 
+
+def mark_document_deleting(
+    document_id: str,
+    chat_id: int,
+) -> dict | None:
+    conn = get_runtime_connection(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE documents
+        SET
+            status = 'deleting',
+            is_selected = 0,
+            updated_at = ?
+        WHERE document_id = ?
+          AND chat_id = ?
+        """,
+        (
+            datetime.now().isoformat(),
+            document_id,
+            chat_id,
+        ),
+    )
+
+    conn.commit()
+    conn.close()
+
+    return get_document(
+        document_id=document_id,
+        chat_id=chat_id,
+    )
+
+
 def list_documents(chat_id: int) -> list[dict]:
     conn = get_runtime_connection(DB_PATH)
     cursor = conn.cursor()

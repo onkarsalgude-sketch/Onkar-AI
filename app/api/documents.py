@@ -20,6 +20,7 @@ from app.services.document_service import (
     create_document,
     mark_document_ready,
     mark_document_failed,
+    mark_document_deleting,
     list_documents as list_document_records,
     get_document,
     get_document_by_filename,
@@ -486,6 +487,24 @@ async def preview_pdf(
             detail="Document not found",
         )
 
+    if (
+        str(
+            document.get(
+                "status",
+                "",
+            )
+        )
+        .strip()
+        .casefold()
+        == "deleting"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Document deletion is in progress"
+            ),
+        )
+
     try:
         file_content = read_document_bytes(
             document
@@ -549,6 +568,40 @@ async def delete_document(
     )
 
     file_deleted = False
+    record_deleted = False
+    deleted_chunks = 0
+    document_id = None
+
+    if document is not None:
+        document_id = str(
+            document["document_id"]
+        )
+
+        try:
+            deleting_document = (
+                mark_document_deleting(
+                    document_id=document_id,
+                    chat_id=chat_id,
+                )
+            )
+        except Exception as error:
+            logger.exception(
+                "Document deletion state "
+                "could not be saved"
+            )
+
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Document deletion could "
+                    "not be started"
+                ),
+            ) from error
+
+        if deleting_document is None:
+            document = None
+        else:
+            document = deleting_document
 
     if document is not None:
         try:
@@ -569,46 +622,95 @@ async def delete_document(
                 ),
             ) from error
 
-    vector_result = rag.delete_pdf(
-        safe_filename,
-        chat_id=chat_id,
-    )
-
-    record_deleted = False
-
-    if document is not None:
-        record_deleted = (
-            delete_document_record(
-                document_id=document[
-                    "document_id"
-                ],
+    try:
+        if document is not None:
+            vector_result = (
+                rag.delete_document(
+                    document_id=document_id,
+                    filename=safe_filename,
+                    chat_id=chat_id,
+                )
+            )
+        else:
+            vector_result = rag.delete_pdf(
+                safe_filename,
                 chat_id=chat_id,
             )
+
+        deleted_chunks = int(
+            vector_result.get(
+                "deleted_chunks",
+                0,
+            )
+            or 0
+        )
+    except Exception as error:
+        logger.exception(
+            "Document vector deletion failed"
         )
 
-    if (
-        not file_deleted
-        and not record_deleted
-        and vector_result[
-            "deleted_chunks"
-        ] == 0
-    ):
         raise HTTPException(
-            status_code=404,
+            status_code=503,
             detail=(
-                "Document not found in this chat"
+                "Document index is unavailable"
             ),
-        )
+        ) from error
+
+    if document is not None:
+        try:
+            record_deleted = (
+                delete_document_record(
+                    document_id=document_id,
+                    chat_id=chat_id,
+                )
+            )
+        except Exception as error:
+            logger.exception(
+                "Document metadata deletion failed"
+            )
+
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Document metadata is unavailable"
+                ),
+            ) from error
+
+        if not record_deleted:
+            remaining_document = get_document(
+                document_id=document_id,
+                chat_id=chat_id,
+            )
+
+            if remaining_document is not None:
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        "Document metadata deletion failed"
+                    ),
+                )
+
+    already_deleted = (
+        document is None
+        and deleted_chunks == 0
+    )
 
     return {
         "message": (
-            "Document deleted successfully"
+            "Document already deleted"
+            if already_deleted
+            else "Document deleted successfully"
         ),
         "filename": safe_filename,
         "chat_id": chat_id,
+        "document_id": document_id,
+        "status": "deleted",
+        "already_deleted": already_deleted,
         "file_deleted": file_deleted,
+        "file_missing": (
+            document is not None
+            and not file_deleted
+        ),
         "record_deleted": record_deleted,
-        "deleted_chunks": vector_result[
-            "deleted_chunks"
-        ],
+        "deleted_chunks": deleted_chunks,
     }

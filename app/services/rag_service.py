@@ -750,6 +750,41 @@ class RAGService:
             chat_id=chat_id,
         )
 
+
+    def delete_document(
+        self,
+        *,
+        document_id: str,
+        filename: str,
+        chat_id: int,
+    ) -> dict:
+        safe_filename = Path(
+            filename
+        ).name
+
+        if self.settings.is_pgvector:
+            deleted_count = (
+                self.store.delete_document(
+                    chat_id=chat_id,
+                    document_id=document_id,
+                )
+            )
+
+            return {
+                "document_id": document_id,
+                "filename": safe_filename,
+                "chat_id": chat_id,
+                "deleted_chunks": (
+                    deleted_count
+                ),
+                "remaining_chunks": 0,
+            }
+
+        return self.delete_pdf(
+            safe_filename,
+            chat_id,
+        )
+
     def delete_pdf(
         self,
         filename: str,
