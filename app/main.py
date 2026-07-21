@@ -71,6 +71,11 @@ def create_app(
     )
 
     application.get("/")(root)
+    application.head(
+        "/",
+        operation_id="root_head",
+        include_in_schema=False,
+    )(root)
 
     from app.api.backups import (
         router as backups_router,
