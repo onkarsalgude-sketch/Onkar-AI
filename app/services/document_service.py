@@ -481,3 +481,70 @@ def get_selected_document_filenames(
     conn.close()
 
     return filenames
+
+
+def list_documents_by_statuses(
+    statuses: tuple[str, ...],
+) -> list[dict]:
+    normalized_statuses = []
+
+    for status in statuses:
+        normalized = str(
+            status
+        ).strip().casefold()
+
+        if (
+            normalized
+            and normalized
+            not in normalized_statuses
+        ):
+            normalized_statuses.append(
+                normalized
+            )
+
+    if not normalized_statuses:
+        return []
+
+    placeholders = ", ".join(
+        "?"
+        for _ in normalized_statuses
+    )
+
+    conn = get_runtime_connection(DB_PATH)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            f"""
+            SELECT
+                document_id,
+                chat_id
+            FROM documents
+            WHERE lower(status) IN (
+                {placeholders}
+            )
+            ORDER BY
+                updated_at ASC,
+                document_id ASC
+            """,
+            tuple(normalized_statuses),
+        )
+
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+
+    documents = []
+
+    for document_id, chat_id in rows:
+        document = get_document(
+            document_id=str(
+                document_id
+            ),
+            chat_id=int(chat_id),
+        )
+
+        if document is not None:
+            documents.append(document)
+
+    return documents
