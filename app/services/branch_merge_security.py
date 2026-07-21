@@ -43,6 +43,9 @@ def verify_branch_merge_bearer(
     configured_sha256,
 ):
     """Verify a fixed capability token with one digest/compare code path."""
+
+    if isinstance(configured_sha256, str):
+        configured_sha256 = configured_sha256.strip().casefold()
     candidate = ""
     valid_format = False
 
