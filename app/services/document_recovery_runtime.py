@@ -11,6 +11,9 @@ from app.config.document_recovery import (
     DocumentRecoverySettings,
     load_document_recovery_settings,
 )
+from app.services.document_recovery_lock import (
+    document_recovery_lock,
+)
 from app.services.document_recovery_service import (
     recover_stuck_documents,
 )
@@ -58,6 +61,9 @@ def run_document_recovery_startup(
     settings: DocumentRecoverySettings | None = None,
     now: datetime | None = None,
     recover_fn: Callable = recover_stuck_documents,
+    lock_context_factory: Callable = (
+        document_recovery_lock
+    ),
     logger: logging.Logger | None = None,
 ) -> DocumentRecoveryStartupReport:
     resolved_logger = (
@@ -94,11 +100,35 @@ def run_document_recovery_startup(
         return report
 
     try:
-        run = recover_fn(
-            resolved_settings,
-            rag=rag,
-            now=now,
-        )
+        with lock_context_factory() as lock_lease:
+            if not lock_lease.acquired:
+                report = DocumentRecoveryStartupReport(
+                    status="skipped_lock_held",
+                    enabled=True,
+                    total_examined=0,
+                    candidate_count=0,
+                    processing_recovered_count=0,
+                    deleting_completed_count=0,
+                    failure_count=0,
+                    skipped_count=0,
+                    recent_count=0,
+                    invalid_timestamp_count=0,
+                    deferred_count=0,
+                )
+
+                resolved_logger.info(
+                    "Document recovery startup was skipped "
+                    "because another instance holds the "
+                    "recovery lock."
+                )
+
+                return report
+
+            run = recover_fn(
+                resolved_settings,
+                rag=rag,
+                now=now,
+            )
     except Exception as error:
         resolved_logger.exception(
             "Document recovery startup failed."
