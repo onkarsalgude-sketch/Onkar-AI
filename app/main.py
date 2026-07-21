@@ -232,6 +232,20 @@ def create_app(
             system_health_router
         )
 
+        from app.api.system_incident_admin import (
+            create_system_incident_admin_router,
+        )
+
+        system_incident_router = (
+            create_system_incident_admin_router(
+                system_health_settings
+            )
+        )
+
+        application.include_router(
+            system_incident_router
+        )
+
     if merge_settings.enabled:
         from app.api.branch_merge import (
             create_branch_merge_router,
