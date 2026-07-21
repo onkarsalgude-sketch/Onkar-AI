@@ -1,5 +1,10 @@
 from contextlib import asynccontextmanager
 
+from app.config.document_recovery_monitoring import (
+    load_document_recovery_monitoring_settings,
+    validate_document_recovery_monitoring_settings,
+)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import (
     CORSMiddleware,
@@ -30,6 +35,7 @@ def create_app(
     document_recovery_settings=None,
     document_recovery_runner=None,
     document_recovery_rag=None,
+    document_recovery_monitoring_settings=None,
 ):
     merge_settings = (
         branch_merge_settings
@@ -39,6 +45,17 @@ def create_app(
     validate_branch_merge_settings(
         merge_settings
     )
+
+    recovery_monitoring_settings = (
+        document_recovery_monitoring_settings
+        if document_recovery_monitoring_settings is not None
+        else load_document_recovery_monitoring_settings()
+    )
+
+    validate_document_recovery_monitoring_settings(
+        recovery_monitoring_settings
+    )
+
     document_storage = (
         get_document_storage()
     )
@@ -130,6 +147,21 @@ def create_app(
     application.include_router(backups_router)
 
     application.state.document_recovery_report = None
+
+    if recovery_monitoring_settings.enabled:
+        from app.api.document_recovery_admin import (
+            create_document_recovery_admin_router,
+        )
+
+        recovery_admin_router = (
+            create_document_recovery_admin_router(
+                recovery_monitoring_settings
+            )
+        )
+
+        application.include_router(
+            recovery_admin_router
+        )
 
     if merge_settings.enabled:
         from app.api.branch_merge import (
