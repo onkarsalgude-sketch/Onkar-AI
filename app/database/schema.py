@@ -1,4 +1,4 @@
-﻿"""Cross-database SQLAlchemy Core schema for Onkar-AI chat persistence.
+"""Cross-database SQLAlchemy Core schema for Onkar-AI chat persistence.
 
 The column types intentionally preserve current API and SQLite semantics:
 
@@ -27,7 +27,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 metadata = MetaData()
 
@@ -401,6 +401,133 @@ Index(
 )
 
 
+document_recovery_runs = Table(
+    "document_recovery_runs",
+    metadata,
+    Column(
+        "run_id",
+        Text,
+        primary_key=True,
+    ),
+    Column(
+        "status",
+        Text,
+        nullable=False,
+    ),
+    Column(
+        "recovery_enabled",
+        Integer,
+        nullable=False,
+    ),
+    Column(
+        "started_at",
+        Text,
+        nullable=False,
+    ),
+    Column(
+        "finished_at",
+        Text,
+        nullable=False,
+    ),
+    Column(
+        "duration_ms",
+        Integer,
+        nullable=False,
+    ),
+    Column(
+        "total_examined",
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    ),
+    Column(
+        "candidate_count",
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    ),
+    Column(
+        "processing_recovered_count",
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    ),
+    Column(
+        "deleting_completed_count",
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    ),
+    Column(
+        "failure_count",
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    ),
+    Column(
+        "skipped_count",
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    ),
+    Column(
+        "recent_count",
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    ),
+    Column(
+        "invalid_timestamp_count",
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    ),
+    Column(
+        "deferred_count",
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    ),
+    CheckConstraint(
+        (
+            "status IN ("
+            "'disabled', "
+            "'completed', "
+            "'completed_with_failures', "
+            "'skipped_lock_held', "
+            "'failed'"
+            ")"
+        ),
+        name=(
+            "ck_document_recovery_runs_status"
+        ),
+    ),
+    CheckConstraint(
+        "recovery_enabled IN (0, 1)",
+        name=(
+            "ck_document_recovery_runs_enabled"
+        ),
+    ),
+    CheckConstraint(
+        (
+            "duration_ms >= 0 "
+            "AND total_examined >= 0 "
+            "AND candidate_count >= 0 "
+            "AND processing_recovered_count >= 0 "
+            "AND deleting_completed_count >= 0 "
+            "AND failure_count >= 0 "
+            "AND skipped_count >= 0 "
+            "AND recent_count >= 0 "
+            "AND invalid_timestamp_count >= 0 "
+            "AND deferred_count >= 0"
+        ),
+        name=(
+            "ck_document_recovery_runs_nonnegative"
+        ),
+    ),
+)
+
+
 EXPECTED_TABLE_NAMES = frozenset(
     {
         "schema_migrations",
@@ -409,6 +536,7 @@ EXPECTED_TABLE_NAMES = frozenset(
         "messages",
         "message_bookmarks",
         "documents",
+        "document_recovery_runs",
         "branch_merge_operations",
         "branch_merge_message_mappings",
     }

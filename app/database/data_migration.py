@@ -1,4 +1,4 @@
-﻿"""Explicit SQLite-to-PostgreSQL data migration support."""
+"""Explicit SQLite-to-PostgreSQL data migration support."""
 
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ from app.database.schema import (
     branch_merge_operations,
     chats,
     documents,
+    document_recovery_runs,
     folders,
     message_bookmarks,
     messages,
@@ -46,7 +47,15 @@ _APPLICATION_TABLES = (
     documents,
     branch_merge_operations,
     branch_merge_message_mappings,
+    document_recovery_runs,
 )
+
+_OPTIONAL_SOURCE_TABLE_NAMES = frozenset(
+    {
+        document_recovery_runs.name,
+    }
+)
+
 
 _TABLE_BY_NAME = {
     table.name: table
@@ -61,6 +70,7 @@ _INSERT_ORDER = (
     documents,
     branch_merge_operations,
     branch_merge_message_mappings,
+    document_recovery_runs,
 )
 
 _CHAT_RELATION_COLUMNS = (
@@ -230,13 +240,45 @@ def _load_source_database(
                 "Source SQLite integrity check failed."
             )
 
-        rows_by_table = {
-            table.name: _read_source_rows(
+        source_table_names = {
+            str(row[0])
+            for row in connection.execute(
+                """
+                SELECT name
+                FROM sqlite_master
+                WHERE type = 'table'
+                """
+            ).fetchall()
+        }
+
+        rows_by_table = {}
+
+        for table in _APPLICATION_TABLES:
+            if (
+                table.name
+                not in source_table_names
+            ):
+                if (
+                    table.name
+                    in _OPTIONAL_SOURCE_TABLE_NAMES
+                ):
+                    rows_by_table[
+                        table.name
+                    ] = []
+
+                    continue
+
+                raise DataMigrationError(
+                    "Source SQLite schema "
+                    "is incompatible."
+                )
+
+            rows_by_table[
+                table.name
+            ] = _read_source_rows(
                 connection,
                 table,
             )
-            for table in _APPLICATION_TABLES
-        }
 
     finally:
         connection.close()
