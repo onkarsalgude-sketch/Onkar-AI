@@ -17,7 +17,9 @@ from app.config.settings import (
 )
 from app.services.document_object_service import get_document_storage
 from app.services.rag_runtime import initialize_rag_runtime
-from app.services.document_recovery_runtime import run_document_recovery_startup
+from app.services.document_recovery_history_runtime import (
+    run_document_recovery_startup_with_history as run_document_recovery_startup,
+)
 
 
 def root():
@@ -161,6 +163,20 @@ def create_app(
 
         application.include_router(
             recovery_admin_router
+        )
+
+        from app.api.document_recovery_history_admin import (
+            create_document_recovery_history_admin_router,
+        )
+
+        recovery_history_admin_router = (
+            create_document_recovery_history_admin_router(
+                recovery_monitoring_settings
+            )
+        )
+
+        application.include_router(
+            recovery_history_admin_router
         )
 
     if merge_settings.enabled:

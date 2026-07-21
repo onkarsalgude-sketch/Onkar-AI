@@ -1,4 +1,4 @@
-﻿"""Explicit schema initialization and version validation."""
+"""Explicit schema initialization and version validation."""
 
 from datetime import datetime, timezone
 import re
@@ -15,6 +15,7 @@ from app.database.schema import (
     chats,
     create_schema,
     documents,
+    document_recovery_runs,
     folders,
     message_bookmarks,
     messages,
@@ -40,7 +41,7 @@ class SchemaCompatibilityError(RuntimeError):
         )
 
 
-_APPLICATION_TABLES = (
+_SCHEMA_V1_APPLICATION_TABLES = (
     folders,
     chats,
     messages,
@@ -50,9 +51,25 @@ _APPLICATION_TABLES = (
     branch_merge_message_mappings,
 )
 
+_APPLICATION_TABLES = (
+    *_SCHEMA_V1_APPLICATION_TABLES,
+    document_recovery_runs,
+)
+
+_SCHEMA_V1_VERSIONED_TABLE_NAMES = frozenset(
+    {
+        schema_migrations.name,
+        *(
+            table.name
+            for table
+            in _SCHEMA_V1_APPLICATION_TABLES
+        ),
+    }
+)
+
 _LEGACY_TABLE_NAMES = frozenset(
     table.name
-    for table in _APPLICATION_TABLES
+    for table in _SCHEMA_V1_APPLICATION_TABLES
 )
 
 _REQUIRED_UNIQUE_COLUMN_SETS = {
@@ -138,15 +155,34 @@ def get_schema_version(engine: Engine) -> int:
 def _validate_recorded_version(
     versions: tuple[int, ...],
 ) -> None:
-    if not versions:
-        return
+    normalized = tuple(
+        int(version)
+        for version in versions
+    )
 
-    if len(set(versions)) != len(versions):
+    if (
+        len(set(normalized))
+        != len(normalized)
+    ):
         raise SchemaVersionError()
 
-    if max(versions) != SCHEMA_VERSION:
+    if normalized != tuple(
+        sorted(normalized)
+    ):
         raise SchemaVersionError()
 
+    valid_version_sets = {
+        (),
+        (1,),
+        (SCHEMA_VERSION,),
+        (
+            1,
+            SCHEMA_VERSION,
+        ),
+    }
+
+    if normalized not in valid_version_sets:
+        raise SchemaVersionError()
 
 def _normalize_sql_definition(
     value: str,
@@ -414,9 +450,12 @@ def _required_unique_sets_are_present(
 
 def validate_existing_schema(
     engine: Engine,
+    *,
+    expected_version: int | None = None,
 ) -> None:
-    """Validate an existing app schema before version adoption."""
+    """Validate an existing application schema safely."""
     inspector = inspect(engine)
+
     table_names = set(
         inspector.get_table_names()
     )
@@ -429,22 +468,74 @@ def validate_existing_schema(
     if not present_application_tables:
         return
 
-    if schema_migrations.name in (
-        present_application_tables
-    ):
-        required_table_names = (
-            EXPECTED_TABLE_NAMES
-        )
-        tables_to_validate = (
-            *_APPLICATION_TABLES,
-            schema_migrations,
-        )
+    version_table_present = (
+        schema_migrations.name
+        in present_application_tables
+    )
+
+    if version_table_present:
+        if expected_version is None:
+            recorded_versions = (
+                _read_recorded_versions(
+                    engine
+                )
+            )
+
+            _validate_recorded_version(
+                recorded_versions
+            )
+
+            if recorded_versions:
+                resolved_version = max(
+                    recorded_versions
+                )
+            elif (
+                document_recovery_runs.name
+                in table_names
+            ):
+                resolved_version = (
+                    SCHEMA_VERSION
+                )
+            else:
+                resolved_version = 1
+        else:
+            resolved_version = int(
+                expected_version
+            )
+
+        if resolved_version == 1:
+            required_table_names = (
+                _SCHEMA_V1_VERSIONED_TABLE_NAMES
+            )
+
+            tables_to_validate = (
+                *_SCHEMA_V1_APPLICATION_TABLES,
+                schema_migrations,
+            )
+        elif (
+            resolved_version
+            == SCHEMA_VERSION
+        ):
+            required_table_names = (
+                EXPECTED_TABLE_NAMES
+            )
+
+            tables_to_validate = (
+                *_APPLICATION_TABLES,
+                schema_migrations,
+            )
+        else:
+            raise SchemaVersionError()
     else:
+        if expected_version is not None:
+            raise SchemaCompatibilityError()
+
         required_table_names = (
             _LEGACY_TABLE_NAMES
         )
+
         tables_to_validate = (
-            _APPLICATION_TABLES
+            _SCHEMA_V1_APPLICATION_TABLES
         )
 
     missing_tables = (
@@ -513,25 +604,38 @@ def validate_existing_schema(
         ):
             raise SchemaCompatibilityError()
 
-
-def initialize_schema(engine: Engine) -> int:
-    """Create or safely adopt the current non-destructive schema.
-
-    Existing unversioned databases are adopted only after their tables,
-    columns, primary keys, and critical unique constraints are validated.
-    Older or newer recorded versions require an explicit migration.
-    """
-    validate_existing_schema(engine)
-
+def initialize_schema(
+    engine: Engine,
+) -> int:
+    """Create, adopt, or migrate the current schema safely."""
     existing_versions = (
-        _read_recorded_versions(engine)
+        _read_recorded_versions(
+            engine
+        )
     )
+
     _validate_recorded_version(
         existing_versions
     )
 
+    if existing_versions:
+        validate_existing_schema(
+            engine,
+            expected_version=max(
+                existing_versions
+            ),
+        )
+    else:
+        validate_existing_schema(
+            engine
+        )
+
     create_schema(engine)
-    validate_existing_schema(engine)
+
+    validate_existing_schema(
+        engine,
+        expected_version=SCHEMA_VERSION,
+    )
 
     try:
         with engine.begin() as connection:
@@ -563,25 +667,57 @@ def initialize_schema(engine: Engine) -> int:
                         applied_at=_utc_now_iso(),
                     )
                 )
-
+            elif max(recorded_versions) == 1:
+                connection.execute(
+                    insert(
+                        schema_migrations
+                    ).values(
+                        version=SCHEMA_VERSION,
+                        description=(
+                            "Add document recovery "
+                            "run history"
+                        ),
+                        applied_at=_utc_now_iso(),
+                    )
+                )
     except IntegrityError:
         final_versions = (
-            _read_recorded_versions(engine)
+            _read_recorded_versions(
+                engine
+            )
         )
+
         _validate_recorded_version(
             final_versions
         )
 
-        if SCHEMA_VERSION not in (
-            final_versions
+        if (
+            not final_versions
+            or max(final_versions)
+            != SCHEMA_VERSION
         ):
             raise
 
-    final_version = get_schema_version(
-        engine
+    final_versions = (
+        _read_recorded_versions(
+            engine
+        )
     )
 
-    if final_version != SCHEMA_VERSION:
+    _validate_recorded_version(
+        final_versions
+    )
+
+    if (
+        not final_versions
+        or max(final_versions)
+        != SCHEMA_VERSION
+    ):
         raise SchemaVersionError()
 
-    return final_version
+    validate_existing_schema(
+        engine,
+        expected_version=SCHEMA_VERSION,
+    )
+
+    return SCHEMA_VERSION

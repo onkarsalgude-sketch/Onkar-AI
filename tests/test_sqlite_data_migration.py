@@ -292,7 +292,7 @@ class SQLiteDataMigrationTests(
         )
         self.assertEqual(
             schema_version,
-            (1,),
+            (2,),
         )
 
     def test_nonempty_target_is_rejected(
