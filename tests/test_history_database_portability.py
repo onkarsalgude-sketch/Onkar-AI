@@ -91,45 +91,48 @@ class HistoryDatabasePortabilityTests(
                     original_path
                 )
 
-    def test_postgresql_init_never_creates_schema(
+    def test_postgresql_init_runs_safe_schema_migration(
         self,
     ):
-        settings = SimpleNamespace(
-            is_sqlite=False,
+        settings = MagicMock(
+            is_sqlite=False
         )
 
-        fake_engine = MagicMock()
+        engine = MagicMock()
 
         with (
-            patch(
-                "app.services.history_service."
+            patch.object(
+                history_service,
                 "load_database_settings",
                 return_value=settings,
             ),
-            patch(
-                "app.services.history_service."
+            patch.object(
+                history_service,
                 "build_database_engine",
-                return_value=fake_engine,
+                return_value=engine,
             ),
-            patch(
-                "app.services.history_service."
-                "validate_existing_schema",
-            ) as validate_schema,
-            patch(
-                "app.services.history_service."
-                "get_schema_version",
-                return_value=0,
-            ),
+            patch.object(
+                history_service,
+                "initialize_schema",
+            ) as initialize,
+            patch.object(
+                history_service,
+                "_legacy_init_db",
+            ) as legacy,
         ):
-            with self.assertRaises(
-                SchemaVersionError
-            ):
-                history_service.init_db()
+            result = history_service.init_db()
 
-        validate_schema.assert_called_once_with(
-            fake_engine
+        self.assertIsNone(
+            result
         )
-        fake_engine.dispose.assert_called_once()
+
+        initialize.assert_called_once_with(
+            engine
+        )
+
+        legacy.assert_not_called()
+
+        engine.dispose.assert_called_once_with()
 
 
 if __name__ == "__main__":
