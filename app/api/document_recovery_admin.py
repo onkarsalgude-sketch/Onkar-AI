@@ -104,6 +104,7 @@ def _report_payload(
         status in {
             "completed",
             "disabled",
+            "skipped_lock_held",
         }
         and failure_count == 0
     )

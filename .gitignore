@@ -24,3 +24,5 @@ node_modules/
 
 # Environment
 .env
+
+*.document-recovery.lock

@@ -513,6 +513,19 @@ class PortableConnection:
     def close(self):
         return self._raw_connection.close()
 
+    def invalidate(self):
+        """Discard the underlying pooled database connection."""
+        invalidate = getattr(
+            self._raw_connection,
+            "invalidate",
+            None,
+        )
+
+        if callable(invalidate):
+            return invalidate()
+
+        return self._raw_connection.close()
+
     def __enter__(self):
         return self
 
