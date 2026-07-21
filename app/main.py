@@ -165,6 +165,20 @@ def create_app(
             recovery_admin_router
         )
 
+        from app.api.document_recovery_history_admin import (
+            create_document_recovery_history_admin_router,
+        )
+
+        recovery_history_admin_router = (
+            create_document_recovery_history_admin_router(
+                recovery_monitoring_settings
+            )
+        )
+
+        application.include_router(
+            recovery_history_admin_router
+        )
+
     if merge_settings.enabled:
         from app.api.branch_merge import (
             create_branch_merge_router,
