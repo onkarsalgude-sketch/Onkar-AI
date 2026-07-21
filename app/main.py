@@ -17,7 +17,9 @@ from app.config.settings import (
 )
 from app.services.document_object_service import get_document_storage
 from app.services.rag_runtime import initialize_rag_runtime
-from app.services.document_recovery_runtime import run_document_recovery_startup
+from app.services.document_recovery_history_runtime import (
+    run_document_recovery_startup_with_history as run_document_recovery_startup,
+)
 
 
 def root():
