@@ -16,11 +16,8 @@ from app.database.engine import (
     build_database_engine,
 )
 from app.database.migrations import (
-    SchemaVersionError,
-    get_schema_version,
-    validate_existing_schema,
+    initialize_schema,
 )
-from app.database.schema import SCHEMA_VERSION
 from app.services.branch_merge_service import (
     BRANCH_MERGE_PREVIEW_VERSION,
     _build_branch_merge_preview_token,
@@ -413,27 +410,22 @@ _legacy_init_db = init_db
 
 
 def init_db():
-    """Initialize SQLite or validate the PostgreSQL schema."""
+    """Initialize and safely migrate the configured database schema."""
     settings = load_database_settings(
         default_sqlite_path=DB_PATH,
     )
 
     if settings.is_sqlite:
-        return _legacy_init_db()
+        _legacy_init_db()
 
     engine = build_database_engine(
         settings
     )
 
     try:
-        validate_existing_schema(engine)
-
-        if (
-            get_schema_version(engine)
-            != SCHEMA_VERSION
-        ):
-            raise SchemaVersionError()
-
+        initialize_schema(
+            engine
+        )
     finally:
         engine.dispose()
 
