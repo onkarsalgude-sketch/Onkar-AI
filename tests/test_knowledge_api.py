@@ -538,12 +538,27 @@ class KnowledgeMetadataApiTests(
             404,
         )
 
-    def test_delete_is_idempotent(self):
+    def test_delete_is_idempotent(
+        self,
+    ):
         with patch.object(
             knowledge_api,
-            "delete_metadata_record",
-            side_effect=[True, False],
-        ):
+            "delete_pdf",
+            side_effect=[
+                {
+                    "knowledge_id": (
+                        "knowledge-1"
+                    ),
+                    "deleted": True,
+                },
+                {
+                    "knowledge_id": (
+                        "knowledge-1"
+                    ),
+                    "deleted": False,
+                },
+            ],
+        ) as deleter:
             first = client().delete(
                 "/knowledge/knowledge-1"
             )
@@ -555,16 +570,111 @@ class KnowledgeMetadataApiTests(
             first.status_code,
             200,
         )
-        self.assertTrue(
-            first.json()["deleted"]
-        )
         self.assertEqual(
             second.status_code,
             200,
         )
+        self.assertTrue(
+            first.json()["deleted"]
+        )
         self.assertFalse(
             second.json()["deleted"]
         )
+        self.assertEqual(
+            first.headers[
+                "cache-control"
+            ],
+            "private, no-store",
+        )
+        self.assertEqual(
+            first.headers[
+                "x-content-type-options"
+            ],
+            "nosniff",
+        )
+        self.assertEqual(
+            deleter.call_count,
+            2,
+        )
+        deleter.assert_any_call(
+            "knowledge-1"
+        )
+
+    def test_delete_failure_is_generic(
+        self,
+    ):
+        secret = (
+            "r2://access-key:"
+            "private-secret@bucket"
+        )
+
+        with patch.object(
+            knowledge_api,
+            "delete_pdf",
+            side_effect=RuntimeError(
+                secret
+            ),
+        ):
+            response = client().delete(
+                "/knowledge/knowledge-1"
+            )
+
+        self.assertEqual(
+            response.status_code,
+            503,
+        )
+        self.assertNotIn(
+            secret,
+            response.text,
+        )
+        self.assertEqual(
+            response.json(),
+            {
+                "detail": (
+                    "Knowledge metadata "
+                    "is unavailable"
+                )
+            },
+        )
+
+    def test_delete_invalid_result_is_generic(
+        self,
+    ):
+        with patch.object(
+            knowledge_api,
+            "delete_pdf",
+            return_value={
+                "knowledge_id": (
+                    "other-knowledge"
+                ),
+                "deleted": "yes",
+            },
+        ):
+            response = client().delete(
+                "/knowledge/knowledge-1"
+            )
+
+        self.assertEqual(
+            response.status_code,
+            503,
+        )
+
+    def test_delete_invalid_id_stops_before_service(
+        self,
+    ):
+        with patch.object(
+            knowledge_api,
+            "delete_pdf",
+        ) as deleter:
+            response = client().delete(
+                "/knowledge/bad%20id"
+            )
+
+        self.assertEqual(
+            response.status_code,
+            400,
+        )
+        deleter.assert_not_called()
 
     def test_openapi_contract_is_unique_and_safe(
         self,

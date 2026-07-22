@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,11 @@ from fastapi import (
 )
 from pydantic import BaseModel, ConfigDict
 
+from app.services.knowledge_delete_service import (
+    KnowledgeDeleteError,
+    KnowledgeDeleteValidationError,
+    delete_knowledge_pdf as delete_pdf,
+)
 from app.services.knowledge_ingestion_service import (
     MAX_KNOWLEDGE_PDF_BYTES,
     KnowledgeIngestionConflictError,
@@ -31,11 +37,15 @@ from app.services.knowledge_service import (
     KnowledgeMetadataConflictError,
     KnowledgeMetadataError,
     create_knowledge_document as create_metadata_record,
-    delete_knowledge_document as delete_metadata_record,
     get_knowledge_document as get_metadata_record,
     list_knowledge_documents as list_metadata_records,
     set_knowledge_document_enabled as set_metadata_enabled,
     update_knowledge_document_status as update_metadata_status,
+)
+
+
+_KNOWLEDGE_ID_PATTERN = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
 )
 
 
@@ -135,10 +145,17 @@ def _required_text(
 
 
 def _knowledge_id(value: Any) -> str:
-    return _required_text(
-        value,
-        maximum_length=128,
-    )
+    if not isinstance(value, str):
+        raise _bad_request()
+
+    candidate = value.strip()
+
+    if not _KNOWLEDGE_ID_PATTERN.fullmatch(
+        candidate
+    ):
+        raise _bad_request()
+
+    return candidate
 
 
 def _filename(value: Any) -> str:
@@ -483,18 +500,39 @@ def delete_knowledge_metadata(
     )
 
     try:
-        deleted = bool(
-            delete_metadata_record(
-                normalized_id
-            )
+        result = delete_pdf(
+            normalized_id
         )
-    except KnowledgeMetadataError as error:
+    except (
+        KnowledgeDeleteValidationError
+    ) as error:
+        raise _bad_request() from error
+    except KnowledgeDeleteError as error:
         raise _service_unavailable() from error
     except Exception as error:
         raise _service_unavailable() from error
 
+    if not isinstance(result, dict):
+        raise _service_unavailable()
+
+    try:
+        result_id = result["knowledge_id"]
+        deleted = result["deleted"]
+    except (
+        KeyError,
+        TypeError,
+    ) as error:
+        raise _service_unavailable() from error
+
+    if (
+        not isinstance(result_id, str)
+        or result_id != normalized_id
+        or not isinstance(deleted, bool)
+    ):
+        raise _service_unavailable()
+
     _set_no_store(response)
     return KnowledgeDeleteResponse(
-        knowledge_id=normalized_id,
+        knowledge_id=result_id,
         deleted=deleted,
     )
