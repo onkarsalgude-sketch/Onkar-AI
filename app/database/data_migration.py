@@ -32,6 +32,7 @@ from app.database.schema import (
     folders,
     message_bookmarks,
     messages,
+    system_incident_alert_outbox,
     system_incidents,
 )
 
@@ -50,12 +51,14 @@ _APPLICATION_TABLES = (
     branch_merge_message_mappings,
     document_recovery_runs,
     system_incidents,
+    system_incident_alert_outbox,
 )
 
 _OPTIONAL_SOURCE_TABLE_NAMES = frozenset(
     {
         document_recovery_runs.name,
         system_incidents.name,
+        system_incident_alert_outbox.name,
     }
 )
 
@@ -75,6 +78,7 @@ _INSERT_ORDER = (
     branch_merge_message_mappings,
     document_recovery_runs,
     system_incidents,
+    system_incident_alert_outbox,
 )
 
 _CHAT_RELATION_COLUMNS = (

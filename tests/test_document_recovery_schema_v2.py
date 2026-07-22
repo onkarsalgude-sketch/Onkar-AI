@@ -108,7 +108,7 @@ class DocumentRecoverySchemaV2Tests(
     ):
         self.assertEqual(
             SCHEMA_VERSION,
-            3,
+            4,
         )
 
         self.assertIn(
@@ -166,14 +166,14 @@ class DocumentRecoverySchemaV2Tests(
 
         self.assertEqual(
             version,
-            3,
+            4,
         )
 
         self.assertEqual(
             get_schema_version(
                 self.engine
             ),
-            3,
+            4,
         )
 
         with self.engine.connect() as connection:
@@ -187,7 +187,7 @@ class DocumentRecoverySchemaV2Tests(
 
         self.assertEqual(
             versions,
-            [3],
+            [4],
         )
 
         self.assertIn(
@@ -228,7 +228,7 @@ class DocumentRecoverySchemaV2Tests(
 
         self.assertEqual(
             version,
-            3,
+            4,
         )
 
         with self.engine.connect() as connection:
@@ -256,6 +256,7 @@ class DocumentRecoverySchemaV2Tests(
                 1,
                 2,
                 3,
+                4,
             ],
         )
 
@@ -292,6 +293,7 @@ class DocumentRecoverySchemaV2Tests(
                 1,
                 2,
                 3,
+                4,
             ],
         )
 
