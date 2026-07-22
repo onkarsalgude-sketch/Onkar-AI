@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+from fastapi import BackgroundTasks
+
 from collections.abc import Callable, Iterable
 from typing import Any
 
@@ -29,6 +31,13 @@ from app.services.system_health_service import (
 )
 
 
+from app.config.system_incident_alerting import (
+    SystemIncidentAlertingSettings,
+    validate_system_incident_alerting_settings,
+)
+from app.services.system_incident_alert_service import (
+    deliver_system_incident_alerts,
+)
 from app.services.system_incident_history_service import (
     record_system_incident_evaluation,
 )
@@ -98,6 +107,58 @@ def _run_health_report(
         return _fallback_health_report()
 
 
+def _has_alert_transitions(
+    evaluation: Any,
+) -> bool:
+    if not isinstance(
+        evaluation,
+        dict,
+    ):
+        return False
+
+    for transition_name in (
+        "opened",
+        "updated",
+        "resolved",
+    ):
+        group = evaluation.get(
+            transition_name
+        )
+
+        if (
+            isinstance(
+                group,
+                list,
+            )
+            and any(
+                isinstance(
+                    item,
+                    dict,
+                )
+                for item in group
+            )
+        ):
+            return True
+
+    return False
+
+
+def _deliver_incident_alert_safely(
+    deliverer: Callable,
+    settings: SystemIncidentAlertingSettings,
+    evaluation: dict[str, Any],
+) -> None:
+    try:
+        deliverer(
+            settings,
+            evaluation,
+        )
+    except Exception:
+        logger.warning(
+            "System incident alert delivery failed."
+        )
+
+
 def create_system_health_admin_router(
     settings: SystemHealthMonitoringSettings,
     *,
@@ -117,6 +178,11 @@ def create_system_health_admin_router(
     ] = run_system_health_checks,
     incident_recorder: Callable | None = None,
     incident_db_path: str | None = None,
+    incident_alert_settings: (
+        SystemIncidentAlertingSettings
+        | None
+    ) = None,
+    incident_alert_deliverer: Callable | None = None,
 ) -> APIRouter:
     """Build the authenticated system-health status router."""
 
@@ -124,22 +190,49 @@ def create_system_health_admin_router(
         settings
     )
 
-    if not callable(definitions_provider):
+    if not callable(
+        definitions_provider
+    ):
         raise TypeError(
-            "System-health definitions provider must be callable."
+            "System-health definitions provider "
+            "must be callable."
         )
 
-    if not callable(health_runner):
+    if not callable(
+        health_runner
+    ):
         raise TypeError(
             "System-health runner must be callable."
         )
 
     if (
         incident_recorder is not None
-        and not callable(incident_recorder)
+        and not callable(
+            incident_recorder
+        )
     ):
         raise TypeError(
-            "System incident recorder must be callable."
+            "System incident recorder "
+            "must be callable."
+        )
+
+    if incident_alert_settings is not None:
+        validate_system_incident_alerting_settings(
+            incident_alert_settings
+        )
+
+    resolved_incident_alert_deliverer = (
+        incident_alert_deliverer
+        if incident_alert_deliverer is not None
+        else deliver_system_incident_alerts
+    )
+
+    if not callable(
+        resolved_incident_alert_deliverer
+    ):
+        raise TypeError(
+            "System incident alert deliverer "
+            "must be callable."
         )
 
     router = APIRouter()
@@ -151,9 +244,12 @@ def create_system_health_admin_router(
     )
     def get_system_health_status(
         request: Request,
+        background_tasks: BackgroundTasks,
     ) -> dict[str, Any]:
         authenticated = verify_branch_merge_bearer(
-            request.headers.get("authorization"),
+            request.headers.get(
+                "authorization"
+            ),
             settings.token_sha256,
         )
 
@@ -171,13 +267,17 @@ def create_system_health_admin_router(
 
         report = _run_health_report(
             request,
-            definitions_provider=definitions_provider,
+            definitions_provider=(
+                definitions_provider
+            ),
             health_runner=health_runner,
         )
 
+        evaluation = None
+
         if incident_recorder is not None:
             try:
-                incident_recorder(
+                evaluation = incident_recorder(
                     report,
                     observed_at=report.checked_at,
                     db_path=incident_db_path,
@@ -187,6 +287,24 @@ def create_system_health_admin_router(
                     "System incident persistence failed."
                 )
 
-        return system_health_payload(report)
+        if (
+            incident_alert_settings is not None
+            and incident_alert_settings.enabled
+            and _has_alert_transitions(
+                evaluation
+            )
+        ):
+            background_tasks.add_task(
+                _deliver_incident_alert_safely,
+                resolved_incident_alert_deliverer,
+                incident_alert_settings,
+                dict(
+                    evaluation
+                ),
+            )
+
+        return system_health_payload(
+            report
+        )
 
     return router
