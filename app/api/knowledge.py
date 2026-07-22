@@ -7,6 +7,9 @@ from typing import Any
 
 from fastapi import (
     APIRouter,
+    UploadFile,
+    File,
+    Form,
     HTTPException,
     Query,
     Response,
@@ -14,6 +17,13 @@ from fastapi import (
 )
 from pydantic import BaseModel, ConfigDict
 
+from app.services.knowledge_ingestion_service import (
+    MAX_KNOWLEDGE_PDF_BYTES,
+    KnowledgeIngestionConflictError,
+    KnowledgeIngestionError,
+    KnowledgeIngestionValidationError,
+    ingest_knowledge_pdf as ingest_pdf,
+)
 from app.services.knowledge_service import (
     ALLOWED_KNOWLEDGE_STATUSES,
     DEFAULT_LIST_LIMIT,
@@ -36,12 +46,6 @@ class _StrictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class KnowledgeCreateRequest(_StrictRequest):
-    title: Any
-    filename: Any
-    object_key: Any
-    file_hash: Any
-    file_size: Any
 
 
 class KnowledgeStatusRequest(_StrictRequest):
@@ -240,35 +244,60 @@ def _public_record(
     response_model=KnowledgeDocumentResponse,
     status_code=http_status.HTTP_201_CREATED,
 )
-def create_knowledge_metadata(
-    request: KnowledgeCreateRequest,
+async def upload_knowledge_pdf(
     response: Response,
+    title: str | None = Form(None),
+    file: UploadFile | None = File(None),
 ) -> KnowledgeDocumentResponse:
-    title = _required_text(
-        request.title,
-        maximum_length=255,
-    )
-    filename = _filename(request.filename)
-    object_key = _required_text(
-        request.object_key,
-        maximum_length=1024,
-    )
-    file_hash = _file_hash(request.file_hash)
-    file_size = _nonnegative_integer(
-        request.file_size
-    )
+    if file is None:
+        raise _bad_request()
+
+    media_type = str(
+        file.content_type or ""
+    ).split(
+        ";",
+        1,
+    )[0].strip().casefold()
+
+    if media_type != "application/pdf":
+        raise _bad_request()
 
     try:
-        record = create_metadata_record(
-            title=title,
-            filename=filename,
-            object_key=object_key,
-            file_hash=file_hash,
-            file_size=file_size,
+        payload = await file.read(
+            MAX_KNOWLEDGE_PDF_BYTES + 1
         )
-    except KnowledgeMetadataConflictError as error:
+    except Exception as error:
+        raise _service_unavailable() from error
+    finally:
+        try:
+            await file.close()
+        except Exception:
+            pass
+
+    if len(payload) > MAX_KNOWLEDGE_PDF_BYTES:
+        raise HTTPException(
+            status_code=(
+                http_status
+                .HTTP_413_REQUEST_ENTITY_TOO_LARGE
+            ),
+            detail="Knowledge PDF is too large.",
+        )
+
+    try:
+        record = ingest_pdf(
+            title=title,
+            filename=file.filename,
+            data=payload,
+        )
+    except (
+        KnowledgeIngestionValidationError
+    ) as error:
+        raise _bad_request() from error
+    except (
+        KnowledgeIngestionConflictError
+    ) as error:
         raise _conflict() from error
-    except KnowledgeMetadataError as error:
+    except KnowledgeIngestionError as error:
         raise _service_unavailable() from error
     except Exception as error:
         raise _service_unavailable() from error

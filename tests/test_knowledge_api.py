@@ -6,6 +6,11 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api import knowledge as knowledge_api
+from app.services.knowledge_ingestion_service import (
+    KnowledgeIngestionConflictError,
+    KnowledgeIngestionError,
+    KnowledgeIngestionValidationError,
+)
 from app.services.knowledge_service import (
     KnowledgeMetadataConflictError,
     KnowledgeMetadataError,
@@ -16,6 +21,11 @@ INTERNAL_OBJECT_KEY = (
     "knowledge/private/operating-guide.pdf"
 )
 INTERNAL_FILE_HASH = "a" * 64
+
+PDF_BYTES = (
+    b"%PDF-1.7\n"
+    b"public knowledge upload"
+)
 
 
 def record_fixture(
@@ -62,23 +72,20 @@ class KnowledgeMetadataApiTests(
     ):
         with patch.object(
             knowledge_api,
-            "create_metadata_record",
+            "ingest_pdf",
             return_value=record_fixture(),
-        ) as creator:
+        ) as ingestion:
             response = client().post(
                 "/knowledge",
-                json={
-                    "title": "Operating Guide",
-                    "filename": (
-                        "../operating-guide.pdf"
-                    ),
-                    "object_key": (
-                        INTERNAL_OBJECT_KEY
-                    ),
-                    "file_hash": (
-                        INTERNAL_FILE_HASH
-                    ),
-                    "file_size": 1024,
+                data={
+                    "title": "Operating Guide"
+                },
+                files={
+                    "file": (
+                        "operating-guide.pdf",
+                        PDF_BYTES,
+                        "application/pdf",
+                    )
                 },
             )
 
@@ -99,11 +106,6 @@ class KnowledgeMetadataApiTests(
             "nosniff",
         )
         payload = response.json()
-
-        self.assertEqual(
-            payload["knowledge_id"],
-            "knowledge-1",
-        )
         self.assertEqual(
             payload["filename"],
             "operating-guide.pdf",
@@ -116,21 +118,12 @@ class KnowledgeMetadataApiTests(
             "file_hash",
             payload,
         )
-        self.assertNotIn(
-            INTERNAL_OBJECT_KEY,
-            response.text,
-        )
-        self.assertNotIn(
-            INTERNAL_FILE_HASH,
-            response.text,
-        )
-
-        creator.assert_called_once_with(
+        ingestion.assert_called_once_with(
             title="Operating Guide",
-            filename="operating-guide.pdf",
-            object_key=INTERNAL_OBJECT_KEY,
-            file_hash=INTERNAL_FILE_HASH,
-            file_size=1024,
+            filename=(
+                "operating-guide.pdf"
+            ),
+            data=PDF_BYTES,
         )
 
     def test_invalid_create_is_rejected_before_service(
@@ -138,18 +131,20 @@ class KnowledgeMetadataApiTests(
     ):
         with patch.object(
             knowledge_api,
-            "create_metadata_record",
-        ) as creator:
+            "ingest_pdf",
+            side_effect=(
+                KnowledgeIngestionValidationError()
+            ),
+        ) as ingestion:
             response = client().post(
                 "/knowledge",
-                json={
-                    "title": "",
-                    "filename": "report.pdf",
-                    "object_key": (
-                        "knowledge/report.pdf"
-                    ),
-                    "file_hash": "unsafe",
-                    "file_size": -1,
+                data={"title": ""},
+                files={
+                    "file": (
+                        "report.pdf",
+                        PDF_BYTES,
+                        "application/pdf",
+                    )
                 },
             )
 
@@ -157,33 +152,145 @@ class KnowledgeMetadataApiTests(
             response.status_code,
             400,
         )
-        self.assertEqual(
-            response.json(),
-            {
-                "detail": (
-                    "Invalid knowledge request"
-                )
-            },
-        )
-        creator.assert_not_called()
+        ingestion.assert_called_once()
 
     def test_conflict_is_stable_and_sanitized(
         self,
     ):
         with patch.object(
             knowledge_api,
-            "create_metadata_record",
+            "ingest_pdf",
             side_effect=(
-                KnowledgeMetadataConflictError(
-                    "sqlite UNIQUE failure "
-                    + INTERNAL_OBJECT_KEY
-                )
+                KnowledgeIngestionConflictError()
             ),
         ):
             response = client().post(
                 "/knowledge",
+                data={
+                    "title": "Operating Guide"
+                },
+                files={
+                    "file": (
+                        "guide.pdf",
+                        PDF_BYTES,
+                        "application/pdf",
+                    )
+                },
+            )
+
+        self.assertEqual(
+            response.status_code,
+            409,
+        )
+        self.assertNotIn(
+            INTERNAL_OBJECT_KEY,
+            response.text,
+        )
+
+    def test_service_failure_is_generic(
+        self,
+    ):
+        secret = (
+            "postgresql://"
+            "user:password@host/db"
+        )
+
+        with patch.object(
+            knowledge_api,
+            "ingest_pdf",
+            side_effect=RuntimeError(
+                secret
+            ),
+        ):
+            response = client().post(
+                "/knowledge",
+                data={"title": "Guide"},
+                files={
+                    "file": (
+                        "guide.pdf",
+                        PDF_BYTES,
+                        "application/pdf",
+                    )
+                },
+            )
+
+        self.assertEqual(
+            response.status_code,
+            503,
+        )
+        self.assertNotIn(
+            secret,
+            response.text,
+        )
+
+    def test_oversized_upload_returns_413_before_service(
+        self,
+    ):
+        with (
+            patch.object(
+                knowledge_api,
+                "MAX_KNOWLEDGE_PDF_BYTES",
+                8,
+            ),
+            patch.object(
+                knowledge_api,
+                "ingest_pdf",
+            ) as ingestion,
+        ):
+            response = client().post(
+                "/knowledge",
+                data={"title": "Guide"},
+                files={
+                    "file": (
+                        "guide.pdf",
+                        PDF_BYTES,
+                        "application/pdf",
+                    )
+                },
+            )
+
+        self.assertEqual(
+            response.status_code,
+            413,
+        )
+        ingestion.assert_not_called()
+
+    def test_non_pdf_media_type_is_rejected_before_service(
+        self,
+    ):
+        with patch.object(
+            knowledge_api,
+            "ingest_pdf",
+        ) as ingestion:
+            response = client().post(
+                "/knowledge",
+                data={"title": "Guide"},
+                files={
+                    "file": (
+                        "guide.pdf",
+                        PDF_BYTES,
+                        "text/plain",
+                    )
+                },
+            )
+
+        self.assertEqual(
+            response.status_code,
+            400,
+        )
+        ingestion.assert_not_called()
+
+    def test_raw_metadata_json_is_not_accepted(
+        self,
+    ):
+        with patch.object(
+            knowledge_api,
+            "ingest_pdf",
+        ) as ingestion:
+            response = client().post(
+                "/knowledge",
                 json={
-                    "title": "Operating Guide",
+                    "title": "Guide",
                     "filename": "guide.pdf",
                     "object_key": (
                         INTERNAL_OBJECT_KEY
@@ -195,55 +302,65 @@ class KnowledgeMetadataApiTests(
                 },
             )
 
-        self.assertEqual(
+        self.assertIn(
             response.status_code,
-            409,
+            {400, 422},
         )
-        self.assertEqual(
-            response.json(),
-            {
-                "detail": (
-                    "Knowledge document "
-                    "already exists"
-                )
-            },
-        )
+        ingestion.assert_not_called()
         self.assertNotIn(
             INTERNAL_OBJECT_KEY,
             response.text,
         )
 
-    def test_service_failure_is_generic(
+    def test_upload_openapi_accepts_only_title_and_file(
         self,
     ):
-        with patch.object(
-            knowledge_api,
-            "list_metadata_records",
-            side_effect=KnowledgeMetadataError(
-                "postgresql://user:password@host/db"
-            ),
-        ):
-            response = client().get(
-                "/knowledge"
-            )
+        schema = client().get(
+            "/openapi.json"
+        ).json()
+        request_schema = schema[
+            "paths"
+        ]["/knowledge"]["post"][
+            "requestBody"
+        ]["content"][
+            "multipart/form-data"
+        ]["schema"]
+
+        if "$ref" in request_schema:
+            schema_name = request_schema[
+                "$ref"
+            ].rsplit(
+                "/",
+                1,
+            )[-1]
+            request_schema = schema[
+                "components"
+            ]["schemas"][schema_name]
+
+        properties = request_schema[
+            "properties"
+        ]
 
         self.assertEqual(
-            response.status_code,
-            503,
-        )
-        self.assertEqual(
-            response.json(),
-            {
-                "detail": (
-                    "Knowledge metadata "
-                    "is unavailable"
-                )
-            },
+            set(properties),
+            {"title", "file"},
         )
         self.assertNotIn(
-            "password",
-            response.text,
+            "object_key",
+            properties,
         )
+        self.assertNotIn(
+            "file_hash",
+            properties,
+        )
+        self.assertNotIn(
+            "file_size",
+            properties,
+        )
+
+
+
+
 
     def test_list_filters_are_forwarded(
         self,
