@@ -15,6 +15,7 @@ from app.database.schema import (
     chats,
     create_schema,
     documents,
+    knowledge_documents,
     document_recovery_runs,
     folders,
     message_bookmarks,
@@ -65,9 +66,15 @@ _SCHEMA_V3_APPLICATION_TABLES = (
 )
 
 
-_APPLICATION_TABLES = (
+_SCHEMA_V4_APPLICATION_TABLES = (
     *_SCHEMA_V3_APPLICATION_TABLES,
     system_incident_alert_outbox,
+)
+
+
+_APPLICATION_TABLES = (
+    *_SCHEMA_V4_APPLICATION_TABLES,
+    knowledge_documents,
 )
 
 _SCHEMA_V1_VERSIONED_TABLE_NAMES = frozenset(
@@ -101,6 +108,18 @@ _SCHEMA_V3_VERSIONED_TABLE_NAMES = frozenset(
             table.name
             for table
             in _SCHEMA_V3_APPLICATION_TABLES
+        ),
+    }
+)
+
+
+_SCHEMA_V4_VERSIONED_TABLE_NAMES = frozenset(
+    {
+        schema_migrations.name,
+        *(
+            table.name
+            for table
+            in _SCHEMA_V4_APPLICATION_TABLES
         ),
     }
 )
@@ -193,59 +212,23 @@ def get_schema_version(engine: Engine) -> int:
 def _validate_recorded_version(
     versions: tuple[int, ...],
 ) -> None:
-    normalized = tuple(
-        int(version)
-        for version in versions
-    )
+    normalized = tuple(int(version) for version in versions)
 
-    if (
-        len(set(normalized))
-        != len(normalized)
-    ):
+    if len(set(normalized)) != len(normalized):
         raise SchemaVersionError()
 
-    if normalized != tuple(
-        sorted(normalized)
-    ):
+    if normalized != tuple(sorted(normalized)):
         raise SchemaVersionError()
 
-    valid_version_sets = {
-        (),
-        (1,),
-        (2,),
-        (3,),
-        (SCHEMA_VERSION,),
-        (
-            1,
-            2,
-        ),
-        (
-            2,
-            3,
-        ),
-        (
-            3,
-            SCHEMA_VERSION,
-        ),
-        (
-            1,
-            2,
-            3,
-        ),
-        (
-            2,
-            3,
-            SCHEMA_VERSION,
-        ),
-        (
-            1,
-            2,
-            3,
-            SCHEMA_VERSION,
-        ),
-    }
+    if not normalized:
+        return
 
-    if normalized not in valid_version_sets:
+    if normalized[0] < 1 or normalized[-1] > SCHEMA_VERSION:
+        raise SchemaVersionError()
+
+    expected = tuple(range(normalized[0], normalized[-1] + 1))
+
+    if normalized != expected:
         raise SchemaVersionError()
 
 def _normalize_sql_definition(
@@ -554,6 +537,11 @@ def validate_existing_schema(
                     recorded_versions
                 )
             elif (
+                knowledge_documents.name
+                in table_names
+            ):
+                resolved_version = 5
+            elif (
                 system_incident_alert_outbox.name
                 in table_names
             ):
@@ -600,6 +588,15 @@ def validate_existing_schema(
 
             tables_to_validate = (
                 *_SCHEMA_V3_APPLICATION_TABLES,
+                schema_migrations,
+            )
+        elif resolved_version == 4:
+            required_table_names = (
+                _SCHEMA_V4_VERSIONED_TABLE_NAMES
+            )
+
+            tables_to_validate = (
+                *_SCHEMA_V4_APPLICATION_TABLES,
                 schema_migrations,
             )
         elif (
@@ -790,6 +787,20 @@ def initialize_schema(
                         )
                     )
 
+                if latest_version < 4:
+                    connection.execute(
+                        insert(
+                            schema_migrations
+                        ).values(
+                            version=4,
+                            description=(
+                                "Add durable incident "
+                                "alert outbox"
+                            ),
+                            applied_at=_utc_now_iso(),
+                        )
+                    )
+
                 if latest_version < SCHEMA_VERSION:
                     connection.execute(
                         insert(
@@ -797,8 +808,8 @@ def initialize_schema(
                         ).values(
                             version=SCHEMA_VERSION,
                             description=(
-                                "Add durable incident "
-                                "alert outbox"
+                                "Add durable knowledge "
+                                "library metadata"
                             ),
                             applied_at=_utc_now_iso(),
                         )

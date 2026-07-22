@@ -27,7 +27,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 metadata = MetaData()
 
@@ -836,6 +836,58 @@ system_incident_alert_outbox = Table(
 )
 
 
+knowledge_documents = Table(
+    "knowledge_documents",
+    metadata,
+    Column("knowledge_id", Text, primary_key=True),
+    Column("title", Text, nullable=False),
+    Column("filename", Text, nullable=False),
+    Column("object_key", Text, nullable=False),
+    Column("file_hash", Text, nullable=False),
+    Column("file_size", Integer, nullable=False, server_default=text("0")),
+    Column("page_count", Integer, nullable=False, server_default=text("0")),
+    Column("chunk_count", Integer, nullable=False, server_default=text("0")),
+    Column("status", Text, nullable=False, server_default=text("'processing'")),
+    Column("is_enabled", Integer, nullable=False, server_default=text("1")),
+    Column("created_at", Text, nullable=False),
+    Column("updated_at", Text, nullable=False),
+    CheckConstraint(
+        "status IN ('processing', 'ready', 'failed', 'deleting')",
+        name="ck_knowledge_documents_status",
+    ),
+    CheckConstraint(
+        "is_enabled IN (0, 1)",
+        name="ck_knowledge_documents_enabled",
+    ),
+    CheckConstraint(
+        "file_size >= 0 AND page_count >= 0 AND chunk_count >= 0",
+        name="ck_knowledge_documents_nonnegative",
+    ),
+    CheckConstraint(
+        "length(knowledge_id) BETWEEN 1 AND 128",
+        name="ck_knowledge_documents_id_length",
+    ),
+    CheckConstraint(
+        "length(title) BETWEEN 1 AND 255",
+        name="ck_knowledge_documents_title_length",
+    ),
+    CheckConstraint(
+        "length(filename) BETWEEN 1 AND 255",
+        name="ck_knowledge_documents_filename_length",
+    ),
+    CheckConstraint(
+        "length(object_key) BETWEEN 1 AND 1024",
+        name="ck_knowledge_documents_object_key_length",
+    ),
+    CheckConstraint(
+        "length(file_hash) = 64",
+        name="ck_knowledge_documents_hash_length",
+    ),
+    Index("ux_knowledge_documents_file_hash", "file_hash", unique=True),
+    Index("ix_knowledge_documents_status_updated", "status", "updated_at"),
+    Index("ix_knowledge_documents_enabled_updated", "is_enabled", "updated_at"),
+)
+
 EXPECTED_TABLE_NAMES = frozenset(
     {
         "schema_migrations",
@@ -844,6 +896,7 @@ EXPECTED_TABLE_NAMES = frozenset(
         "messages",
         "message_bookmarks",
         "documents",
+        "knowledge_documents",
         "document_recovery_runs",
         "system_incidents",
         "system_incident_alert_outbox",

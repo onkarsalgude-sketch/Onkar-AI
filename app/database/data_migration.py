@@ -28,6 +28,7 @@ from app.database.schema import (
     branch_merge_operations,
     chats,
     documents,
+    knowledge_documents,
     document_recovery_runs,
     folders,
     message_bookmarks,
@@ -47,6 +48,7 @@ _APPLICATION_TABLES = (
     messages,
     message_bookmarks,
     documents,
+    knowledge_documents,
     branch_merge_operations,
     branch_merge_message_mappings,
     document_recovery_runs,
@@ -59,6 +61,7 @@ _OPTIONAL_SOURCE_TABLE_NAMES = frozenset(
         document_recovery_runs.name,
         system_incidents.name,
         system_incident_alert_outbox.name,
+        knowledge_documents.name,
     }
 )
 
@@ -74,6 +77,7 @@ _INSERT_ORDER = (
     messages,
     message_bookmarks,
     documents,
+    knowledge_documents,
     branch_merge_operations,
     branch_merge_message_mappings,
     document_recovery_runs,
