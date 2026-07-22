@@ -27,7 +27,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 metadata = MetaData()
 
@@ -689,6 +689,153 @@ system_incidents = Table(
 )
 
 
+system_incident_alert_outbox = Table(
+    "system_incident_alert_outbox",
+    metadata,
+    Column(
+        "delivery_id",
+        Text,
+        primary_key=True,
+    ),
+    Column(
+        "payload_json",
+        Text,
+        nullable=False,
+    ),
+    Column(
+        "state",
+        Text,
+        nullable=False,
+        server_default=text("'pending'"),
+    ),
+    Column(
+        "attempt_count",
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    ),
+    Column(
+        "max_attempts",
+        Integer,
+        nullable=False,
+        server_default=text("5"),
+    ),
+    Column(
+        "next_attempt_at",
+        Text,
+        nullable=False,
+    ),
+    Column(
+        "claimed_at",
+        Text,
+        nullable=True,
+    ),
+    Column(
+        "claim_token",
+        Text,
+        nullable=True,
+    ),
+    Column(
+        "created_at",
+        Text,
+        nullable=False,
+    ),
+    Column(
+        "updated_at",
+        Text,
+        nullable=False,
+    ),
+    Column(
+        "completed_at",
+        Text,
+        nullable=True,
+    ),
+    CheckConstraint(
+        (
+            "state IN ("
+            "'pending', "
+            "'processing', "
+            "'completed', "
+            "'failed'"
+            ")"
+        ),
+        name=(
+            "ck_system_incident_alert_outbox_state"
+        ),
+    ),
+    CheckConstraint(
+        (
+            "attempt_count >= 0 "
+            "AND max_attempts BETWEEN 1 AND 10 "
+            "AND attempt_count <= max_attempts"
+        ),
+        name=(
+            "ck_system_incident_alert_outbox_attempts"
+        ),
+    ),
+    CheckConstraint(
+        (
+            "length(delivery_id) "
+            "BETWEEN 1 AND 128"
+        ),
+        name=(
+            "ck_system_incident_alert_outbox_id_length"
+        ),
+    ),
+    CheckConstraint(
+        (
+            "length(payload_json) "
+            "BETWEEN 2 AND 32768"
+        ),
+        name=(
+            "ck_system_incident_alert_outbox_payload_length"
+        ),
+    ),
+    CheckConstraint(
+        (
+            "claim_token IS NULL "
+            "OR length(claim_token) "
+            "BETWEEN 1 AND 128"
+        ),
+        name=(
+            "ck_system_incident_alert_outbox_claim_length"
+        ),
+    ),
+    CheckConstraint(
+        (
+            "("
+            "state = 'pending' "
+            "AND claimed_at IS NULL "
+            "AND claim_token IS NULL "
+            "AND completed_at IS NULL"
+            ") OR ("
+            "state = 'processing' "
+            "AND claimed_at IS NOT NULL "
+            "AND claim_token IS NOT NULL "
+            "AND completed_at IS NULL"
+            ") OR ("
+            "state IN ('completed', 'failed') "
+            "AND claimed_at IS NOT NULL "
+            "AND claim_token IS NOT NULL "
+            "AND completed_at IS NOT NULL"
+            ")"
+        ),
+        name=(
+            "ck_system_incident_alert_outbox_lifecycle"
+        ),
+    ),
+    Index(
+        "ix_system_incident_alert_outbox_due",
+        "state",
+        "next_attempt_at",
+    ),
+    Index(
+        "ix_system_incident_alert_outbox_claim",
+        "claim_token",
+    ),
+)
+
+
 EXPECTED_TABLE_NAMES = frozenset(
     {
         "schema_migrations",
@@ -699,6 +846,7 @@ EXPECTED_TABLE_NAMES = frozenset(
         "documents",
         "document_recovery_runs",
         "system_incidents",
+        "system_incident_alert_outbox",
         "branch_merge_operations",
         "branch_merge_message_mappings",
     }

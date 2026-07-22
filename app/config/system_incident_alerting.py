@@ -12,6 +12,10 @@ DEFAULT_SYSTEM_INCIDENT_ALERTS_ENABLED = False
 DEFAULT_SYSTEM_INCIDENT_ALERTS_TIMEOUT_SECONDS = 5.0
 MIN_SYSTEM_INCIDENT_ALERTS_TIMEOUT_SECONDS = 0.5
 MAX_SYSTEM_INCIDENT_ALERTS_TIMEOUT_SECONDS = 30.0
+
+DEFAULT_SYSTEM_INCIDENT_ALERTS_STALE_AFTER_SECONDS = 300.0
+MIN_SYSTEM_INCIDENT_ALERTS_STALE_AFTER_SECONDS = 1.0
+MAX_SYSTEM_INCIDENT_ALERTS_STALE_AFTER_SECONDS = 86400.0
 MAX_SYSTEM_INCIDENT_ALERTS_WEBHOOK_URL_LENGTH = 2048
 
 _TRUE_VALUES = {
@@ -52,6 +56,10 @@ class SystemIncidentAlertingSettings:
 
     timeout_seconds: float = (
         DEFAULT_SYSTEM_INCIDENT_ALERTS_TIMEOUT_SECONDS
+    )
+
+    stale_after_seconds: float = (
+        DEFAULT_SYSTEM_INCIDENT_ALERTS_STALE_AFTER_SECONDS
     )
 
     def __post_init__(
@@ -99,6 +107,34 @@ class SystemIncidentAlertingSettings:
             self,
             "timeout_seconds",
             normalized_timeout,
+        )
+
+        if isinstance(
+            self.stale_after_seconds,
+            bool,
+        ):
+            raise SystemIncidentAlertingConfigurationError(
+                "SYSTEM_INCIDENT_ALERTS_STALE_AFTER_SECONDS "
+                "must be numeric."
+            )
+
+        try:
+            normalized_stale_after = float(
+                self.stale_after_seconds
+            )
+        except (
+            TypeError,
+            ValueError,
+        ) as error:
+            raise SystemIncidentAlertingConfigurationError(
+                "SYSTEM_INCIDENT_ALERTS_STALE_AFTER_SECONDS "
+                "must be numeric."
+            ) from error
+
+        object.__setattr__(
+            self,
+            "stale_after_seconds",
+            normalized_stale_after,
         )
 
 
@@ -185,7 +221,7 @@ def _validate_webhook_url(
 def validate_system_incident_alerting_settings(
     settings: SystemIncidentAlertingSettings,
 ) -> None:
-    """Fail closed for unsafe webhook and timeout configuration."""
+    """Fail closed for unsafe webhook, timeout, and recovery configuration."""
     if not isinstance(
         settings,
         SystemIncidentAlertingSettings,
@@ -202,6 +238,16 @@ def validate_system_incident_alerting_settings(
         raise SystemIncidentAlertingConfigurationError(
             "SYSTEM_INCIDENT_ALERTS_TIMEOUT_SECONDS "
             "must be between 0.5 and 30 seconds."
+        )
+
+    if not (
+        MIN_SYSTEM_INCIDENT_ALERTS_STALE_AFTER_SECONDS
+        <= settings.stale_after_seconds
+        <= MAX_SYSTEM_INCIDENT_ALERTS_STALE_AFTER_SECONDS
+    ):
+        raise SystemIncidentAlertingConfigurationError(
+            "SYSTEM_INCIDENT_ALERTS_STALE_AFTER_SECONDS "
+            "must be between 1 and 86400 seconds."
         )
 
     if settings.webhook_url:
@@ -256,6 +302,12 @@ def load_system_incident_alerting_settings(
             "SYSTEM_INCIDENT_ALERTS_TIMEOUT_SECONDS",
             str(
                 DEFAULT_SYSTEM_INCIDENT_ALERTS_TIMEOUT_SECONDS
+            ),
+        ),
+        stale_after_seconds=source.get(
+            "SYSTEM_INCIDENT_ALERTS_STALE_AFTER_SECONDS",
+            str(
+                DEFAULT_SYSTEM_INCIDENT_ALERTS_STALE_AFTER_SECONDS
             ),
         ),
     )

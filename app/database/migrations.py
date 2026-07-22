@@ -20,6 +20,7 @@ from app.database.schema import (
     message_bookmarks,
     messages,
     schema_migrations,
+    system_incident_alert_outbox,
     system_incidents,
 )
 
@@ -58,9 +59,15 @@ _SCHEMA_V2_APPLICATION_TABLES = (
 )
 
 
-_APPLICATION_TABLES = (
+_SCHEMA_V3_APPLICATION_TABLES = (
     *_SCHEMA_V2_APPLICATION_TABLES,
     system_incidents,
+)
+
+
+_APPLICATION_TABLES = (
+    *_SCHEMA_V3_APPLICATION_TABLES,
+    system_incident_alert_outbox,
 )
 
 _SCHEMA_V1_VERSIONED_TABLE_NAMES = frozenset(
@@ -82,6 +89,18 @@ _SCHEMA_V2_VERSIONED_TABLE_NAMES = frozenset(
             table.name
             for table
             in _SCHEMA_V2_APPLICATION_TABLES
+        ),
+    }
+)
+
+
+_SCHEMA_V3_VERSIONED_TABLE_NAMES = frozenset(
+    {
+        schema_migrations.name,
+        *(
+            table.name
+            for table
+            in _SCHEMA_V3_APPLICATION_TABLES
         ),
     }
 )
@@ -194,6 +213,7 @@ def _validate_recorded_version(
         (),
         (1,),
         (2,),
+        (3,),
         (SCHEMA_VERSION,),
         (
             1,
@@ -201,11 +221,26 @@ def _validate_recorded_version(
         ),
         (
             2,
+            3,
+        ),
+        (
+            3,
             SCHEMA_VERSION,
         ),
         (
             1,
             2,
+            3,
+        ),
+        (
+            2,
+            3,
+            SCHEMA_VERSION,
+        ),
+        (
+            1,
+            2,
+            3,
             SCHEMA_VERSION,
         ),
     }
@@ -519,6 +554,11 @@ def validate_existing_schema(
                     recorded_versions
                 )
             elif (
+                system_incident_alert_outbox.name
+                in table_names
+            ):
+                resolved_version = 4
+            elif (
                 system_incidents.name
                 in table_names
             ):
@@ -551,6 +591,15 @@ def validate_existing_schema(
 
             tables_to_validate = (
                 *_SCHEMA_V2_APPLICATION_TABLES,
+                schema_migrations,
+            )
+        elif resolved_version == 3:
+            required_table_names = (
+                _SCHEMA_V3_VERSIONED_TABLE_NAMES
+            )
+
+            tables_to_validate = (
+                *_SCHEMA_V3_APPLICATION_TABLES,
                 schema_migrations,
             )
         elif (
@@ -727,6 +776,20 @@ def initialize_schema(
                         )
                     )
 
+                if latest_version < 3:
+                    connection.execute(
+                        insert(
+                            schema_migrations
+                        ).values(
+                            version=3,
+                            description=(
+                                "Add durable system "
+                                "incident history"
+                            ),
+                            applied_at=_utc_now_iso(),
+                        )
+                    )
+
                 if latest_version < SCHEMA_VERSION:
                     connection.execute(
                         insert(
@@ -734,8 +797,8 @@ def initialize_schema(
                         ).values(
                             version=SCHEMA_VERSION,
                             description=(
-                                "Add durable system "
-                                "incident history"
+                                "Add durable incident "
+                                "alert outbox"
                             ),
                             applied_at=_utc_now_iso(),
                         )
