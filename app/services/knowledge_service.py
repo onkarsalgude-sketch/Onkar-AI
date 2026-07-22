@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from app.config.settings import CHAT_DB
 from app.database.db import (
+    DATABASE_INTEGRITY_ERRORS,
     begin_write_transaction,
     get_runtime_connection,
 )
@@ -31,6 +32,12 @@ ALLOWED_KNOWLEDGE_STATUSES = frozenset(
 
 class KnowledgeMetadataError(RuntimeError):
     """Raised when knowledge metadata cannot be handled safely."""
+
+
+class KnowledgeMetadataConflictError(
+    KnowledgeMetadataError
+):
+    """Raised when durable knowledge metadata already exists."""
 
 
 def _utc_now_iso() -> str:
@@ -401,6 +408,12 @@ def create_knowledge_document(
         if connection is not None:
             _safe_rollback(connection)
         raise
+    except DATABASE_INTEGRITY_ERRORS as error:
+        if connection is not None:
+            _safe_rollback(connection)
+        raise KnowledgeMetadataConflictError(
+            "Knowledge metadata creation failed."
+        ) from error
     except Exception as error:
         if connection is not None:
             _safe_rollback(connection)
