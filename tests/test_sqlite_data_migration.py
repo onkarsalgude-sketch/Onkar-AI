@@ -1,4 +1,4 @@
-﻿import sqlite3
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -292,7 +292,7 @@ class SQLiteDataMigrationTests(
         )
         self.assertEqual(
             schema_version,
-            (2,),
+            (3,),
         )
 
     def test_nonempty_target_is_rejected(

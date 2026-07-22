@@ -14,25 +14,22 @@ from sqlalchemy.exc import IntegrityError
 from app.config.database import (
     DatabaseSettings,
 )
-from app.database import (
-    data_migration,
-)
+from app.database import data_migration
 from app.database.engine import (
     build_database_engine,
 )
 from app.database.migrations import (
     SchemaCompatibilityError,
-    _SCHEMA_V1_APPLICATION_TABLES,
+    _SCHEMA_V2_APPLICATION_TABLES,
     get_schema_version,
     initialize_schema,
 )
 from app.database.schema import (
     EXPECTED_TABLE_NAMES,
     SCHEMA_VERSION,
-    chats,
-    document_recovery_runs,
     metadata,
     schema_migrations,
+    system_incidents,
 )
 
 
@@ -51,7 +48,33 @@ def build_sqlite_engine(
     )
 
 
-class DocumentRecoverySchemaV2Tests(
+def safe_incident_values(
+    incident_id: str = "incident-safe-1",
+) -> dict:
+    return {
+        "incident_id": incident_id,
+        "incident_key": (
+            "system_health:database"
+        ),
+        "component": "database",
+        "severity": "critical",
+        "source_status": "unavailable",
+        "detail": "database_unreachable",
+        "critical": 1,
+        "state": "open",
+        "fingerprint": "a" * 64,
+        "opened_at": (
+            "2026-07-21T10:00:00+00:00"
+        ),
+        "last_seen_at": (
+            "2026-07-21T10:00:01+00:00"
+        ),
+        "resolved_at": None,
+        "occurrence_count": 1,
+    }
+
+
+class SystemIncidentSchemaV3Tests(
     unittest.TestCase
 ):
     def setUp(self):
@@ -63,7 +86,7 @@ class DocumentRecoverySchemaV2Tests(
             Path(
                 self.temporary_directory.name
             )
-            / "schema-v2.db"
+            / "schema-v3.db"
         )
 
         self.engine = build_sqlite_engine(
@@ -72,33 +95,39 @@ class DocumentRecoverySchemaV2Tests(
 
     def tearDown(self):
         self.engine.dispose()
-
         self.temporary_directory.cleanup()
 
-    def create_version_one_schema(
+    def create_version_two_schema(
         self,
+        engine=None,
     ) -> None:
+        resolved_engine = (
+            self.engine
+            if engine is None
+            else engine
+        )
+
         metadata.create_all(
-            bind=self.engine,
+            bind=resolved_engine,
             tables=[
                 schema_migrations,
-                *_SCHEMA_V1_APPLICATION_TABLES,
+                *_SCHEMA_V2_APPLICATION_TABLES,
             ],
             checkfirst=True,
         )
 
-        with self.engine.begin() as connection:
+        with resolved_engine.begin() as connection:
             connection.execute(
                 insert(
                     schema_migrations
                 ).values(
-                    version=1,
+                    version=2,
                     description=(
-                        "Initial cross-database "
-                        "chat persistence schema"
+                        "Add document recovery "
+                        "run history"
                     ),
                     applied_at=(
-                        "2026-07-20T00:00:00+00:00"
+                        "2026-07-21T00:00:00+00:00"
                     ),
                 )
             )
@@ -112,31 +141,29 @@ class DocumentRecoverySchemaV2Tests(
         )
 
         self.assertIn(
-            document_recovery_runs.name,
+            system_incidents.name,
             EXPECTED_TABLE_NAMES,
         )
 
         expected_columns = {
-            "run_id",
-            "status",
-            "recovery_enabled",
-            "started_at",
-            "finished_at",
-            "duration_ms",
-            "total_examined",
-            "candidate_count",
-            "processing_recovered_count",
-            "deleting_completed_count",
-            "failure_count",
-            "skipped_count",
-            "recent_count",
-            "invalid_timestamp_count",
-            "deferred_count",
+            "incident_id",
+            "incident_key",
+            "component",
+            "severity",
+            "source_status",
+            "detail",
+            "critical",
+            "state",
+            "fingerprint",
+            "opened_at",
+            "last_seen_at",
+            "resolved_at",
+            "occurrence_count",
         }
 
         self.assertEqual(
             set(
-                document_recovery_runs.c.keys()
+                system_incidents.c.keys()
             ),
             expected_columns,
         )
@@ -144,12 +171,15 @@ class DocumentRecoverySchemaV2Tests(
         forbidden_columns = {
             "error",
             "exception",
-            "filename",
-            "document_id",
-            "file_path",
-            "storage_key",
-            "lock_id",
+            "traceback",
+            "password",
             "database_url",
+            "storage_key",
+            "document_id",
+            "filename",
+            "file_path",
+            "access_key",
+            "secret_key",
         }
 
         self.assertFalse(
@@ -157,7 +187,7 @@ class DocumentRecoverySchemaV2Tests(
             & forbidden_columns
         )
 
-    def test_fresh_database_records_only_version_two(
+    def test_fresh_database_records_only_version_three(
         self,
     ):
         version = initialize_schema(
@@ -191,21 +221,21 @@ class DocumentRecoverySchemaV2Tests(
         )
 
         self.assertIn(
-            document_recovery_runs.name,
+            system_incidents.name,
             inspect(
                 self.engine
             ).get_table_names(),
         )
 
-    def test_version_one_database_migrates_without_data_loss(
+    def test_version_two_database_migrates_without_data_loss(
         self,
     ):
-        self.create_version_one_schema()
+        self.create_version_two_schema()
 
         with self.engine.begin() as connection:
             connection.exec_driver_sql(
                 """
-                CREATE TABLE preserved_v1_data (
+                CREATE TABLE preserved_v2_data (
                     id INTEGER PRIMARY KEY,
                     value TEXT NOT NULL
                 )
@@ -214,11 +244,11 @@ class DocumentRecoverySchemaV2Tests(
 
             connection.exec_driver_sql(
                 """
-                INSERT INTO preserved_v1_data (
+                INSERT INTO preserved_v2_data (
                     id,
                     value
                 )
-                VALUES (1, 'keep-me')
+                VALUES (1, 'keep-v2-data')
                 """
             )
 
@@ -244,7 +274,7 @@ class DocumentRecoverySchemaV2Tests(
                 connection.exec_driver_sql(
                     """
                     SELECT value
-                    FROM preserved_v1_data
+                    FROM preserved_v2_data
                     WHERE id = 1
                     """
                 ).scalar_one()
@@ -253,7 +283,6 @@ class DocumentRecoverySchemaV2Tests(
         self.assertEqual(
             versions,
             [
-                1,
                 2,
                 3,
             ],
@@ -261,13 +290,13 @@ class DocumentRecoverySchemaV2Tests(
 
         self.assertEqual(
             preserved_value,
-            "keep-me",
+            "keep-v2-data",
         )
 
-    def test_version_one_migration_is_idempotent(
+    def test_version_two_migration_is_idempotent(
         self,
     ):
-        self.create_version_one_schema()
+        self.create_version_two_schema()
 
         initialize_schema(
             self.engine
@@ -289,20 +318,18 @@ class DocumentRecoverySchemaV2Tests(
         self.assertEqual(
             versions,
             [
-                1,
                 2,
                 3,
             ],
         )
 
-    def test_partial_version_one_schema_is_rejected(
+    def test_partial_version_two_schema_is_rejected(
         self,
     ):
         metadata.create_all(
             bind=self.engine,
             tables=[
                 schema_migrations,
-                chats,
             ],
             checkfirst=True,
         )
@@ -312,12 +339,12 @@ class DocumentRecoverySchemaV2Tests(
                 insert(
                     schema_migrations
                 ).values(
-                    version=1,
+                    version=2,
                     description=(
-                        "Invalid partial schema"
+                        "Invalid partial v2 schema"
                     ),
                     applied_at=(
-                        "2026-07-20T00:00:00+00:00"
+                        "2026-07-21T00:00:00+00:00"
                     ),
                 )
             )
@@ -329,39 +356,126 @@ class DocumentRecoverySchemaV2Tests(
                 self.engine
             )
 
-    def test_data_migration_includes_recovery_history(
+    def test_incident_table_enforces_safe_lifecycle_values(
+        self,
+    ):
+        initialize_schema(
+            self.engine
+        )
+
+        values = safe_incident_values()
+
+        with self.engine.begin() as connection:
+            connection.execute(
+                insert(
+                    system_incidents
+                ).values(
+                    **values
+                )
+            )
+
+        with self.engine.connect() as connection:
+            stored_state = connection.execute(
+                select(
+                    system_incidents.c.state
+                ).where(
+                    system_incidents.c.incident_id
+                    == values["incident_id"]
+                )
+            ).scalar_one()
+
+        self.assertEqual(
+            stored_state,
+            "open",
+        )
+
+        invalid_count = dict(
+            values
+        )
+
+        invalid_count["incident_id"] = (
+            "incident-invalid-count"
+        )
+
+        invalid_count["occurrence_count"] = 0
+
+        with self.assertRaises(
+            IntegrityError
+        ):
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(
+                        system_incidents
+                    ).values(
+                        **invalid_count
+                    )
+                )
+
+        invalid_resolution = dict(
+            values
+        )
+
+        invalid_resolution["incident_id"] = (
+            "incident-invalid-resolution"
+        )
+
+        invalid_resolution["state"] = (
+            "resolved"
+        )
+
+        with self.assertRaises(
+            IntegrityError
+        ):
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(
+                        system_incidents
+                    ).values(
+                        **invalid_resolution
+                    )
+                )
+
+    def test_data_migration_includes_incident_table(
         self,
     ):
         self.assertIn(
-            document_recovery_runs,
+            system_incidents,
             data_migration._APPLICATION_TABLES,
         )
 
         self.assertIn(
-            document_recovery_runs,
+            system_incidents,
             data_migration._INSERT_ORDER,
         )
 
+        self.assertIn(
+            system_incidents.name,
+            (
+                data_migration
+                ._OPTIONAL_SOURCE_TABLE_NAMES
+            ),
+        )
+
         self.assertNotIn(
-            document_recovery_runs,
+            system_incidents,
             data_migration._SEQUENCE_TABLES,
         )
 
-    def test_legacy_source_without_history_table_migrates(
+    def test_version_two_source_without_incidents_migrates(
         self,
     ):
         source_path = (
             Path(
                 self.temporary_directory.name
             )
-            / "legacy-source.db"
+            / "source-v2.db"
         )
 
         target_path = (
             Path(
                 self.temporary_directory.name
             )
-            / "legacy-target.db"
+            / "target-v3.db"
         )
 
         source_engine = build_sqlite_engine(
@@ -373,32 +487,9 @@ class DocumentRecoverySchemaV2Tests(
         )
 
         try:
-            metadata.create_all(
-                bind=source_engine,
-                tables=[
-                    schema_migrations,
-                    *_SCHEMA_V1_APPLICATION_TABLES,
-                ],
-                checkfirst=True,
+            self.create_version_two_schema(
+                source_engine
             )
-
-            with source_engine.begin() as connection:
-                connection.execute(
-                    insert(
-                        schema_migrations
-                    ).values(
-                        version=1,
-                        description=(
-                            "Initial cross-database "
-                            "chat persistence schema"
-                        ),
-                        applied_at=(
-                            "2026-07-20T00:00:00+00:00"
-                        ),
-                    )
-                )
-
-            source_engine.dispose()
 
             audit_report = (
                 data_migration
@@ -409,7 +500,7 @@ class DocumentRecoverySchemaV2Tests(
 
             self.assertEqual(
                 audit_report.row_counts[
-                    document_recovery_runs.name
+                    system_incidents.name
                 ],
                 0,
             )
@@ -424,103 +515,105 @@ class DocumentRecoverySchemaV2Tests(
 
             self.assertEqual(
                 migration_report.row_counts[
-                    document_recovery_runs.name
+                    system_incidents.name
                 ],
                 0,
             )
 
+            self.assertEqual(
+                get_schema_version(
+                    target_engine
+                ),
+                3,
+            )
+
             with target_engine.connect() as connection:
-                stored_history_rows = (
-                    connection.execute(
-                        select(
-                            document_recovery_runs
-                            .c.run_id
-                        )
-                    ).scalars().all()
-                )
+                incident_rows = connection.execute(
+                    select(
+                        system_incidents.c.incident_id
+                    )
+                ).scalars().all()
 
             self.assertEqual(
-                stored_history_rows,
+                incident_rows,
                 [],
             )
         finally:
             source_engine.dispose()
             target_engine.dispose()
 
-    def test_history_table_accepts_only_safe_metrics(
+    def test_version_three_incident_rows_migrate(
         self,
     ):
-        initialize_schema(
-            self.engine
+        source_path = (
+            Path(
+                self.temporary_directory.name
+            )
+            / "source-v3.db"
         )
 
-        safe_values = {
-            "run_id": "run-safe-1",
-            "status": "completed",
-            "recovery_enabled": 1,
-            "started_at": (
-                "2026-07-21T10:00:00+00:00"
-            ),
-            "finished_at": (
-                "2026-07-21T10:00:01+00:00"
-            ),
-            "duration_ms": 1000,
-            "total_examined": 3,
-            "candidate_count": 2,
-            "processing_recovered_count": 1,
-            "deleting_completed_count": 1,
-            "failure_count": 0,
-            "skipped_count": 0,
-            "recent_count": 1,
-            "invalid_timestamp_count": 0,
-            "deferred_count": 0,
-        }
+        target_path = (
+            Path(
+                self.temporary_directory.name
+            )
+            / "target-copy-v3.db"
+        )
 
-        with self.engine.begin() as connection:
-            connection.execute(
-                insert(
-                    document_recovery_runs
-                ).values(
-                    **safe_values
+        source_engine = build_sqlite_engine(
+            source_path
+        )
+
+        target_engine = build_sqlite_engine(
+            target_path
+        )
+
+        try:
+            initialize_schema(
+                source_engine
+            )
+
+            values = safe_incident_values(
+                "incident-migrate-1"
+            )
+
+            with source_engine.begin() as connection:
+                connection.execute(
+                    insert(
+                        system_incidents
+                    ).values(
+                        **values
+                    )
+                )
+
+            report = (
+                data_migration
+                .migrate_sqlite_database(
+                    source_path,
+                    target_engine,
                 )
             )
 
-        with self.engine.connect() as connection:
-            stored_status = connection.execute(
-                select(
-                    document_recovery_runs.c.status
-                ).where(
-                    document_recovery_runs.c.run_id
-                    == "run-safe-1"
-                )
-            ).scalar_one()
+            self.assertEqual(
+                report.row_counts[
+                    system_incidents.name
+                ],
+                1,
+            )
 
-        self.assertEqual(
-            stored_status,
-            "completed",
-        )
-
-        invalid_values = dict(
-            safe_values
-        )
-
-        invalid_values["run_id"] = (
-            "run-invalid-1"
-        )
-
-        invalid_values["duration_ms"] = -1
-
-        with self.assertRaises(
-            IntegrityError
-        ):
-            with self.engine.begin() as connection:
-                connection.execute(
-                    insert(
-                        document_recovery_runs
-                    ).values(
-                        **invalid_values
+            with target_engine.connect() as connection:
+                stored_id = connection.execute(
+                    select(
+                        system_incidents.c.incident_id
                     )
-                )
+                ).scalar_one()
+
+            self.assertEqual(
+                stored_id,
+                "incident-migrate-1",
+            )
+        finally:
+            source_engine.dispose()
+            target_engine.dispose()
 
 
 if __name__ == "__main__":

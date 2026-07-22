@@ -27,7 +27,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 metadata = MetaData()
 
@@ -528,6 +528,167 @@ document_recovery_runs = Table(
 )
 
 
+system_incidents = Table(
+    "system_incidents",
+    metadata,
+    Column(
+        "incident_id",
+        Text,
+        primary_key=True,
+    ),
+    Column(
+        "incident_key",
+        Text,
+        nullable=False,
+    ),
+    Column(
+        "component",
+        Text,
+        nullable=False,
+    ),
+    Column(
+        "severity",
+        Text,
+        nullable=False,
+    ),
+    Column(
+        "source_status",
+        Text,
+        nullable=False,
+    ),
+    Column(
+        "detail",
+        Text,
+        nullable=False,
+    ),
+    Column(
+        "critical",
+        Integer,
+        nullable=False,
+    ),
+    Column(
+        "state",
+        Text,
+        nullable=False,
+    ),
+    Column(
+        "fingerprint",
+        Text,
+        nullable=False,
+    ),
+    Column(
+        "opened_at",
+        Text,
+        nullable=False,
+    ),
+    Column(
+        "last_seen_at",
+        Text,
+        nullable=False,
+    ),
+    Column(
+        "resolved_at",
+        Text,
+        nullable=True,
+    ),
+    Column(
+        "occurrence_count",
+        Integer,
+        nullable=False,
+        server_default=text("1"),
+    ),
+    CheckConstraint(
+        (
+            "severity IN ("
+            "'warning', "
+            "'critical'"
+            ")"
+        ),
+        name="ck_system_incidents_severity",
+    ),
+    CheckConstraint(
+        (
+            "source_status IN ("
+            "'degraded', "
+            "'unavailable'"
+            ")"
+        ),
+        name=(
+            "ck_system_incidents_source_status"
+        ),
+    ),
+    CheckConstraint(
+        (
+            "state IN ("
+            "'open', "
+            "'resolved'"
+            ")"
+        ),
+        name="ck_system_incidents_state",
+    ),
+    CheckConstraint(
+        "critical IN (0, 1)",
+        name="ck_system_incidents_critical",
+    ),
+    CheckConstraint(
+        "occurrence_count >= 1",
+        name=(
+            "ck_system_incidents_occurrence_count"
+        ),
+    ),
+    CheckConstraint(
+        "length(incident_id) BETWEEN 1 AND 128",
+        name="ck_system_incidents_id_length",
+    ),
+    CheckConstraint(
+        "length(incident_key) BETWEEN 1 AND 128",
+        name="ck_system_incidents_key_length",
+    ),
+    CheckConstraint(
+        "length(component) BETWEEN 1 AND 64",
+        name=(
+            "ck_system_incidents_component_length"
+        ),
+    ),
+    CheckConstraint(
+        "length(detail) BETWEEN 1 AND 96",
+        name=(
+            "ck_system_incidents_detail_length"
+        ),
+    ),
+    CheckConstraint(
+        "length(fingerprint) = 64",
+        name=(
+            "ck_system_incidents_fingerprint_length"
+        ),
+    ),
+    CheckConstraint(
+        (
+            "("
+            "state = 'open' "
+            "AND resolved_at IS NULL"
+            ") OR ("
+            "state = 'resolved' "
+            "AND resolved_at IS NOT NULL"
+            ")"
+        ),
+        name=(
+            "ck_system_incidents_resolution_state"
+        ),
+    ),
+    Index(
+        "ix_system_incidents_key_state",
+        "incident_key",
+        "state",
+    ),
+    Index(
+        "ix_system_incidents_state_last_seen",
+        "state",
+        "last_seen_at",
+    ),
+)
+
+
 EXPECTED_TABLE_NAMES = frozenset(
     {
         "schema_migrations",
@@ -537,6 +698,7 @@ EXPECTED_TABLE_NAMES = frozenset(
         "message_bookmarks",
         "documents",
         "document_recovery_runs",
+        "system_incidents",
         "branch_merge_operations",
         "branch_merge_message_mappings",
     }

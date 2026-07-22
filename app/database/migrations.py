@@ -20,6 +20,7 @@ from app.database.schema import (
     message_bookmarks,
     messages,
     schema_migrations,
+    system_incidents,
 )
 
 
@@ -51,9 +52,15 @@ _SCHEMA_V1_APPLICATION_TABLES = (
     branch_merge_message_mappings,
 )
 
-_APPLICATION_TABLES = (
+_SCHEMA_V2_APPLICATION_TABLES = (
     *_SCHEMA_V1_APPLICATION_TABLES,
     document_recovery_runs,
+)
+
+
+_APPLICATION_TABLES = (
+    *_SCHEMA_V2_APPLICATION_TABLES,
+    system_incidents,
 )
 
 _SCHEMA_V1_VERSIONED_TABLE_NAMES = frozenset(
@@ -63,6 +70,18 @@ _SCHEMA_V1_VERSIONED_TABLE_NAMES = frozenset(
             table.name
             for table
             in _SCHEMA_V1_APPLICATION_TABLES
+        ),
+    }
+)
+
+
+_SCHEMA_V2_VERSIONED_TABLE_NAMES = frozenset(
+    {
+        schema_migrations.name,
+        *(
+            table.name
+            for table
+            in _SCHEMA_V2_APPLICATION_TABLES
         ),
     }
 )
@@ -174,9 +193,19 @@ def _validate_recorded_version(
     valid_version_sets = {
         (),
         (1,),
+        (2,),
         (SCHEMA_VERSION,),
         (
             1,
+            2,
+        ),
+        (
+            2,
+            SCHEMA_VERSION,
+        ),
+        (
+            1,
+            2,
             SCHEMA_VERSION,
         ),
     }
@@ -490,12 +519,15 @@ def validate_existing_schema(
                     recorded_versions
                 )
             elif (
+                system_incidents.name
+                in table_names
+            ):
+                resolved_version = 3
+            elif (
                 document_recovery_runs.name
                 in table_names
             ):
-                resolved_version = (
-                    SCHEMA_VERSION
-                )
+                resolved_version = 2
             else:
                 resolved_version = 1
         else:
@@ -510,6 +542,15 @@ def validate_existing_schema(
 
             tables_to_validate = (
                 *_SCHEMA_V1_APPLICATION_TABLES,
+                schema_migrations,
+            )
+        elif resolved_version == 2:
+            required_table_names = (
+                _SCHEMA_V2_VERSIONED_TABLE_NAMES
+            )
+
+            tables_to_validate = (
+                *_SCHEMA_V2_APPLICATION_TABLES,
                 schema_migrations,
             )
         elif (
@@ -661,25 +702,44 @@ def initialize_schema(
                     ).values(
                         version=SCHEMA_VERSION,
                         description=(
-                            "Initial cross-database "
-                            "chat persistence schema"
+                            "Initial complete "
+                            "application schema"
                         ),
                         applied_at=_utc_now_iso(),
                     )
                 )
-            elif max(recorded_versions) == 1:
-                connection.execute(
-                    insert(
-                        schema_migrations
-                    ).values(
-                        version=SCHEMA_VERSION,
-                        description=(
-                            "Add document recovery "
-                            "run history"
-                        ),
-                        applied_at=_utc_now_iso(),
-                    )
+            else:
+                latest_version = max(
+                    recorded_versions
                 )
+
+                if latest_version < 2:
+                    connection.execute(
+                        insert(
+                            schema_migrations
+                        ).values(
+                            version=2,
+                            description=(
+                                "Add document recovery "
+                                "run history"
+                            ),
+                            applied_at=_utc_now_iso(),
+                        )
+                    )
+
+                if latest_version < SCHEMA_VERSION:
+                    connection.execute(
+                        insert(
+                            schema_migrations
+                        ).values(
+                            version=SCHEMA_VERSION,
+                            description=(
+                                "Add durable system "
+                                "incident history"
+                            ),
+                            applied_at=_utc_now_iso(),
+                        )
+                    )
     except IntegrityError:
         final_versions = (
             _read_recorded_versions(

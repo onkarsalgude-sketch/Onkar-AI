@@ -44,6 +44,10 @@ def create_app(
     document_recovery_monitoring_settings=None,
     system_health_monitoring_settings=None,
     system_health_definitions_provider=None,
+    system_incident_recorder=None,
+    system_incident_db_path=None,
+    system_incident_alerting_settings=None,
+    system_incident_alert_deliverer=None,
 ):
     merge_settings = (
         branch_merge_settings
@@ -201,6 +205,13 @@ def create_app(
         from app.services.system_health_checks import (
             build_default_health_check_definitions,
         )
+        from app.config.system_incident_alerting import (
+            load_system_incident_alerting_settings,
+            validate_system_incident_alerting_settings,
+        )
+        from app.services.system_incident_alert_service import (
+            deliver_system_incident_alerts,
+        )
 
         def default_system_health_definitions_provider(
             request,
@@ -219,17 +230,75 @@ def create_app(
             else default_system_health_definitions_provider
         )
 
+        from app.services.system_incident_history_service import (
+            record_system_incident_evaluation,
+        )
+
+        resolved_system_incident_recorder = (
+            system_incident_recorder
+            if system_incident_recorder is not None
+            else record_system_incident_evaluation
+        )
+
+        resolved_system_incident_db_path = str(
+            system_incident_db_path
+            if system_incident_db_path is not None
+            else CHAT_DB
+        )
+
+        resolved_system_incident_alerting_settings = (
+            system_incident_alerting_settings
+            if system_incident_alerting_settings is not None
+            else load_system_incident_alerting_settings()
+        )
+
+        validate_system_incident_alerting_settings(
+            resolved_system_incident_alerting_settings
+        )
+
+        resolved_system_incident_alert_deliverer = (
+            system_incident_alert_deliverer
+            if system_incident_alert_deliverer is not None
+            else deliver_system_incident_alerts
+        )
+
         system_health_router = (
             create_system_health_admin_router(
                 system_health_settings,
                 definitions_provider=(
                     resolved_system_health_definitions_provider
                 ),
+                incident_recorder=(
+                    resolved_system_incident_recorder
+                ),
+                incident_db_path=(
+                    resolved_system_incident_db_path
+                ),
+                incident_alert_settings=(
+                    resolved_system_incident_alerting_settings
+                ),
+                incident_alert_deliverer=(
+                    resolved_system_incident_alert_deliverer
+                ),
             )
         )
 
         application.include_router(
             system_health_router
+        )
+
+        from app.api.system_incident_admin import (
+            create_system_incident_admin_router,
+        )
+
+        system_incident_router = (
+            create_system_incident_admin_router(
+                system_health_settings
+            )
+        )
+
+        application.include_router(
+            system_incident_router
         )
 
     if merge_settings.enabled:
