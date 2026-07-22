@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 
 from app.config.document_recovery_monitoring import (
     load_document_recovery_monitoring_settings,
@@ -26,6 +27,9 @@ from app.config.system_health_monitoring import (
 )
 
 
+LOGGER = logging.getLogger(__name__)
+
+
 def root():
     return {
         "message": "Onkar AI is running 🚀",
@@ -50,6 +54,7 @@ def create_app(
     system_incident_alert_deliverer=None,
     system_incident_alert_enqueuer=None,
     system_incident_alert_worker=None,
+    system_incident_alert_recovery=None,
 ):
     merge_settings = (
         branch_merge_settings
@@ -88,6 +93,15 @@ def create_app(
         initialize_rag_runtime()
     )
 
+    resolved_system_incident_db_path = str(
+        system_incident_db_path
+        if system_incident_db_path is not None
+        else CHAT_DB
+    )
+
+    resolved_system_incident_alerting_settings = None
+    resolved_system_incident_alert_recovery = None
+
     resolved_recovery_runner = (
         document_recovery_runner
         if document_recovery_runner is not None
@@ -113,6 +127,66 @@ def create_app(
 
         application.state.document_recovery_report = (
             report
+        )
+
+        alert_recovery_report = {
+            "status": "disabled",
+            "recovered_count": 0,
+            "failed_count": 0,
+        }
+
+        if (
+            resolved_system_incident_alerting_settings
+            is not None
+            and resolved_system_incident_alerting_settings.enabled
+        ):
+            try:
+                recovery_result = (
+                    resolved_system_incident_alert_recovery(
+                        stale_after_seconds=(
+                            resolved_system_incident_alerting_settings
+                            .stale_after_seconds
+                        ),
+                        db_path=(
+                            resolved_system_incident_db_path
+                        ),
+                    )
+                )
+
+                alert_recovery_report = {
+                    "status": "completed",
+                    "recovered_count": max(
+                        0,
+                        int(
+                            recovery_result.get(
+                                "recovered_count",
+                                0,
+                            )
+                        ),
+                    ),
+                    "failed_count": max(
+                        0,
+                        int(
+                            recovery_result.get(
+                                "failed_count",
+                                0,
+                            )
+                        ),
+                    ),
+                }
+            except Exception:
+                LOGGER.error(
+                    "System incident alert startup recovery failed."
+                )
+
+                alert_recovery_report = {
+                    "status": "failed",
+                    "recovered_count": 0,
+                    "failed_count": 0,
+                }
+
+        application.state.system_incident_alert_recovery_report = (
+            alert_recovery_report
         )
 
         yield
@@ -171,6 +245,9 @@ def create_app(
     application.include_router(backups_router)
 
     application.state.document_recovery_report = None
+    application.state.system_incident_alert_recovery_report = (
+        None
+    )
 
     if recovery_monitoring_settings.enabled:
         from app.api.document_recovery_admin import (
@@ -216,6 +293,7 @@ def create_app(
         )
         from app.services.system_incident_alert_outbox_worker import (
             process_next_system_incident_alert,
+            recover_stale_system_incident_alert_claims,
         )
 
         def default_system_health_definitions_provider(
@@ -243,12 +321,6 @@ def create_app(
             system_incident_recorder
             if system_incident_recorder is not None
             else record_system_incident_evaluation
-        )
-
-        resolved_system_incident_db_path = str(
-            system_incident_db_path
-            if system_incident_db_path is not None
-            else CHAT_DB
         )
 
         resolved_system_incident_alerting_settings = (
@@ -291,6 +363,12 @@ def create_app(
                 if system_incident_alert_worker is not None
                 else process_next_system_incident_alert
             )
+        )
+
+        resolved_system_incident_alert_recovery = (
+            system_incident_alert_recovery
+            if system_incident_alert_recovery is not None
+            else recover_stale_system_incident_alert_claims
         )
 
         system_health_router = (
