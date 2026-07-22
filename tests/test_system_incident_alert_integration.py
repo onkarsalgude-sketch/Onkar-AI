@@ -461,76 +461,81 @@ class SystemIncidentAlertIntegrationTests(
     def test_main_wires_alerts_inside_health_gate(
         self,
     ):
-        main_path = (
-            Path(__file__).resolve().parents[1]
-            / "app"
-            / "main.py"
-        )
-
-        source = main_path.read_text(
-            encoding="utf-8-sig"
-        )
+        with open(
+            "app/main.py",
+            encoding="utf-8",
+        ) as source_file:
+            source = source_file.read()
 
         gate_index = source.index(
-            "if system_health_settings.enabled:"
+            "    if system_health_settings.enabled:"
         )
-        config_index = source.index(
-            (
-                "from app.config."
-                "system_incident_alerting import"
-            )
-        )
-        service_index = source.index(
+
+        enqueue_import_index = source.index(
             (
                 "from app.services."
-                "system_incident_alert_service import"
+                "system_incident_alert_outbox_service "
+                "import ("
             )
         )
+
+        worker_import_index = source.index(
+            (
+                "from app.services."
+                "system_incident_alert_outbox_worker "
+                "import ("
+            )
+        )
+
+        recorder_index = source.index(
+            "record_system_incident_evaluation"
+        )
+
         router_index = source.index(
             "create_system_health_admin_router("
-        )
-        merge_index = source.index(
-            "if merge_settings.enabled:"
         )
 
         self.assertLess(
             gate_index,
-            config_index,
+            enqueue_import_index,
         )
+
         self.assertLess(
-            config_index,
-            service_index,
+            gate_index,
+            worker_import_index,
         )
+
         self.assertLess(
-            service_index,
+            recorder_index,
             router_index,
-        )
-        self.assertLess(
-            router_index,
-            merge_index,
         )
 
         self.assertIn(
-            "system_incident_alerting_settings=None",
+            "system_incident_alert_enqueuer=None",
             source,
         )
+
         self.assertIn(
-            "system_incident_alert_deliverer=None",
+            "system_incident_alert_worker=None",
             source,
         )
+
         self.assertIn(
-            "incident_alert_settings=(",
-            source[
-                router_index:
-                merge_index
-            ],
+            "incident_alert_enqueuer=(",
+            source,
         )
+
         self.assertIn(
-            "incident_alert_deliverer=(",
-            source[
-                router_index:
-                merge_index
-            ],
+            "incident_alert_worker=(",
+            source,
+        )
+
+        self.assertNotIn(
+            (
+                "else "
+                "deliver_system_incident_alerts"
+            ),
+            source,
         )
 
 

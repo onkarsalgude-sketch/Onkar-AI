@@ -48,6 +48,8 @@ def create_app(
     system_incident_db_path=None,
     system_incident_alerting_settings=None,
     system_incident_alert_deliverer=None,
+    system_incident_alert_enqueuer=None,
+    system_incident_alert_worker=None,
 ):
     merge_settings = (
         branch_merge_settings
@@ -209,8 +211,11 @@ def create_app(
             load_system_incident_alerting_settings,
             validate_system_incident_alerting_settings,
         )
-        from app.services.system_incident_alert_service import (
-            deliver_system_incident_alerts,
+        from app.services.system_incident_alert_outbox_service import (
+            enqueue_system_incident_alert,
+        )
+        from app.services.system_incident_alert_outbox_worker import (
+            process_next_system_incident_alert,
         )
 
         def default_system_health_definitions_provider(
@@ -256,10 +261,36 @@ def create_app(
             resolved_system_incident_alerting_settings
         )
 
+        use_legacy_system_incident_alert_delivery = (
+            system_incident_alert_deliverer is not None
+            and system_incident_alert_enqueuer is None
+            and system_incident_alert_worker is None
+        )
+
         resolved_system_incident_alert_deliverer = (
             system_incident_alert_deliverer
-            if system_incident_alert_deliverer is not None
-            else deliver_system_incident_alerts
+            if use_legacy_system_incident_alert_delivery
+            else None
+        )
+
+        resolved_system_incident_alert_enqueuer = (
+            None
+            if use_legacy_system_incident_alert_delivery
+            else (
+                system_incident_alert_enqueuer
+                if system_incident_alert_enqueuer is not None
+                else enqueue_system_incident_alert
+            )
+        )
+
+        resolved_system_incident_alert_worker = (
+            None
+            if use_legacy_system_incident_alert_delivery
+            else (
+                system_incident_alert_worker
+                if system_incident_alert_worker is not None
+                else process_next_system_incident_alert
+            )
         )
 
         system_health_router = (
@@ -279,6 +310,12 @@ def create_app(
                 ),
                 incident_alert_deliverer=(
                     resolved_system_incident_alert_deliverer
+                ),
+                incident_alert_enqueuer=(
+                    resolved_system_incident_alert_enqueuer
+                ),
+                incident_alert_worker=(
+                    resolved_system_incident_alert_worker
                 ),
             )
         )

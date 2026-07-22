@@ -38,6 +38,12 @@ from app.config.system_incident_alerting import (
 from app.services.system_incident_alert_service import (
     deliver_system_incident_alerts,
 )
+from app.services.system_incident_alert_outbox_service import (
+    enqueue_system_incident_alert,
+)
+from app.services.system_incident_alert_outbox_worker import (
+    process_next_system_incident_alert,
+)
 from app.services.system_incident_history_service import (
     record_system_incident_evaluation,
 )
@@ -158,6 +164,21 @@ def _deliver_incident_alert_safely(
             "System incident alert delivery failed."
         )
 
+def _run_incident_alert_worker_safely(
+    worker: Callable,
+    settings: SystemIncidentAlertingSettings,
+    db_path: str | None,
+) -> None:
+    try:
+        worker(
+            settings,
+            db_path=db_path,
+        )
+    except Exception:
+        logger.warning(
+            "System incident alert worker failed."
+        )
+
 
 def create_system_health_admin_router(
     settings: SystemHealthMonitoringSettings,
@@ -183,9 +204,10 @@ def create_system_health_admin_router(
         | None
     ) = None,
     incident_alert_deliverer: Callable | None = None,
+    incident_alert_enqueuer: Callable | None = None,
+    incident_alert_worker: Callable | None = None,
 ) -> APIRouter:
     """Build the authenticated system-health status router."""
-
     validate_system_health_monitoring_settings(
         settings
     )
@@ -202,7 +224,8 @@ def create_system_health_admin_router(
         health_runner
     ):
         raise TypeError(
-            "System-health runner must be callable."
+            "System-health runner "
+            "must be callable."
         )
 
     if (
@@ -221,19 +244,54 @@ def create_system_health_admin_router(
             incident_alert_settings
         )
 
-    resolved_incident_alert_deliverer = (
-        incident_alert_deliverer
-        if incident_alert_deliverer is not None
-        else deliver_system_incident_alerts
-    )
-
-    if not callable(
-        resolved_incident_alert_deliverer
+    if (
+        incident_alert_deliverer is not None
+        and not callable(
+            incident_alert_deliverer
+        )
     ):
         raise TypeError(
             "System incident alert deliverer "
             "must be callable."
         )
+
+    legacy_direct_delivery = (
+        incident_alert_deliverer is not None
+        and incident_alert_enqueuer is None
+        and incident_alert_worker is None
+    )
+
+    resolved_incident_alert_enqueuer = None
+    resolved_incident_alert_worker = None
+
+    if not legacy_direct_delivery:
+        resolved_incident_alert_enqueuer = (
+            incident_alert_enqueuer
+            if incident_alert_enqueuer is not None
+            else enqueue_system_incident_alert
+        )
+
+        resolved_incident_alert_worker = (
+            incident_alert_worker
+            if incident_alert_worker is not None
+            else process_next_system_incident_alert
+        )
+
+        if not callable(
+            resolved_incident_alert_enqueuer
+        ):
+            raise TypeError(
+                "System incident alert enqueuer "
+                "must be callable."
+            )
+
+        if not callable(
+            resolved_incident_alert_worker
+        ):
+            raise TypeError(
+                "System incident alert worker "
+                "must be callable."
+            )
 
     router = APIRouter()
 
@@ -294,14 +352,55 @@ def create_system_health_admin_router(
                 evaluation
             )
         ):
-            background_tasks.add_task(
-                _deliver_incident_alert_safely,
-                resolved_incident_alert_deliverer,
-                incident_alert_settings,
-                dict(
-                    evaluation
-                ),
-            )
+            if legacy_direct_delivery:
+                background_tasks.add_task(
+                    _deliver_incident_alert_safely,
+                    incident_alert_deliverer,
+                    incident_alert_settings,
+                    dict(
+                        evaluation
+                    ),
+                )
+            else:
+                queued = False
+
+                try:
+                    enqueue_result = (
+                        resolved_incident_alert_enqueuer(
+                            incident_alert_settings,
+                            dict(
+                                evaluation
+                            ),
+                            db_path=incident_db_path,
+                        )
+                    )
+
+                    if not isinstance(
+                        enqueue_result,
+                        dict,
+                    ):
+                        raise TypeError(
+                            "System incident alert enqueue "
+                            "result is invalid."
+                        )
+
+                    queued = bool(
+                        enqueue_result.get(
+                            "queued"
+                        )
+                    )
+                except Exception:
+                    logger.warning(
+                        "System incident alert enqueue failed."
+                    )
+
+                if queued:
+                    background_tasks.add_task(
+                        _run_incident_alert_worker_safely,
+                        resolved_incident_alert_worker,
+                        incident_alert_settings,
+                        incident_db_path,
+                    )
 
         return system_health_payload(
             report
