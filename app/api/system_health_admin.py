@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from collections.abc import Callable, Iterable
 from typing import Any
 
@@ -25,6 +27,14 @@ from app.services.system_health_service import (
     system_health_payload,
     unavailable_outcome,
 )
+
+
+from app.services.system_incident_history_service import (
+    record_system_incident_evaluation,
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 SYSTEM_HEALTH_STATUS_PATH = (
@@ -105,6 +115,8 @@ def create_system_health_admin_router(
         ],
         SystemHealthReport,
     ] = run_system_health_checks,
+    incident_recorder: Callable | None = None,
+    incident_db_path: str | None = None,
 ) -> APIRouter:
     """Build the authenticated system-health status router."""
 
@@ -112,19 +124,22 @@ def create_system_health_admin_router(
         settings
     )
 
-    if not callable(
-        definitions_provider
-    ):
+    if not callable(definitions_provider):
         raise TypeError(
-            "System-health definitions provider "
-            "must be callable."
+            "System-health definitions provider must be callable."
         )
 
-    if not callable(
-        health_runner
-    ):
+    if not callable(health_runner):
         raise TypeError(
             "System-health runner must be callable."
+        )
+
+    if (
+        incident_recorder is not None
+        and not callable(incident_recorder)
+    ):
+        raise TypeError(
+            "System incident recorder must be callable."
         )
 
     router = APIRouter()
@@ -138,9 +153,7 @@ def create_system_health_admin_router(
         request: Request,
     ) -> dict[str, Any]:
         authenticated = verify_branch_merge_bearer(
-            request.headers.get(
-                "authorization"
-            ),
+            request.headers.get("authorization"),
             settings.token_sha256,
         )
 
@@ -158,14 +171,22 @@ def create_system_health_admin_router(
 
         report = _run_health_report(
             request,
-            definitions_provider=(
-                definitions_provider
-            ),
+            definitions_provider=definitions_provider,
             health_runner=health_runner,
         )
 
-        return system_health_payload(
-            report
-        )
+        if incident_recorder is not None:
+            try:
+                incident_recorder(
+                    report,
+                    observed_at=report.checked_at,
+                    db_path=incident_db_path,
+                )
+            except Exception:
+                logger.warning(
+                    "System incident persistence failed."
+                )
+
+        return system_health_payload(report)
 
     return router

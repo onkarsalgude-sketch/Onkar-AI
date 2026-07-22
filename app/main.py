@@ -44,6 +44,8 @@ def create_app(
     document_recovery_monitoring_settings=None,
     system_health_monitoring_settings=None,
     system_health_definitions_provider=None,
+    system_incident_recorder=None,
+    system_incident_db_path=None,
 ):
     merge_settings = (
         branch_merge_settings
@@ -219,11 +221,33 @@ def create_app(
             else default_system_health_definitions_provider
         )
 
+        from app.services.system_incident_history_service import (
+            record_system_incident_evaluation,
+        )
+
+        resolved_system_incident_recorder = (
+            system_incident_recorder
+            if system_incident_recorder is not None
+            else record_system_incident_evaluation
+        )
+
+        resolved_system_incident_db_path = str(
+            system_incident_db_path
+            if system_incident_db_path is not None
+            else CHAT_DB
+        )
+
         system_health_router = (
             create_system_health_admin_router(
                 system_health_settings,
                 definitions_provider=(
                     resolved_system_health_definitions_provider
+                ),
+                incident_recorder=(
+                    resolved_system_incident_recorder
+                ),
+                incident_db_path=(
+                    resolved_system_incident_db_path
                 ),
             )
         )
