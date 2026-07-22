@@ -333,12 +333,47 @@ class KnowledgeRAGService:
             "chunks": chunks,
         }
 
+    @staticmethod
+    def _normalize_document_ids(
+        document_ids:
+        Sequence[str] | None,
+    ) -> list[str] | None:
+        if document_ids is None:
+            return None
+
+        if isinstance(
+            document_ids,
+            (str, bytes),
+        ):
+            raise KnowledgeRAGError()
+
+        selected: list[str] = []
+        seen: set[str] = set()
+
+        for value in document_ids:
+            candidate = _knowledge_id(
+                value
+            )
+
+            if candidate in seen:
+                continue
+
+            seen.add(candidate)
+            selected.append(candidate)
+
+            if len(selected) > 200:
+                raise KnowledgeRAGError()
+
+        return selected
+
     def search(
         self,
         query: str,
         *,
         limit: int = 5,
         filenames:
+        Sequence[str] | None = None,
+        document_ids:
         Sequence[str] | None = None,
     ) -> dict[str, Any]:
         resolved_query = _query(query)
@@ -348,15 +383,40 @@ class KnowledgeRAGService:
                 filenames
             )
         )
+        resolved_document_ids = (
+            self._normalize_document_ids(
+                document_ids
+            )
+        )
+
+        if (
+            document_ids is not None
+            and not resolved_document_ids
+        ):
+            return {
+                "context": "",
+                "sources": [],
+            }
+
+        search_kwargs = {
+            "query": resolved_query,
+            "limit": resolved_limit,
+            "chat_id": (
+                KNOWLEDGE_INTERNAL_SCOPE_ID
+            ),
+            "filenames": (
+                resolved_filenames
+            ),
+        }
+
+        if resolved_document_ids is not None:
+            search_kwargs[
+                "document_ids"
+            ] = resolved_document_ids
 
         try:
             result = self._service.search(
-                query=resolved_query,
-                limit=resolved_limit,
-                chat_id=(
-                    KNOWLEDGE_INTERNAL_SCOPE_ID
-                ),
-                filenames=resolved_filenames,
+                **search_kwargs
             )
         except Exception as error:
             raise KnowledgeRAGError() from error

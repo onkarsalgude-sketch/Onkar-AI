@@ -1,4 +1,4 @@
-﻿import unittest
+import unittest
 
 from app.config.rag import (
     load_rag_settings,
@@ -444,6 +444,85 @@ class PgVectorRAGStoreTests(
         self.assertEqual(
             connection.statements,
             [],
+        )
+
+    def test_document_id_filter_is_exact_and_empty_safe(
+        self,
+    ):
+        connection = FakeConnection(
+            search_rows=[
+                (
+                    "Relevant content",
+                    "Report.pdf",
+                    3,
+                    "doc-1",
+                    2,
+                    0.125,
+                )
+            ]
+        )
+
+        store = PgVectorRAGStore(
+            settings(),
+            connection_factory=(
+                lambda: connection
+            ),
+        )
+
+        results = store.search(
+            (0.4, 0.5, 0.6),
+            chat_id=7,
+            document_ids=[
+                " doc-1 ",
+                "doc-1",
+                "doc-2",
+            ],
+            limit=5,
+        )
+
+        self.assertEqual(
+            len(results),
+            1,
+        )
+
+        sql, parameters = (
+            connection.statements[0]
+        )
+
+        self.assertIn(
+            "document_id IN (?, ?)",
+            sql,
+        )
+        self.assertEqual(
+            parameters.count(
+                "doc-1"
+            ),
+            1,
+        )
+        self.assertEqual(
+            parameters.count(
+                "doc-2"
+            ),
+            1,
+        )
+
+        statement_count = len(
+            connection.statements
+        )
+
+        empty = store.search(
+            (0.1, 0.2, 0.3),
+            chat_id=7,
+            document_ids=[],
+        )
+
+        self.assertEqual(
+            empty,
+            [],
+        )
+        self.assertEqual(
+            len(connection.statements),
+            statement_count,
         )
 
     def test_delete_operations_commit_row_counts(

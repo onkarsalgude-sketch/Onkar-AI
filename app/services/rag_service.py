@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import math
 from pathlib import Path
@@ -430,83 +430,125 @@ class RAGService:
             "chunks": inserted_count,
         }
 
+    @staticmethod
+    def _normalize_document_ids(
+        document_ids: list[str] | None,
+    ) -> list[str] | None:
+        if document_ids is None:
+            return None
+
+        if isinstance(
+            document_ids,
+            (str, bytes),
+        ):
+            raise RAGServiceError(
+                "Invalid document ID filter"
+            )
+
+        selected: list[str] = []
+        seen: set[str] = set()
+
+        for value in document_ids:
+            candidate = str(
+                value or ""
+            ).strip()
+
+            if (
+                not candidate
+                or len(candidate) > 128
+            ):
+                raise RAGServiceError(
+                    "Invalid document ID filter"
+                )
+
+            if candidate in seen:
+                continue
+
+            seen.add(candidate)
+            selected.append(candidate)
+
+            if len(selected) > 200:
+                raise RAGServiceError(
+                    "Invalid document ID filter"
+                )
+
+        return selected
+
     def _build_where_filter(
         self,
         chat_id: int,
         filename: str | None = None,
         filenames:
         list[str] | None = None,
+        document_ids:
+        list[str] | None = None,
     ) -> dict:
+        filters = [
+            {
+                "chat_id": {
+                    "$eq": chat_id
+                }
+            }
+        ]
+
         if filename:
             safe_filename = Path(
                 filename
             ).name
+            filters.append(
+                {
+                    "filename": {
+                        "$eq": safe_filename
+                    }
+                }
+            )
 
-            return {
-                "$and": [
-                    {
-                        "chat_id": {
-                            "$eq": chat_id
-                        }
-                    },
-                    {
-                        "filename": {
-                            "$eq": (
-                                safe_filename
-                            )
-                        }
-                    },
-                ]
-            }
-
-        if filenames is not None:
+        elif filenames is not None:
             safe_filenames = [
                 Path(item).name
                 for item in filenames
                 if item
             ]
-
-            if not safe_filenames:
-                return {
-                    "$and": [
-                        {
-                            "chat_id": {
-                                "$eq": (
-                                    chat_id
-                                )
-                            }
-                        },
-                        {
-                            "filename": {
-                                "$in": [
-                                    "__no_pdf__"
-                                ]
-                            }
-                        },
-                    ]
+            filters.append(
+                {
+                    "filename": {
+                        "$in": (
+                            safe_filenames
+                            if safe_filenames
+                            else [
+                                "__no_pdf__"
+                            ]
+                        )
+                    }
                 }
+            )
 
-            return {
-                "$and": [
-                    {
-                        "chat_id": {
-                            "$eq": chat_id
-                        }
-                    },
-                    {
-                        "filename": {
-                            "$in": (
-                                safe_filenames
-                            )
-                        }
-                    },
-                ]
-            }
+        safe_document_ids = (
+            self._normalize_document_ids(
+                document_ids
+            )
+        )
+
+        if safe_document_ids is not None:
+            filters.append(
+                {
+                    "document_id": {
+                        "$in": (
+                            safe_document_ids
+                            if safe_document_ids
+                            else [
+                                "__no_document_id__"
+                            ]
+                        )
+                    }
+                }
+            )
+
+        if len(filters) == 1:
+            return filters[0]
 
         return {
-            "chat_id": {
-                "$eq": chat_id
-            }
+            "$and": filters
         }
 
     @staticmethod
@@ -601,11 +643,25 @@ class RAGService:
         filename: str | None = None,
         filenames:
         list[str] | None = None,
+        document_ids:
+        list[str] | None = None,
     ) -> dict:
         if (
             not query
             or chat_id is None
             or chat_id <= 0
+        ):
+            return self._empty_search()
+
+        resolved_document_ids = (
+            self._normalize_document_ids(
+                document_ids
+            )
+        )
+
+        if (
+            document_ids is not None
+            and not resolved_document_ids
         ):
             return self._empty_search()
 
@@ -630,12 +686,21 @@ class RAGService:
                 )[0]
             )
 
+            search_kwargs = {
+                "chat_id": chat_id,
+                "limit": limit,
+                "filename": filename,
+                "filenames": filenames,
+            }
+
+            if resolved_document_ids is not None:
+                search_kwargs[
+                    "document_ids"
+                ] = resolved_document_ids
+
             rows = self.store.search(
                 query_embedding,
-                chat_id=chat_id,
-                limit=limit,
-                filename=filename,
-                filenames=filenames,
+                **search_kwargs,
             )
 
             return self._format_rows(
@@ -654,6 +719,9 @@ class RAGService:
                 chat_id=chat_id,
                 filename=filename,
                 filenames=filenames,
+                document_ids=(
+                    resolved_document_ids
+                ),
             )
         )
 
@@ -691,7 +759,6 @@ class RAGService:
             "documents",
             [],
         )
-
         metadatas = results.get(
             "metadatas",
             [],

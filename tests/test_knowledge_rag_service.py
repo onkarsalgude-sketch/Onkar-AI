@@ -353,6 +353,87 @@ class KnowledgeRAGNamespaceTests(
             str(result),
         )
 
+    def test_document_id_search_is_scoped_and_empty_safe(
+        self,
+    ):
+        backend = Mock()
+        backend.search.return_value = {
+            "context": "Reusable context",
+            "sources": [
+                {
+                    "filename": "Guide.pdf",
+                    "page": 2,
+                    "document_id": (
+                        "knowledge-1"
+                    ),
+                }
+            ],
+        }
+
+        service = (
+            knowledge_rag_service
+            .KnowledgeRAGService(
+                service=backend
+            )
+        )
+
+        result = service.search(
+            " durable question ",
+            limit=4,
+            document_ids=[
+                " knowledge-1 ",
+                "knowledge-1",
+                "knowledge-2",
+            ],
+        )
+
+        backend.search.assert_called_once_with(
+            query="durable question",
+            limit=4,
+            chat_id=1,
+            filenames=None,
+            document_ids=[
+                "knowledge-1",
+                "knowledge-2",
+            ],
+        )
+
+        self.assertEqual(
+            result["sources"][0][
+                "knowledge_id"
+            ],
+            "knowledge-1",
+        )
+
+        backend.reset_mock()
+
+        empty = service.search(
+            "question",
+            document_ids=[],
+        )
+
+        self.assertEqual(
+            empty,
+            {
+                "context": "",
+                "sources": [],
+            },
+        )
+        backend.search.assert_not_called()
+
+        with self.assertRaises(
+            knowledge_rag_service
+            .KnowledgeRAGError
+        ):
+            service.search(
+                "question",
+                document_ids=[
+                    "../unsafe"
+                ],
+            )
+
+        backend.search.assert_not_called()
+
     def test_delete_uses_internal_scope(
         self,
     ):
