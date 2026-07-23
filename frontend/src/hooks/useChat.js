@@ -9,6 +9,7 @@ import {
   getChats,
   getChatMessages,
   getModels,
+  getAgents,
   togglePinChat as togglePinChatRequest,
   getFolders,
   createFolder as createFolderRequest,
@@ -21,6 +22,10 @@ import { analyzeImage } from "../services/imageService";
 import { uploadDocument } from "../services/documentService";
 
 import useChats from "./useChats";
+import {
+  normalizeAgentCatalog,
+  normalizeAgentId,
+} from "../utils/agentChat";
 
 
 const welcomeMessage = {
@@ -170,6 +175,24 @@ export default function useChat() {
     );
   });
 
+  const [agents, setAgents] =
+    useState([]);
+
+  const [
+    agentsLoading,
+    setAgentsLoading,
+  ] = useState(true);
+
+  const [
+    agentsAvailable,
+    setAgentsAvailable,
+  ] = useState(false);
+
+  const [
+    selectedAgentId,
+    setSelectedAgentId,
+  ] = useState("");
+
   // Array of { file, fileType, fileName, fileSize }
   const [pendingFiles, setPendingFiles] =
     useState([]);
@@ -229,6 +252,7 @@ removeCurrentMessageBookmark,
     loadChats();
     loadFolders();
     loadAvailableModels();
+    loadAvailableAgents();
   }, []);
 
 
@@ -283,6 +307,98 @@ removeCurrentMessageBookmark,
 
       setModels([]);
     }
+  }
+
+
+  async function loadAvailableAgents() {
+    setAgentsLoading(true);
+
+    try {
+      const response =
+        await getAgents();
+
+      const availableAgents =
+        normalizeAgentCatalog(
+          response?.data?.agents
+        );
+
+      setAgents(availableAgents);
+      setAgentsAvailable(
+        availableAgents.length > 0
+      );
+
+      const savedAgentId =
+        normalizeAgentId(
+          localStorage.getItem(
+            "onkar-ai-selected-agent"
+          )
+        ) || "";
+
+      const savedAgentExists =
+        availableAgents.some(
+          (agent) =>
+            agent.agent_id ===
+            savedAgentId
+        );
+
+      if (savedAgentExists) {
+        setSelectedAgentId(
+          savedAgentId
+        );
+      } else {
+        setSelectedAgentId("");
+        localStorage.removeItem(
+          "onkar-ai-selected-agent"
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Load agents error:",
+        error
+      );
+
+      setAgents([]);
+      setAgentsAvailable(false);
+      setSelectedAgentId("");
+    } finally {
+      setAgentsLoading(false);
+    }
+  }
+
+
+  function changeSelectedAgent(
+    agentId
+  ) {
+    const normalizedAgentId =
+      normalizeAgentId(agentId) || "";
+
+    if (!normalizedAgentId) {
+      setSelectedAgentId("");
+      localStorage.removeItem(
+        "onkar-ai-selected-agent"
+      );
+      return;
+    }
+
+    const agentExists =
+      agents.some(
+        (agent) =>
+          agent.agent_id ===
+          normalizedAgentId
+      );
+
+    if (!agentExists) {
+      return;
+    }
+
+    setSelectedAgentId(
+      normalizedAgentId
+    );
+
+    localStorage.setItem(
+      "onkar-ai-selected-agent",
+      normalizedAgentId
+    );
   }
 
 
@@ -803,6 +919,14 @@ async function handleRemoveMessageBookmark(
         null
       : selectedModel || null;
 
+    const requestAgentId = isRetry
+      ? normalizeAgentId(
+          requestOverride.agentId
+        )
+      : normalizeAgentId(
+          selectedAgentId
+        );
+
     // requestPayload intentionally carries NO file references —
     // it is only used for chat-level retry after uploads are done.
     const requestPayload = {
@@ -812,6 +936,7 @@ async function handleRemoveMessageBookmark(
         ? requestOverride.chatId || null
         : null,
       modelId: requestModelId,
+      agentId: requestAgentId,
       userMessageAdded: isRetry
         ? Boolean(requestOverride.userMessageAdded)
         : false,
@@ -1003,7 +1128,8 @@ async function handleRemoveMessageBookmark(
             return updatedMessages;
           });
         },
-        requestModelId
+        requestModelId,
+        requestPayload.agentId
       );
 
       setMessages((previousMessages) => {
@@ -1492,6 +1618,13 @@ removeMessageBookmark:
   handleRemoveMessageBookmark,
 folders,
 loadFolders,
+
+    agents,
+    agentsLoading,
+    agentsAvailable,
+    selectedAgentId,
+    changeSelectedAgent,
+    loadAvailableAgents,
 
     models,
     defaultModel,

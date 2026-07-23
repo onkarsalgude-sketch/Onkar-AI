@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "node ./node_modules/vite/bin/vite.js build",
     "lint": "oxlint",
+    "test:agent-picker": "node --test ./tests/agentPickerContract.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

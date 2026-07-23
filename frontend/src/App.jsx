@@ -60,6 +60,12 @@ regenerateResponse,
     deleteChatFolder,
     moveChatToFolder,
 
+    agents,
+    agentsLoading,
+    agentsAvailable,
+    selectedAgentId,
+    changeSelectedAgent,
+
     models,
     defaultModel,
     selectedModel,
@@ -178,6 +184,15 @@ toggleChatPin={toggleChatPin}
   setInput={setInput}
   sendMessage={sendMessage}
   loading={loading}
+  agents={agents}
+  agentsLoading={agentsLoading}
+  agentsAvailable={agentsAvailable}
+  selectedAgentId={
+    selectedAgentId
+  }
+  onAgentChange={
+    changeSelectedAgent
+  }
   uploadFile={uploadFile}
   pendingFiles={pendingFiles}
   removePendingFileAt={

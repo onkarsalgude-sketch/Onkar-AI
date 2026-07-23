@@ -5,6 +5,11 @@ function MessageInput({
   setInput,
   sendMessage,
   loading,
+  agents = [],
+  agentsLoading = false,
+  agentsAvailable = false,
+  selectedAgentId = "",
+  onAgentChange,
   uploadProgress,
   uploadSummary,
   dismissUploadSummary,
@@ -19,6 +24,12 @@ function MessageInput({
 
   const isDark = theme === "dark";
   const isBusy = loading || uploadProgress !== null;
+  const selectedAgent =
+    agents.find(
+      (agent) =>
+        agent.agent_id ===
+        selectedAgentId
+    ) || null;
   const canSend =
     !isBusy && (input.trim() || pendingFiles.length > 0);
 
@@ -89,6 +100,106 @@ function MessageInput({
           : "border-slate-300 bg-white shadow-sm"
       }`}
     >
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <label
+          htmlFor="agentPicker"
+          className={`text-xs font-semibold ${
+            isDark
+              ? "text-slate-300"
+              : "text-slate-700"
+          }`}
+        >
+          Agent
+        </label>
+
+        <select
+          id="agentPicker"
+          value={selectedAgentId}
+          onChange={(event) =>
+            onAgentChange?.(
+              event.target.value
+            )
+          }
+          disabled={
+            agentsLoading ||
+            !agentsAvailable
+          }
+          className={`min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none transition focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60 sm:max-w-xs ${
+            isDark
+              ? "border-slate-700 bg-slate-900 text-white"
+              : "border-slate-300 bg-slate-50 text-slate-900"
+          }`}
+          aria-label="Select chat agent"
+        >
+          <option value="">
+            {agentsLoading
+              ? "Loading agents..."
+              : agentsAvailable
+                ? "Automatic (no agent)"
+                : "Automatic (catalog unavailable)"}
+          </option>
+
+          {agents.map((agent) => (
+            <option
+              key={agent.agent_id}
+              value={agent.agent_id}
+            >
+              {agent.name}
+            </option>
+          ))}
+        </select>
+
+        {!agentsLoading &&
+          !agentsAvailable && (
+            <span
+              className={`text-xs ${
+                isDark
+                  ? "text-slate-500"
+                  : "text-slate-500"
+              }`}
+            >
+              Agent catalog unavailable. Chat stays automatic.
+            </span>
+          )}
+      </div>
+
+      {selectedAgent && (
+        <div
+          className={`mb-2 rounded-xl border px-3 py-2 text-xs ${
+            isDark
+              ? "border-blue-500/30 bg-blue-500/10 text-slate-200"
+              : "border-blue-200 bg-blue-50 text-slate-700"
+          }`}
+        >
+          <p className="font-semibold">
+            {selectedAgent.name}
+          </p>
+
+          <p className="mt-1">
+            {selectedAgent.description}
+          </p>
+
+          {selectedAgent.capabilities.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {selectedAgent.capabilities.map(
+                (capability) => (
+                  <span
+                    key={capability}
+                    className={`rounded-full px-2 py-1 ${
+                      isDark
+                        ? "bg-slate-800 text-slate-300"
+                        : "bg-white text-slate-600"
+                    }`}
+                  >
+                    {capability}
+                  </span>
+                )
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Upload summary banner */}
       {uploadSummary && (
         <div
