@@ -55,6 +55,11 @@ from app.storage.document_storage import (
     DocumentStorageError,
 )
 
+from app.agents.selection import (
+    AgentSelectionError,
+)
+
+
 
 router = APIRouter()
 brain = Brain()
@@ -863,39 +868,76 @@ def update_chat_folder(
 @router.post(
     "/chat",
     response_model=ChatResponse,
+    response_model_exclude_none=True,
 )
 def chat(request: ChatRequest):
     chat_id = request.chat_id
-
-    if chat_id is None:
-        title = brain.ai.generate_title(
-            request.message,
-            model_id=request.model_id,
-        )
-
-        chat_id = create_chat(title)
-
-    messages = get_messages(chat_id)
-
-    if len(messages) == 0:
-        title = brain.ai.generate_title(
-            request.message,
-            model_id=request.model_id,
-        )
-
-        rename_chat(chat_id, title)
-
-    save_message(
-        chat_id,
-        "user",
-        request.message,
+    explicit_agent = (
+        request.agent_id is not None
     )
 
-    result = brain.chat(
-        request.message,
-        chat_id=chat_id,
-        model_id=request.model_id,
-    )
+    if explicit_agent:
+        if chat_id is None:
+            chat_id = create_chat("New Chat")
+
+        messages = get_messages(chat_id)
+
+        try:
+            result = brain.chat(
+                request.message,
+                chat_id=chat_id,
+                model_id=request.model_id,
+                agent_id=request.agent_id,
+            )
+        except AgentSelectionError as error:
+            raise HTTPException(
+                status_code=400,
+                detail="Unable to select agent.",
+            ) from error
+
+        if len(messages) == 0:
+            title = brain.ai.generate_title(
+                request.message,
+                model_id=request.model_id,
+            )
+
+            rename_chat(chat_id, title)
+
+        save_message(
+            chat_id,
+            "user",
+            request.message,
+        )
+    else:
+        if chat_id is None:
+            title = brain.ai.generate_title(
+                request.message,
+                model_id=request.model_id,
+            )
+
+            chat_id = create_chat(title)
+
+        messages = get_messages(chat_id)
+
+        if len(messages) == 0:
+            title = brain.ai.generate_title(
+                request.message,
+                model_id=request.model_id,
+            )
+
+            rename_chat(chat_id, title)
+
+        save_message(
+            chat_id,
+            "user",
+            request.message,
+        )
+
+        result = brain.chat(
+            request.message,
+            chat_id=chat_id,
+            model_id=request.model_id,
+        )
 
     result_sources = (
         result.get("sources")
@@ -918,6 +960,7 @@ def chat(request: ChatRequest):
     return ChatResponse(
         reply=result["reply"],
         sources=result_sources,
+        agent_id=result.get("agent_id"),
         chat_id=chat_id,
     )
 
@@ -929,36 +972,72 @@ def chat(request: ChatRequest):
 @router.post("/chat/stream")
 def chat_stream(request: ChatRequest):
     chat_id = request.chat_id
-
-    if chat_id is None:
-        title = brain.ai.generate_title(
-            request.message,
-            model_id=request.model_id,
-        )
-
-        chat_id = create_chat(title)
-
-    messages = get_messages(chat_id)
-
-    if len(messages) == 0:
-        title = brain.ai.generate_title(
-            request.message,
-            model_id=request.model_id,
-        )
-
-        rename_chat(chat_id, title)
-
-    save_message(
-        chat_id,
-        "user",
-        request.message,
+    explicit_agent = (
+        request.agent_id is not None
     )
 
-    stream_result = brain.stream_chat(
-        request.message,
-        chat_id=chat_id,
-        model_id=request.model_id,
-    )
+    if explicit_agent:
+        if chat_id is None:
+            chat_id = create_chat("New Chat")
+
+        messages = get_messages(chat_id)
+
+        try:
+            stream_result = brain.stream_chat(
+                request.message,
+                chat_id=chat_id,
+                model_id=request.model_id,
+                agent_id=request.agent_id,
+            )
+        except AgentSelectionError as error:
+            raise HTTPException(
+                status_code=400,
+                detail="Unable to select agent.",
+            ) from error
+
+        if len(messages) == 0:
+            title = brain.ai.generate_title(
+                request.message,
+                model_id=request.model_id,
+            )
+
+            rename_chat(chat_id, title)
+
+        save_message(
+            chat_id,
+            "user",
+            request.message,
+        )
+    else:
+        if chat_id is None:
+            title = brain.ai.generate_title(
+                request.message,
+                model_id=request.model_id,
+            )
+
+            chat_id = create_chat(title)
+
+        messages = get_messages(chat_id)
+
+        if len(messages) == 0:
+            title = brain.ai.generate_title(
+                request.message,
+                model_id=request.model_id,
+            )
+
+            rename_chat(chat_id, title)
+
+        save_message(
+            chat_id,
+            "user",
+            request.message,
+        )
+
+        stream_result = brain.stream_chat(
+            request.message,
+            chat_id=chat_id,
+            model_id=request.model_id,
+        )
 
     stream_sources = (
         stream_result.get("sources")
@@ -968,6 +1047,11 @@ def chat_stream(request: ChatRequest):
     stream_model_id = (
         stream_result.get("model_id")
         or request.model_id
+        or ""
+    )
+
+    stream_agent_id = (
+        stream_result.get("agent_id")
         or ""
     )
 
@@ -1001,14 +1085,21 @@ def chat_stream(request: ChatRequest):
             print("STREAM ERROR:", error)
             raise
 
+    response_headers = {
+        "X-Sources": sources_header,
+        "X-Chat-Id": str(chat_id),
+        "X-Model-Id": stream_model_id,
+    }
+
+    if stream_agent_id:
+        response_headers[
+            "X-Agent-Id"
+        ] = stream_agent_id
+
     return StreamingResponse(
         stream_generator(),
         media_type="text/plain",
-        headers={
-            "X-Sources": sources_header,
-            "X-Chat-Id": str(chat_id),
-            "X-Model-Id": stream_model_id,
-        },
+        headers=response_headers,
     )
 
 
