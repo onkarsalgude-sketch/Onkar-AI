@@ -14,11 +14,20 @@ from pydantic import (
     model_validator,
 )
 
+from app.agents.registry import (
+    MAX_AGENT_ID_LENGTH,
+)
+
+
 
 class ChatRequest(BaseModel):
     message: str
     chat_id: Optional[int] = None
     model_id: Optional[str] = None
+    agent_id: Optional[str] = Field(
+        default=None,
+        max_length=MAX_AGENT_ID_LENGTH,
+    )
 
 
 class Source(BaseModel):
@@ -34,6 +43,10 @@ class ChatResponse(BaseModel):
     reply: str
     sources: list[Source] = Field(
         default_factory=list
+    )
+    agent_id: Optional[str] = Field(
+        default=None,
+        max_length=MAX_AGENT_ID_LENGTH,
     )
 
 

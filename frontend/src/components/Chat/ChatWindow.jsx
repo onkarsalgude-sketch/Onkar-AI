@@ -23,6 +23,11 @@ function ChatWindow({
   setInput,
   sendMessage,
   loading,
+  agents = [],
+  agentsLoading = false,
+  agentsAvailable = false,
+  selectedAgentId = "",
+  onAgentChange,
   uploadFile,
   pendingFiles,
   removePendingFileAt,
@@ -695,6 +700,11 @@ onRemoveMessageBookmark={
                     )
             }
             loading={loading}
+            agents={agents}
+            agentsLoading={agentsLoading}
+            agentsAvailable={agentsAvailable}
+            selectedAgentId={selectedAgentId}
+            onAgentChange={onAgentChange}
             uploadProgress={uploadProgress}
             uploadSummary={uploadSummary}
             dismissUploadSummary={dismissUploadSummary}

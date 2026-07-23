@@ -1,4 +1,5 @@
 import api from "./api";
+import { buildChatPayload } from "../utils/agentChat";
 
 const API_URL = (
   api.defaults.baseURL ||
@@ -10,16 +11,25 @@ export const getModels = () =>
   api.get("/models");
 
 
+export const getAgents = () =>
+  api.get("/agents");
+
+
 export const sendChat = (
   message,
   chatId,
-  modelId = null
+  modelId = null,
+  agentId = null
 ) =>
-  api.post("/chat", {
-    message,
-    chat_id: chatId,
-    model_id: modelId,
-  });
+  api.post(
+    "/chat",
+    buildChatPayload({
+      message,
+      chatId,
+      modelId,
+      agentId,
+    })
+  );
 
 
 export const getHistory = () =>
@@ -204,7 +214,8 @@ export async function streamChat(
   message,
   chatId,
   onChunk,
-  modelId = null
+  modelId = null,
+  agentId = null
 ) {
   const response = await fetch(
     `${API_URL}/chat/stream`,
@@ -214,11 +225,14 @@ export async function streamChat(
         "Content-Type":
           "application/json",
       },
-      body: JSON.stringify({
-        message,
-        chat_id: chatId,
-        model_id: modelId,
-      }),
+      body: JSON.stringify(
+        buildChatPayload({
+          message,
+          chatId,
+          modelId,
+          agentId,
+        })
+      ),
     }
   );
 

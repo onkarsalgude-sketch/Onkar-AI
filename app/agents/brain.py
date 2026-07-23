@@ -7,20 +7,76 @@ from app.services.rag_service import RAGService
 from app.services.knowledge_retrieval_service import (
     retrieve_knowledge_context,
 )
+from app.agents.registry import (
+    AgentDispatchRequest,
+    AgentRegistry,
+    build_default_agent_registry,
+)
+from app.agents.selection import (
+    AgentSelectionError,
+    resolve_agent_selection,
+)
 
 
 class Brain:
-    def __init__(self):
+    def __init__(
+        self,
+        agent_registry: AgentRegistry | None = None,
+    ):
         self.rag = RAGService()
         self.ai = GroqService()
         self.internet = InternetAgent()
         self.router = AgentRouter()
 
+        if agent_registry is None:
+            self.agent_registry = (
+                build_default_agent_registry()
+            )
+        elif isinstance(
+            agent_registry,
+            AgentRegistry,
+        ):
+            self.agent_registry = agent_registry
+        else:
+            raise AgentSelectionError(
+                "Unable to select agent."
+            )
+
     def prepare_request(
         self,
         message: str,
         chat_id: int | None = None,
+        model_id: str | None = None,
+        agent_id: str | None = None,
     ) -> dict:
+        if agent_id is not None:
+            selection = resolve_agent_selection(
+                agent_id,
+                registry=self.agent_registry,
+            )
+
+            dispatched = (
+                self.agent_registry.dispatch(
+                    selection.agent_id,
+                    AgentDispatchRequest(
+                        message=message,
+                        chat_id=chat_id,
+                        model_id=model_id,
+                    ),
+                )
+            )
+
+            return {
+                "agent_id": selection.agent_id,
+                "route": dispatched.route,
+                "prompt": dispatched.prompt,
+                "sources": [
+                    dict(source)
+                    for source
+                    in dispatched.sources
+                ],
+            }
+
         route = self.router.route(message)
 
         # Internet search
@@ -150,56 +206,78 @@ class Brain:
         message: str,
         chat_id: int | None = None,
         model_id: str | None = None,
+        agent_id: str | None = None,
     ) -> dict:
         add("user", message)
 
         prepared = self.prepare_request(
             message=message,
             chat_id=chat_id,
+            model_id=model_id,
+            agent_id=agent_id,
         )
 
-        if prepared["route"] == "chat":
-            reply = self.ai.generate_reply(
-                message,
-                model_id=model_id,
+        generation_input = (
+            prepared["prompt"]
+            if (
+                agent_id is not None
+                or prepared["route"] != "chat"
             )
-        else:
-            reply = self.ai.generate_reply(
-                prepared["prompt"],
-                model_id=model_id,
-            )
+            else message
+        )
+
+        reply = self.ai.generate_reply(
+            generation_input,
+            model_id=model_id,
+        )
 
         add("assistant", reply)
 
-        return {
+        result = {
             "reply": reply,
             "sources": prepared["sources"],
             "model_id": self.ai.resolve_model(model_id),
         }
+
+        if "agent_id" in prepared:
+            result["agent_id"] = prepared["agent_id"]
+
+        return result
 
     def stream_chat(
         self,
         message: str,
         chat_id: int | None = None,
         model_id: str | None = None,
+        agent_id: str | None = None,
     ) -> dict:
         prepared = self.prepare_request(
             message=message,
             chat_id=chat_id,
+            model_id=model_id,
+            agent_id=agent_id,
         )
 
-        if prepared["route"] == "chat":
-            prompt = self.ai.build_prompt(message)
-        else:
+        if (
+            agent_id is not None
+            or prepared["route"] != "chat"
+        ):
             prompt = prepared["prompt"]
+        else:
+            prompt = self.ai.build_prompt(message)
 
         stream = self.ai.generate_reply_stream(
             prompt,
             model_id=model_id,
         )
 
-        return {
+        result = {
             "stream": stream,
             "sources": prepared["sources"],
             "model_id": self.ai.resolve_model(model_id),
         }
+
+        if "agent_id" in prepared:
+            result["agent_id"] = prepared["agent_id"]
+
+        return result
