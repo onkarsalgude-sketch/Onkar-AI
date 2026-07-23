@@ -234,6 +234,9 @@ def create_app(
         router as backups_router,
     )
     from app.api.chat import router as chat_router
+    from app.api.agents import (
+        router as agents_router,
+    )
     from app.api.documents import (
         router as documents_router,
     )
@@ -242,6 +245,9 @@ def create_app(
     )
     from app.api.image import router as image_router
 
+    application.include_router(
+        agents_router
+    )
     application.include_router(chat_router)
     application.include_router(documents_router)
     application.include_router(knowledge_router)
