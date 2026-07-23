@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, inspect, select
 
 from app.config.database import load_database_settings
 from app.database.engine import build_database_engine
@@ -18,6 +18,7 @@ from app.database.schema import (
     SCHEMA_VERSION,
     chats,
     create_schema,
+    messages,
     schema_migrations,
 )
 from app.services import history_service
@@ -43,6 +44,30 @@ class DatabaseMigrationTests(unittest.TestCase):
     def tearDown(self):
         self.engine.dispose()
         self.temporary_directory.cleanup()
+
+    def _drop_agent_id_column(self):
+        with self.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "ALTER TABLE messages "
+                "DROP COLUMN agent_id"
+            )
+
+    def _stamp_versions(self, versions):
+        with self.engine.begin() as connection:
+            for version in versions:
+                connection.execute(
+                    insert(
+                        schema_migrations
+                    ).values(
+                        version=version,
+                        description=(
+                            f"Schema version {version}"
+                        ),
+                        applied_at=(
+                            "2026-07-19T12:00:00+00:00"
+                        ),
+                    )
+                )
 
     def test_fresh_schema_records_version(self):
         self.assertEqual(
@@ -77,6 +102,170 @@ class DatabaseMigrationTests(unittest.TestCase):
             versions,
             [SCHEMA_VERSION],
         )
+
+    def test_version_five_adds_agent_id_without_data_loss(
+        self,
+    ):
+        create_schema(self.engine)
+        self._drop_agent_id_column()
+        self._stamp_versions((5,))
+
+        with self.engine.begin() as connection:
+            connection.execute(
+                chats.insert().values(
+                    title="Version Five Chat",
+                    created_at=(
+                        "2026-07-19T12:00:00"
+                    ),
+                )
+            )
+            connection.exec_driver_sql(
+                """
+                INSERT INTO messages (
+                    chat_id,
+                    role,
+                    content,
+                    created_at,
+                    sources_json,
+                    model_id,
+                    attachment_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    1,
+                    "assistant",
+                    "Preserved response",
+                    "2026-07-19T12:01:00",
+                    "[]",
+                    "model-a",
+                    None,
+                ),
+            )
+
+        version = initialize_schema(
+            self.engine
+        )
+
+        columns = {
+            column["name"]
+            for column in inspect(
+                self.engine
+            ).get_columns(
+                messages.name
+            )
+        }
+
+        with self.engine.connect() as connection:
+            row = connection.execute(
+                select(
+                    messages.c.content,
+                    messages.c.agent_id,
+                )
+            ).one()
+
+            versions = connection.execute(
+                select(
+                    schema_migrations.c.version
+                ).order_by(
+                    schema_migrations.c.version
+                )
+            ).scalars().all()
+
+        self.assertEqual(
+            version,
+            6,
+        )
+        self.assertIn(
+            "agent_id",
+            columns,
+        )
+        self.assertEqual(
+            row.content,
+            "Preserved response",
+        )
+        self.assertIsNone(
+            row.agent_id
+        )
+        self.assertEqual(
+            versions,
+            [5, 6],
+        )
+
+    def test_version_five_migration_is_idempotent(
+        self,
+    ):
+        create_schema(self.engine)
+        self._drop_agent_id_column()
+        self._stamp_versions((5,))
+
+        initialize_schema(self.engine)
+        initialize_schema(self.engine)
+        initialize_schema(self.engine)
+
+        columns = [
+            column["name"]
+            for column in inspect(
+                self.engine
+            ).get_columns(
+                messages.name
+            )
+        ]
+
+        with self.engine.connect() as connection:
+            versions = connection.execute(
+                select(
+                    schema_migrations.c.version
+                ).order_by(
+                    schema_migrations.c.version
+                )
+            ).scalars().all()
+
+        self.assertEqual(
+            columns.count("agent_id"),
+            1,
+        )
+        self.assertEqual(
+            versions,
+            [5, 6],
+        )
+
+    def test_version_four_records_versions_five_and_six(
+        self,
+    ):
+        create_schema(self.engine)
+        self._drop_agent_id_column()
+        self._stamp_versions(
+            (1, 2, 3, 4)
+        )
+
+        initialize_schema(self.engine)
+
+        with self.engine.connect() as connection:
+            versions = connection.execute(
+                select(
+                    schema_migrations.c.version
+                ).order_by(
+                    schema_migrations.c.version
+                )
+            ).scalars().all()
+
+        self.assertEqual(
+            versions,
+            [1, 2, 3, 4, 5, 6],
+        )
+
+    def test_stamped_version_six_missing_agent_id_is_rejected(
+        self,
+    ):
+        create_schema(self.engine)
+        self._drop_agent_id_column()
+        self._stamp_versions((6,))
+
+        with self.assertRaises(
+            SchemaCompatibilityError
+        ):
+            initialize_schema(self.engine)
 
     def test_legacy_sqlite_schema_is_adopted_without_data_loss(
         self,

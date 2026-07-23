@@ -72,9 +72,14 @@ _SCHEMA_V4_APPLICATION_TABLES = (
 )
 
 
-_APPLICATION_TABLES = (
+_SCHEMA_V5_APPLICATION_TABLES = (
     *_SCHEMA_V4_APPLICATION_TABLES,
     knowledge_documents,
+)
+
+
+_APPLICATION_TABLES = (
+    *_SCHEMA_V5_APPLICATION_TABLES,
 )
 
 _SCHEMA_V1_VERSIONED_TABLE_NAMES = frozenset(
@@ -123,6 +128,19 @@ _SCHEMA_V4_VERSIONED_TABLE_NAMES = frozenset(
         ),
     }
 )
+
+
+_SCHEMA_V5_VERSIONED_TABLE_NAMES = frozenset(
+    {
+        schema_migrations.name,
+        *(
+            table.name
+            for table
+            in _SCHEMA_V5_APPLICATION_TABLES
+        ),
+    }
+)
+
 
 _LEGACY_TABLE_NAMES = frozenset(
     table.name
@@ -495,6 +513,41 @@ def _required_unique_sets_are_present(
     return True
 
 
+def _ensure_message_agent_id_column(
+    engine: Engine,
+) -> None:
+    inspector = inspect(engine)
+
+    if messages.name not in inspector.get_table_names():
+        return
+
+    column_names = {
+        column["name"]
+        for column in inspector.get_columns(
+            messages.name
+        )
+    }
+
+    if "agent_id" in column_names:
+        return
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "ALTER TABLE messages "
+            "ADD COLUMN agent_id TEXT"
+        )
+
+    migrated_columns = {
+        column["name"]
+        for column in inspect(engine).get_columns(
+            messages.name
+        )
+    }
+
+    if "agent_id" not in migrated_columns:
+        raise SchemaCompatibilityError()
+
+
 def validate_existing_schema(
     engine: Engine,
     *,
@@ -599,6 +652,15 @@ def validate_existing_schema(
                 *_SCHEMA_V4_APPLICATION_TABLES,
                 schema_migrations,
             )
+        elif resolved_version == 5:
+            required_table_names = (
+                _SCHEMA_V5_VERSIONED_TABLE_NAMES
+            )
+
+            tables_to_validate = (
+                *_SCHEMA_V5_APPLICATION_TABLES,
+                schema_migrations,
+            )
         elif (
             resolved_version
             == SCHEMA_VERSION
@@ -616,6 +678,8 @@ def validate_existing_schema(
     else:
         if expected_version is not None:
             raise SchemaCompatibilityError()
+
+        resolved_version = 1
 
         required_table_names = (
             _LEGACY_TABLE_NAMES
@@ -644,6 +708,14 @@ def validate_existing_schema(
         required_columns = set(
             table.c.keys()
         )
+
+        if (
+            table.name == messages.name
+            and resolved_version < 6
+        ):
+            required_columns.discard(
+                "agent_id"
+            )
 
         if not required_columns.issubset(
             actual_columns
@@ -716,6 +788,10 @@ def initialize_schema(
         validate_existing_schema(
             engine
         )
+
+    _ensure_message_agent_id_column(
+        engine
+    )
 
     create_schema(engine)
 
@@ -801,15 +877,29 @@ def initialize_schema(
                         )
                     )
 
-                if latest_version < SCHEMA_VERSION:
+                if latest_version < 5:
                     connection.execute(
                         insert(
                             schema_migrations
                         ).values(
-                            version=SCHEMA_VERSION,
+                            version=5,
                             description=(
                                 "Add durable knowledge "
                                 "library metadata"
+                            ),
+                            applied_at=_utc_now_iso(),
+                        )
+                    )
+
+                if latest_version < 6:
+                    connection.execute(
+                        insert(
+                            schema_migrations
+                        ).values(
+                            version=6,
+                            description=(
+                                "Add message agent "
+                                "metadata"
                             ),
                             applied_at=_utc_now_iso(),
                         )

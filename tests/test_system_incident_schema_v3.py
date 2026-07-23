@@ -238,7 +238,7 @@ class SystemIncidentSchemaV4Tests(
     ):
         self.assertEqual(
             SCHEMA_VERSION,
-            5,
+            6,
         )
 
         self.assertIn(
@@ -293,14 +293,14 @@ class SystemIncidentSchemaV4Tests(
 
         self.assertEqual(
             version,
-            5,
+            6,
         )
 
         self.assertEqual(
             get_schema_version(
                 self.engine
             ),
-            5,
+            6,
         )
 
         with self.engine.connect() as connection:
@@ -314,7 +314,7 @@ class SystemIncidentSchemaV4Tests(
 
         self.assertEqual(
             versions,
-            [5],
+            [6],
         )
 
         table_names = set(
@@ -343,16 +343,22 @@ class SystemIncidentSchemaV4Tests(
                               (3,),
                               (4,),
                               (5,),
+                              (6,),
                               (1, 2),
                               (2, 3),
                               (3, 4),
                               (4, 5),
+                              (5, 6),
                               (1, 2, 3),
                               (2, 3, 4),
                               (3, 4, 5),
+                              (4, 5, 6),
                               (1, 2, 3, 4),
                               (2, 3, 4, 5),
+                              (3, 4, 5, 6),
                               (1, 2, 3, 4, 5),
+                              (2, 3, 4, 5, 6),
+                              (1, 2, 3, 4, 5, 6),
                           )
 
         for history in valid_histories:
@@ -366,9 +372,12 @@ class SystemIncidentSchemaV4Tests(
         for history in (
             (1, 3),
             (2, 4),
+            (4, 6),
             (1, 2, 4),
+            (3, 4, 6),
             (4, 3),
             (3, 3, 4),
+            (7,),
         ):
             with self.subTest(
                 invalid_history=history
@@ -398,7 +407,7 @@ class SystemIncidentSchemaV4Tests(
 
         self.assertEqual(
             version,
-            5,
+            6,
         )
 
         with self.engine.connect() as connection:
@@ -410,7 +419,7 @@ class SystemIncidentSchemaV4Tests(
 
         self.assertEqual(
             versions,
-            [5],
+            [6],
         )
 
     def test_version_two_database_records_versions_three_and_four(
@@ -444,7 +453,7 @@ class SystemIncidentSchemaV4Tests(
 
         self.assertEqual(
             version,
-            5,
+            6,
         )
 
         with self.engine.connect() as connection:
@@ -473,6 +482,7 @@ class SystemIncidentSchemaV4Tests(
                 3,
                 4,
                 5,
+                6,
             ],
         )
 
@@ -505,7 +515,7 @@ class SystemIncidentSchemaV4Tests(
 
         self.assertEqual(
             version,
-            5,
+            6,
         )
 
         with self.engine.connect() as connection:
@@ -529,6 +539,7 @@ class SystemIncidentSchemaV4Tests(
                 3,
                 4,
                 5,
+                6,
             ],
         )
 
@@ -564,6 +575,7 @@ class SystemIncidentSchemaV4Tests(
                 3,
                 4,
                 5,
+                6,
             ],
         )
 
@@ -822,7 +834,7 @@ class SystemIncidentSchemaV4Tests(
                 get_schema_version(
                     target_engine
                 ),
-                5,
+                6,
             )
         finally:
             source_engine.dispose()
