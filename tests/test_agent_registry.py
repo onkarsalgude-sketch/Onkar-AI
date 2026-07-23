@@ -43,7 +43,7 @@ class AgentRegistryTests(
             handler=resolved_handler,
         )
 
-    def test_default_registry_has_general_chat_and_study(
+    def test_default_registry_has_expected_agents(
         self,
     ):
         agent_registry = (
@@ -61,6 +61,7 @@ class AgentRegistryTests(
                 for record in records
             ),
             (
+                "coding",
                 registry
                 .GENERAL_CHAT_AGENT_ID,
                 "study",
@@ -69,12 +70,21 @@ class AgentRegistryTests(
         self.assertEqual(
             records[0]["capabilities"],
             (
+                "coding.debug",
+                "coding.explain",
+                "coding.review",
+                "coding.write",
+            ),
+        )
+        self.assertEqual(
+            records[1]["capabilities"],
+            (
                 registry
                 .GENERAL_CHAT_CAPABILITY,
             ),
         )
         self.assertEqual(
-            records[1]["capabilities"],
+            records[2]["capabilities"],
             (
                 "study.explain",
                 "study.quiz",

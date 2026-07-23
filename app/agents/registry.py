@@ -517,6 +517,9 @@ class AgentRegistry:
 
 def build_default_agent_registry(
 ) -> AgentRegistry:
+    from app.agents.coding import (
+        build_coding_agent_definition,
+    )
     from app.agents.study import (
         build_study_agent_definition,
     )
@@ -540,6 +543,7 @@ def build_default_agent_registry(
                     dispatch_general_chat
                 ),
             ),
+            build_coding_agent_definition(),
             build_study_agent_definition(),
         )
     )
