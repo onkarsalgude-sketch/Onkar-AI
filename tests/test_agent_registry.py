@@ -62,6 +62,7 @@ class AgentRegistryTests(
             ),
             (
                 "coding",
+                "document",
                 registry
                 .GENERAL_CHAT_AGENT_ID,
                 "study",
@@ -79,12 +80,21 @@ class AgentRegistryTests(
         self.assertEqual(
             records[1]["capabilities"],
             (
+                "document.draft",
+                "document.resume",
+                "document.rewrite",
+                "document.summarize",
+            ),
+        )
+        self.assertEqual(
+            records[2]["capabilities"],
+            (
                 registry
                 .GENERAL_CHAT_CAPABILITY,
             ),
         )
         self.assertEqual(
-            records[2]["capabilities"],
+            records[3]["capabilities"],
             (
                 "study.explain",
                 "study.quiz",
