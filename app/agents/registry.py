@@ -523,6 +523,9 @@ def build_default_agent_registry(
     from app.agents.document import (
         build_document_agent_definition,
     )
+    from app.agents.market_research import (
+        build_market_research_agent_definition,
+    )
     from app.agents.study import (
         build_study_agent_definition,
     )
@@ -548,6 +551,7 @@ def build_default_agent_registry(
             ),
             build_coding_agent_definition(),
             build_document_agent_definition(),
+            build_market_research_agent_definition(),
             build_study_agent_definition(),
         )
     )

@@ -65,6 +65,7 @@ class AgentRegistryTests(
                 "document",
                 registry
                 .GENERAL_CHAT_AGENT_ID,
+                "market-research",
                 "study",
             ),
         )
@@ -95,6 +96,15 @@ class AgentRegistryTests(
         )
         self.assertEqual(
             records[3]["capabilities"],
+            (
+                "market-research.compare",
+                "market-research.plan",
+                "market-research.summarize",
+                "market-research.verify",
+            ),
+        )
+        self.assertEqual(
+            records[4]["capabilities"],
             (
                 "study.explain",
                 "study.quiz",
