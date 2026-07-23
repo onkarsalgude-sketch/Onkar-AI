@@ -1,4 +1,4 @@
-﻿import tempfile
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -474,6 +474,98 @@ class RAGServiceBackendTests(
         self.assertEqual(
             store.search_calls,
             [],
+        )
+
+    def test_document_id_filters_are_backend_portable(
+        self,
+    ):
+        store = FakePgVectorStore()
+
+        service = RAGService(
+            settings=(
+                pgvector_settings()
+            ),
+            embedding_function=(
+                FakeEmbeddingFunction()
+            ),
+            pgvector_store=store,
+        )
+
+        result = service.search(
+            query="durable question",
+            chat_id=7,
+            document_ids=[
+                " doc-1 ",
+                "doc-1",
+                "doc-2",
+            ],
+        )
+
+        self.assertIn(
+            "Relevant durable content",
+            result["context"],
+        )
+        self.assertEqual(
+            store.search_calls[0][
+                "document_ids"
+            ],
+            [
+                "doc-1",
+                "doc-2",
+            ],
+        )
+
+        call_count = len(
+            store.search_calls
+        )
+
+        empty = service.search(
+            query="question",
+            chat_id=7,
+            document_ids=[],
+        )
+
+        self.assertEqual(
+            empty,
+            {
+                "context": "",
+                "sources": [],
+            },
+        )
+        self.assertEqual(
+            len(store.search_calls),
+            call_count,
+        )
+
+        where_filter = (
+            service._build_where_filter(
+                chat_id=7,
+                document_ids=[
+                    "doc-1",
+                    "doc-2",
+                ],
+            )
+        )
+
+        self.assertEqual(
+            where_filter,
+            {
+                "$and": [
+                    {
+                        "chat_id": {
+                            "$eq": 7
+                        }
+                    },
+                    {
+                        "document_id": {
+                            "$in": [
+                                "doc-1",
+                                "doc-2",
+                            ]
+                        }
+                    },
+                ]
+            },
         )
 
     def test_pgvector_delete_methods_preserve_response_contracts(

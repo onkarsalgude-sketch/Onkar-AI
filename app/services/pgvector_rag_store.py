@@ -1,4 +1,4 @@
-﻿"""Transactional PostgreSQL pgvector storage for durable RAG chunks."""
+"""Transactional PostgreSQL pgvector storage for durable RAG chunks."""
 
 from __future__ import annotations
 
@@ -423,6 +423,45 @@ class PgVectorRAGStore:
             _close_safely(cursor)
             _close_safely(connection)
 
+    @staticmethod
+    def _normalize_document_ids(
+        document_ids:
+        Sequence[str] | None,
+    ) -> list[str] | None:
+        if document_ids is None:
+            return None
+
+        if isinstance(
+            document_ids,
+            (str, bytes),
+        ):
+            raise PgVectorRAGStoreError()
+
+        selected: list[str] = []
+        seen: set[str] = set()
+
+        for value in document_ids:
+            candidate = str(
+                value or ""
+            ).strip()
+
+            if (
+                not candidate
+                or len(candidate) > 128
+            ):
+                raise PgVectorRAGStoreError()
+
+            if candidate in seen:
+                continue
+
+            seen.add(candidate)
+            selected.append(candidate)
+
+            if len(selected) > 200:
+                raise PgVectorRAGStoreError()
+
+        return selected
+
     def search(
         self,
         query_embedding:
@@ -433,9 +472,9 @@ class PgVectorRAGStore:
         filename: str | None = None,
         filenames:
         Sequence[str] | None = None,
+        document_ids:
+        Sequence[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Search one chat using cosine distance."""
-
         resolved_chat_id = (
             _positive_integer(
                 chat_id
@@ -460,6 +499,18 @@ class PgVectorRAGStore:
             <= MAX_SEARCH_LIMIT
         ):
             raise PgVectorRAGStoreError()
+
+        selected_document_ids = (
+            self._normalize_document_ids(
+                document_ids
+            )
+        )
+
+        if (
+            document_ids is not None
+            and not selected_document_ids
+        ):
+            return []
 
         query_vector = _vector_literal(
             query_embedding,
@@ -507,17 +558,29 @@ class PgVectorRAGStore:
                 "?"
                 for _ in selected_filenames
             )
-
             filters.append(
                 "lower(filename) IN ("
                 + placeholders
                 + ")"
             )
-
             filter_parameters.extend(
                 item.casefold()
                 for item
                 in selected_filenames
+            )
+
+        if selected_document_ids:
+            placeholders = ", ".join(
+                "?"
+                for _ in selected_document_ids
+            )
+            filters.append(
+                "document_id IN ("
+                + placeholders
+                + ")"
+            )
+            filter_parameters.extend(
+                selected_document_ids
             )
 
         where_clause = " AND ".join(
@@ -555,7 +618,6 @@ class PgVectorRAGStore:
         connection = (
             self._connection_factory()
         )
-
         cursor = connection.cursor()
 
         try:
@@ -563,7 +625,6 @@ class PgVectorRAGStore:
                 sql,
                 parameters,
             )
-
             rows = cursor.fetchall()
 
             return [
