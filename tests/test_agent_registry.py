@@ -43,7 +43,7 @@ class AgentRegistryTests(
             handler=resolved_handler,
         )
 
-    def test_default_registry_has_only_general_chat(
+    def test_default_registry_has_general_chat_and_study(
         self,
     ):
         agent_registry = (
@@ -56,12 +56,15 @@ class AgentRegistryTests(
         )
 
         self.assertEqual(
-            len(records),
-            1,
-        )
-        self.assertEqual(
-            records[0]["agent_id"],
-            registry.GENERAL_CHAT_AGENT_ID,
+            tuple(
+                record["agent_id"]
+                for record in records
+            ),
+            (
+                registry
+                .GENERAL_CHAT_AGENT_ID,
+                "study",
+            ),
         )
         self.assertEqual(
             records[0]["capabilities"],
@@ -70,17 +73,25 @@ class AgentRegistryTests(
                 .GENERAL_CHAT_CAPABILITY,
             ),
         )
-        self.assertNotIn(
-            "handler",
-            records[0],
+        self.assertEqual(
+            records[1]["capabilities"],
+            (
+                "study.explain",
+                "study.quiz",
+                "study.revise",
+            ),
         )
 
-        with self.assertRaises(
-            TypeError
-        ):
-            records[0]["name"] = (
-                "changed"
+        for record in records:
+            self.assertNotIn(
+                "handler",
+                record,
             )
+
+            with self.assertRaises(
+                TypeError
+            ):
+                record["name"] = "changed"
 
     def test_definition_is_immutable_and_deterministic(
         self,
