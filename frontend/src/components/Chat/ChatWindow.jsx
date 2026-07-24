@@ -5,6 +5,9 @@ import {
 } from "react";
 
 import Message from "./Message";
+import {
+  resolveAgentBadge,
+} from "../../utils/agentChat";
 import MessageInput from "./MessageInput";
 import Thinking from "./Thinking";
 import BranchExplorer from "./BranchExplorer";
@@ -513,6 +516,14 @@ messageActionLoadingId = null,
   fileType={message.fileType}
   fileSize={message.fileSize}
   sources={message.sources || []}
+  agentName={
+    message.role === "assistant"
+      ? resolveAgentBadge(
+          message.agentId,
+          agents
+        )?.name || null
+      : null
+  }
   isLast={
     index ===
     messages.length - 1

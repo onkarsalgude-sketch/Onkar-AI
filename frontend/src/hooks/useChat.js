@@ -1145,6 +1145,10 @@ async function handleRemoveMessageBookmark(
           sources: result?.sources || [],
           modelId:
             result?.modelId || requestModelId,
+          agentId:
+            result?.agentId ||
+            requestPayload.agentId ||
+            null,
         };
 
         return updatedMessages;
