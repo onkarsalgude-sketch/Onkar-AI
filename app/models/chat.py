@@ -126,6 +126,11 @@ class ChatBackupMessage(BaseModel):
         max_length=255,
     )
 
+    agent_id: Optional[str] = Field(
+        default=None,
+        max_length=100,
+    )
+
     created_at: Optional[datetime] = None
 
     attachment: Optional[

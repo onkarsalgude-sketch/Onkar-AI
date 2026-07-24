@@ -161,6 +161,11 @@ def _build_backup_messages(
                     message.get("model_id")
                     or message.get("modelId")
                 ),
+                "agent_id": (
+                    message.get("agent_id")
+                    if "agent_id" in message
+                    else message.get("agentId")
+                ),
                 "created_at": message.get(
                     "created_at"
                 ),
@@ -178,6 +183,7 @@ def _build_backup_messages(
                 "role": "assistant",
                 "content": "Hello! How can I help you today?",
                 "model_id": None,
+                "agent_id": None,
                 "created_at": None,
                 "attachment": None,
                 "sources": [],

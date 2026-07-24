@@ -2292,9 +2292,10 @@ def restore_chat_backup(
                     created_at,
                     sources_json,
                     model_id,
+                    agent_id,
                     attachment_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     chat_id,
@@ -2310,6 +2311,7 @@ def restore_chat_backup(
                         ensure_ascii=False,
                     ),
                     message_model_id,
+                    message.get("agent_id"),
                     (
                         json.dumps(
                             attachment,
