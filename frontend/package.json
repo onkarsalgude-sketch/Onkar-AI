@@ -9,6 +9,7 @@
     "lint": "oxlint",
     "test:agent-picker": "node --test ./tests/agentPickerContract.test.mjs",
     "test:agent-badge": "node --test ./tests/agentBadgeContract.test.mjs",
+    "test:dashboard": "node --test ./tests/dashboardContract.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
