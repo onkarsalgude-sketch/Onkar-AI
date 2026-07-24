@@ -3,6 +3,7 @@ import {
 } from "react";
 
 import SettingsModal from "../Common/SettingsModal";
+import AdminDashboard from "../Dashboard/AdminDashboard";
 import GlobalChatSearch from "./GlobalChatSearch";
 import BookmarksPanel from "./BookmarksPanel";
 
@@ -82,6 +83,11 @@ function Sidebar({
   const [
     showSettings,
     setShowSettings,
+  ] = useState(false);
+
+  const [
+    showDashboard,
+    setShowDashboard,
   ] = useState(false);
 
   const isDark =
@@ -523,6 +529,21 @@ function Sidebar({
 
           <button
             type="button"
+            onClick={() => {
+              setShowDashboard(true);
+              onClose?.();
+            }}
+            className={`w-full rounded-xl p-3 font-semibold transition ${
+              isDark
+                ? "bg-slate-800 text-white hover:bg-slate-700"
+                : "bg-slate-100 text-slate-900 hover:bg-slate-200"
+            }`}
+          >
+            📊 Dashboard
+          </button>
+
+          <button
+            type="button"
             onClick={() =>
               setShowSettings(
                 true
@@ -786,6 +807,14 @@ function Sidebar({
           )}
         </div>
       </aside>
+
+      <AdminDashboard
+        open={showDashboard}
+        onClose={() =>
+          setShowDashboard(false)
+        }
+        theme={theme}
+      />
 
       <SettingsModal
         open={showSettings}
