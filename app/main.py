@@ -415,6 +415,9 @@ def create_app(
         from app.api.system_incident_admin import (
             create_system_incident_admin_router,
         )
+        from app.api.dashboard_admin import (
+            create_dashboard_admin_router,
+        )
 
         system_incident_router = (
             create_system_incident_admin_router(
@@ -422,8 +425,20 @@ def create_app(
             )
         )
 
+        dashboard_router = (
+            create_dashboard_admin_router(
+                system_health_settings,
+                db_path=(
+                    resolved_system_incident_db_path
+                ),
+            )
+        )
+
         application.include_router(
             system_incident_router
+        )
+        application.include_router(
+            dashboard_router
         )
 
     if merge_settings.enabled:
