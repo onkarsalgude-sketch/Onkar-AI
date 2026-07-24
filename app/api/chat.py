@@ -955,6 +955,7 @@ def chat(request: ChatRequest):
         result["reply"],
         sources=result_sources,
         model_id=result_model_id,
+        agent_id=result.get("agent_id"),
     )
 
     return ChatResponse(
@@ -1077,6 +1078,10 @@ def chat_stream(request: ChatRequest):
                 sources=stream_sources,
                 model_id=(
                     stream_model_id
+                    or None
+                ),
+                agent_id=(
+                    stream_agent_id
                     or None
                 ),
             )

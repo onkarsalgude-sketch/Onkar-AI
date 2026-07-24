@@ -246,6 +246,7 @@ class AgentChatApiIntegrationTests(
                     "Legacy reply",
                     sources=[],
                     model_id="model-a",
+                    agent_id=None,
                 ),
             ],
         )
@@ -445,6 +446,7 @@ class AgentChatApiIntegrationTests(
                 "study stream",
                 sources=[],
                 model_id="model-d",
+                agent_id="study",
             ),
         )
 
