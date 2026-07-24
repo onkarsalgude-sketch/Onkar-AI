@@ -164,7 +164,7 @@ class AgentMessagePersistenceApiTests(unittest.TestCase):
         assistant_call = self._assistant_call(save_message)
         self.assertIsNone(assistant_call.kwargs["agent_id"])
 
-    def test_regenerate_persistence_remains_agent_neutral(self):
+    def test_regenerate_persistence_is_agent_aware(self):
         source = textwrap.dedent(
             inspect.getsource(chat_api.regenerate_message_response)
         )
@@ -184,7 +184,7 @@ class AgentMessagePersistenceApiTests(unittest.TestCase):
             for keyword in save_calls[0].keywords
             if keyword.arg is not None
         }
-        self.assertNotIn("agent_id", keyword_names)
+        self.assertIn("agent_id", keyword_names)
 
 
 if __name__ == "__main__":

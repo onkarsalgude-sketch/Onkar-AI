@@ -48,6 +48,11 @@ function normalizeMessages(messages = []) {
         message.modelId ||
         null,
 
+      agentId:
+        message.agent_id ??
+        message.agentId ??
+        null,
+
       created_at:
         message.created_at ||
         null,
@@ -97,6 +102,57 @@ function normalizeMessages(messages = []) {
         null,
     };
   });
+}
+
+
+
+function responseAgentIdForMessage(
+  messages = [],
+  messageId
+) {
+  const targetId = Number(messageId);
+
+  const targetIndex = messages.findIndex(
+    (message) =>
+      message.role === "user" &&
+      Number(message.id) === targetId
+  );
+
+  if (targetIndex < 0) {
+    return null;
+  }
+
+  for (
+    let index = targetIndex + 1;
+    index < messages.length;
+    index += 1
+  ) {
+    const message = messages[index];
+
+    if (message.role === "user") {
+      break;
+    }
+
+    if (message.role !== "assistant") {
+      continue;
+    }
+
+    const rawAgentId =
+      message.agentId ??
+      message.agent_id ??
+      null;
+
+    if (typeof rawAgentId !== "string") {
+      return null;
+    }
+
+    const normalizedAgentId =
+      rawAgentId.trim();
+
+    return normalizedAgentId || null;
+  }
+
+  return null;
 }
 
 
@@ -593,6 +649,12 @@ export default function useChats(
 
   let messageWasEdited = false;
 
+  const responseAgentId =
+    responseAgentIdForMessage(
+      messages,
+      messageId
+    );
+
   try {
     setMessageActionLoadingId(
       messageId
@@ -609,7 +671,8 @@ export default function useChats(
     await regenerateMessageRequest(
       activeChatId,
       messageId,
-      null
+      null,
+      responseAgentId
     );
 
     await refreshAfterMessageAction(
@@ -704,6 +767,12 @@ async function regenerateCurrentMessage(
     );
   }
 
+  const responseAgentId =
+    responseAgentIdForMessage(
+      messages,
+      messageId
+    );
+
   try {
     setMessageActionLoadingId(
       messageId
@@ -713,7 +782,8 @@ async function regenerateCurrentMessage(
       await regenerateMessageRequest(
         activeChatId,
         messageId,
-        modelId
+        modelId,
+        responseAgentId
       );
 
     await refreshAfterMessageAction(

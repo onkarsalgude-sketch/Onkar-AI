@@ -246,6 +246,10 @@ class MessageRegenerateRequest(BaseModel):
         max_length=255,
     )
 
+    agent_id: Optional[str] = Field(
+        default=None,
+        max_length=MAX_AGENT_ID_LENGTH,
+    )
 
 class MessageEditResponse(BaseModel):
     message: str

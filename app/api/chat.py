@@ -625,6 +625,42 @@ def regenerate_message_response(
     try:
         # जुना assistant response आणि त्यानंतरचे
         # messages remove करून context सुरक्षित ठेवणे.
+        regenerate_agent_id = request.agent_id
+
+        if regenerate_agent_id is None:
+            message_history = get_messages(
+                chat_id
+            )
+            original_user_found = False
+
+            for history_message in message_history:
+                if (
+                    history_message.get("id")
+                    == message_id
+                ):
+                    original_user_found = True
+                    continue
+
+                if not original_user_found:
+                    continue
+
+                if (
+                    history_message.get("role")
+                    == "user"
+                ):
+                    break
+
+                if (
+                    history_message.get("role")
+                    == "assistant"
+                ):
+                    regenerate_agent_id = (
+                        history_message.get(
+                            "agent_id"
+                        )
+                    )
+                    break
+
         edit_result = edit_user_message(
             chat_id,
             message_id,
@@ -635,6 +671,7 @@ def regenerate_message_response(
             original_message["content"],
             chat_id=chat_id,
             model_id=request.model_id,
+            agent_id=regenerate_agent_id,
         )
 
         result_sources = (
@@ -647,12 +684,18 @@ def regenerate_message_response(
             or request.model_id
         )
 
+        result_agent_id = (
+            result.get("agent_id")
+            or regenerate_agent_id
+        )
+
         save_message(
             chat_id,
             "assistant",
             result["reply"],
             sources=result_sources,
             model_id=result_model_id,
+            agent_id=result_agent_id,
         )
 
     except ValueError as error:
@@ -681,6 +724,7 @@ def regenerate_message_response(
         "reply": result["reply"],
         "sources": result_sources,
         "model_id": result_model_id,
+        "agent_id": result_agent_id,
         "deleted_following_messages": (
             edit_result[
                 "deleted_following_messages"

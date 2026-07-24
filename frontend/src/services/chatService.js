@@ -465,14 +465,22 @@ export const deleteMessage = (
 export const regenerateMessage = (
   chatId,
   messageId,
-  modelId = null
-) =>
-  api.post(
+  modelId = null,
+  agentId = null
+) => {
+  const payload = {
+    model_id: modelId,
+  };
+
+  if (agentId) {
+    payload.agent_id = agentId;
+  }
+
+  return api.post(
     `/chats/${chatId}/messages/${messageId}/regenerate`,
-    {
-      model_id: modelId,
-    }
+    payload
   );
+};
   export const saveMessageBookmark = (
   chatId,
   messageId,

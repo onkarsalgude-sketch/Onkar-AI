@@ -1219,6 +1219,21 @@ async function handleRemoveMessageBookmark(
           message.content?.trim()
       );
 
+    const lastAssistantMessage = [
+      ...messages,
+    ]
+      .reverse()
+      .find(
+        (message) =>
+          message.role ===
+            "assistant" &&
+          message.content?.trim()
+      );
+
+    const originalAgentId = normalizeAgentId(
+      lastAssistantMessage?.agentId
+    );
+
     if (
       !lastUserMessage ||
       loading ||
@@ -1234,6 +1249,7 @@ async function handleRemoveMessageBookmark(
       chatId: activeChatId,
       modelId:
         selectedModel || null,
+      agentId: originalAgentId,
       userMessageAdded: true,
     };
 
@@ -1300,7 +1316,8 @@ async function handleRemoveMessageBookmark(
               }
             );
           },
-          selectedModel || null
+          selectedModel || null,
+          originalAgentId
         );
 
       setMessages(
@@ -1323,6 +1340,10 @@ async function handleRemoveMessageBookmark(
       modelId:
         result?.modelId ||
         selectedModel,
+      agentId:
+        result?.agentId ||
+        originalAgentId ||
+        null,
     };
 
     return updatedMessages;
