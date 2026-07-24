@@ -54,7 +54,7 @@ class KnowledgeSchemaV5Tests(unittest.TestCase):
             )
 
     def test_schema_version_and_safe_columns(self):
-        self.assertEqual(SCHEMA_VERSION, 5)
+        self.assertEqual(SCHEMA_VERSION, 6)
         self.assertIn(knowledge_documents.name, EXPECTED_TABLE_NAMES)
         expected_columns = {
             "knowledge_id", "title", "filename", "object_key", "file_hash",
@@ -122,28 +122,31 @@ class KnowledgeSchemaV5Tests(unittest.TestCase):
 
     def test_fresh_database_records_only_version_five(self):
         version = initialize_schema(self.engine)
-        self.assertEqual(version, 5)
-        self.assertEqual(get_schema_version(self.engine), 5)
+        self.assertEqual(version, 6)
+        self.assertEqual(get_schema_version(self.engine), 6)
         with self.engine.connect() as connection:
             versions = connection.execute(
                 select(schema_migrations.c.version).order_by(schema_migrations.c.version)
             ).scalars().all()
-        self.assertEqual(versions, [5])
+        self.assertEqual(versions, [6])
         self.assertIn(knowledge_documents.name, inspect(self.engine).get_table_names())
 
     def test_valid_recorded_histories_are_accepted(self):
         valid_histories = (
-            (), (1,), (2,), (3,), (4,), (5,),
-            (1, 2), (2, 3), (3, 4), (4, 5),
-            (1, 2, 3), (2, 3, 4), (3, 4, 5),
-            (1, 2, 3, 4), (2, 3, 4, 5), (1, 2, 3, 4, 5),
+            (), (1,), (2,), (3,), (4,), (5,), (6,),
+            (1, 2), (2, 3), (3, 4), (4, 5), (5, 6),
+            (1, 2, 3), (2, 3, 4), (3, 4, 5), (4, 5, 6),
+            (1, 2, 3, 4), (2, 3, 4, 5), (3, 4, 5, 6),
+            (1, 2, 3, 4, 5), (2, 3, 4, 5, 6),
+            (1, 2, 3, 4, 5, 6),
         )
         for history in valid_histories:
             with self.subTest(history=history):
                 _validate_recorded_version(history)
         for history in (
-            (1, 3), (2, 4), (3, 5), (1, 2, 4),
-            (2, 3, 5), (5, 4), (4, 4, 5), (6,),
+            (1, 3), (2, 4), (3, 5), (4, 6),
+            (1, 2, 4), (2, 3, 5), (3, 4, 6),
+            (5, 4), (4, 4, 5), (7,),
         ):
             with self.subTest(invalid_history=history):
                 with self.assertRaises(SchemaVersionError):
@@ -153,10 +156,10 @@ class KnowledgeSchemaV5Tests(unittest.TestCase):
         metadata.create_all(bind=self.engine, checkfirst=True)
         validate_existing_schema(self.engine)
         version = initialize_schema(self.engine)
-        self.assertEqual(version, 5)
+        self.assertEqual(version, 6)
         with self.engine.connect() as connection:
             versions = connection.execute(select(schema_migrations.c.version)).scalars().all()
-        self.assertEqual(versions, [5])
+        self.assertEqual(versions, [6])
 
     def test_version_four_database_migrates_without_data_loss(self):
         self.create_version_four_schema()
@@ -168,7 +171,7 @@ class KnowledgeSchemaV5Tests(unittest.TestCase):
                 "INSERT INTO preserved_v4_data (id, value) VALUES (1, 'keep-v4-data')"
             )
         version = initialize_schema(self.engine)
-        self.assertEqual(version, 5)
+        self.assertEqual(version, 6)
         with self.engine.connect() as connection:
             versions = connection.execute(
                 select(schema_migrations.c.version).order_by(schema_migrations.c.version)
@@ -176,7 +179,7 @@ class KnowledgeSchemaV5Tests(unittest.TestCase):
             preserved_value = connection.exec_driver_sql(
                 "SELECT value FROM preserved_v4_data WHERE id = 1"
             ).scalar_one()
-        self.assertEqual(versions, [4, 5])
+        self.assertEqual(versions, [4, 5, 6])
         self.assertEqual(preserved_value, "keep-v4-data")
         self.assertIn(knowledge_documents.name, inspect(self.engine).get_table_names())
 
@@ -188,7 +191,7 @@ class KnowledgeSchemaV5Tests(unittest.TestCase):
             versions = connection.execute(
                 select(schema_migrations.c.version).order_by(schema_migrations.c.version)
             ).scalars().all()
-        self.assertEqual(versions, [4, 5])
+        self.assertEqual(versions, [4, 5, 6])
 
     def test_partial_version_four_schema_is_rejected(self):
         metadata.create_all(bind=self.engine, tables=[schema_migrations], checkfirst=True)
@@ -225,7 +228,7 @@ class KnowledgeSchemaV5Tests(unittest.TestCase):
                 migration_report.row_counts[knowledge_documents.name],
                 0,
             )
-            self.assertEqual(get_schema_version(target_engine), 5)
+            self.assertEqual(get_schema_version(target_engine), 6)
         finally:
             source_engine.dispose()
             target_engine.dispose()

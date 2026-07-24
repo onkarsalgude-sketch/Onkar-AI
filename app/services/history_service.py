@@ -702,6 +702,7 @@ def create_chat_branch(
                 created_at,
                 sources_json,
                 model_id,
+                agent_id,
                 attachment_json
             )
             SELECT
@@ -711,6 +712,7 @@ def create_chat_branch(
                 created_at,
                 sources_json,
                 model_id,
+                agent_id,
                 attachment_json
             FROM messages
             WHERE chat_id = ?
@@ -1475,6 +1477,7 @@ def save_message(
     *,
     sources=None,
     model_id=None,
+    agent_id=None,
     attachment=None,
     created_at=None,
 ):
@@ -1504,9 +1507,10 @@ def save_message(
             created_at,
             sources_json,
             model_id,
+            agent_id,
             attachment_json
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             chat_id,
@@ -1515,6 +1519,7 @@ def save_message(
             _to_iso_datetime(created_at),
             sources_json,
             model_id,
+            agent_id,
             attachment_json,
         ),
     )
@@ -1539,6 +1544,7 @@ def get_messages(
             messages.created_at,
             messages.sources_json,
             messages.model_id,
+            messages.agent_id,
             messages.attachment_json,
             message_bookmarks.id AS bookmark_id,
             message_bookmarks.note AS bookmark_note,
@@ -1569,7 +1575,7 @@ def get_messages(
         )
 
         attachment = _load_json(
-            row[6],
+            row[7],
             None,
         )
 
@@ -1580,16 +1586,17 @@ def get_messages(
             "created_at": row[3],
             "sources": sources,
             "model_id": row[5],
+            "agent_id": row[6],
             "attachment": attachment,
             "is_bookmarked": (
-                row[7] is not None
+                row[8] is not None
             ),
-            "bookmark_id": row[7],
+            "bookmark_id": row[8],
             "bookmark_note": (
-                row[8] or ""
+                row[9] or ""
             ),
-            "bookmarked_at": row[9],
-            "bookmark_updated_at": row[10],
+            "bookmarked_at": row[10],
+            "bookmark_updated_at": row[11],
         }
 
         if attachment:
@@ -1626,6 +1633,7 @@ def get_message(
             messages.created_at,
             messages.sources_json,
             messages.model_id,
+            messages.agent_id,
             messages.attachment_json,
             message_bookmarks.id AS bookmark_id,
             message_bookmarks.note AS bookmark_note,
@@ -1660,19 +1668,20 @@ def get_message(
             [],
         ),
         "model_id": row[6],
+        "agent_id": row[7],
         "attachment": _load_json(
-            row[7],
+            row[8],
             None,
         ),
         "is_bookmarked": (
-            row[8] is not None
+            row[9] is not None
         ),
-        "bookmark_id": row[8],
+        "bookmark_id": row[9],
         "bookmark_note": (
-            row[9] or ""
+            row[10] or ""
         ),
-        "bookmarked_at": row[10],
-        "bookmark_updated_at": row[11],
+        "bookmarked_at": row[11],
+        "bookmark_updated_at": row[12],
     }
 
 def save_message_bookmark(
@@ -2283,9 +2292,10 @@ def restore_chat_backup(
                     created_at,
                     sources_json,
                     model_id,
+                    agent_id,
                     attachment_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     chat_id,
@@ -2301,6 +2311,7 @@ def restore_chat_backup(
                         ensure_ascii=False,
                     ),
                     message_model_id,
+                    message.get("agent_id"),
                     (
                         json.dumps(
                             attachment,

@@ -1,5 +1,8 @@
 import api from "./api";
-import { buildChatPayload } from "../utils/agentChat";
+import {
+  buildChatPayload,
+  normalizeAgentId,
+} from "../utils/agentChat";
 
 const API_URL = (
   api.defaults.baseURL ||
@@ -277,6 +280,14 @@ export async function streamChat(
       "X-Model-Id"
     ) || modelId;
 
+  const returnedAgentId =
+    normalizeAgentId(
+      response.headers.get(
+        "X-Agent-Id"
+      )
+    ) ||
+    normalizeAgentId(agentId);
+
   if (!response.body) {
     throw new Error(
       "Streaming response body is unavailable."
@@ -318,6 +329,7 @@ export async function streamChat(
     sources,
     chatId: returnedChatId,
     modelId: returnedModelId,
+    agentId: returnedAgentId,
   };
 }
 
@@ -465,14 +477,22 @@ export const deleteMessage = (
 export const regenerateMessage = (
   chatId,
   messageId,
-  modelId = null
-) =>
-  api.post(
+  modelId = null,
+  agentId = null
+) => {
+  const payload = {
+    model_id: modelId,
+  };
+
+  if (agentId) {
+    payload.agent_id = agentId;
+  }
+
+  return api.post(
     `/chats/${chatId}/messages/${messageId}/regenerate`,
-    {
-      model_id: modelId,
-    }
+    payload
   );
+};
   export const saveMessageBookmark = (
   chatId,
   messageId,

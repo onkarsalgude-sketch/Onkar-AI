@@ -21,6 +21,7 @@ function Message({
   fileType,
   fileSize,
   sources = [],
+  agentName = null,
   regenerateResponse,
   onEditMessage,
 onDeleteMessage,
@@ -726,6 +727,21 @@ onCreateConversationBranch,
                     ? "Removing..."
                     : "🔖 Remove"}
                 </button>
+              )}
+
+            {!isUser &&
+              agentName && (
+                <span
+                  className={`whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                    isDark
+                      ? "border-blue-500/40 bg-blue-500/10 text-blue-200"
+                      : "border-blue-200 bg-blue-50 text-blue-700"
+                  }`}
+                  aria-label={`Agent: ${agentName}`}
+                  title={`Agent: ${agentName}`}
+                >
+                  Agent Â· {agentName}
+                </span>
               )}
 
             {!isUser && (

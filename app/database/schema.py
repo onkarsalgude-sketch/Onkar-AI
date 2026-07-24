@@ -27,7 +27,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 metadata = MetaData()
 
@@ -133,6 +133,7 @@ messages = Table(
         server_default=text("'[]'"),
     ),
     Column("model_id", Text, nullable=True),
+    Column("agent_id", Text, nullable=True),
     Column("attachment_json", Text, nullable=True),
     sqlite_autoincrement=True,
 )

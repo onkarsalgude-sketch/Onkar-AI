@@ -94,3 +94,38 @@ export function normalizeAgentCatalog(
     ];
   });
 }
+
+export function resolveAgentBadge(
+  agentId,
+  catalog
+) {
+  const normalizedAgentId =
+    normalizeAgentId(agentId);
+
+  if (
+    !normalizedAgentId ||
+    !Array.isArray(catalog)
+  ) {
+    return null;
+  }
+
+  const matchedAgent = catalog.find(
+    (agent) =>
+      agent?.agent_id ===
+      normalizedAgentId
+  );
+
+  const name =
+    typeof matchedAgent?.name === "string"
+      ? matchedAgent.name.trim()
+      : "";
+
+  if (!name) {
+    return null;
+  }
+
+  return {
+    agent_id: normalizedAgentId,
+    name,
+  };
+}

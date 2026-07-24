@@ -246,6 +246,7 @@ class AgentChatApiIntegrationTests(
                     "Legacy reply",
                     sources=[],
                     model_id="model-a",
+                    agent_id=None,
                 ),
             ],
         )
@@ -445,6 +446,7 @@ class AgentChatApiIntegrationTests(
                 "study stream",
                 sources=[],
                 model_id="model-d",
+                agent_id="study",
             ),
         )
 
@@ -526,7 +528,7 @@ class AgentChatApiIntegrationTests(
             "study",
         )
 
-    def test_regeneration_contract_remains_model_only(
+    def test_regeneration_contract_accepts_optional_agent_id(
         self,
     ):
         fields = getattr(
@@ -539,6 +541,7 @@ class AgentChatApiIntegrationTests(
             tuple(fields),
             (
                 "model_id",
+                "agent_id",
             ),
         )
 
@@ -547,7 +550,7 @@ class AgentChatApiIntegrationTests(
             .regenerate_message_response
         )
 
-        self.assertNotIn(
+        self.assertIn(
             "agent_id",
             source,
         )

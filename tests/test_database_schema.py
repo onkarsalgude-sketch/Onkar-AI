@@ -1,4 +1,4 @@
-﻿import tempfile
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -11,12 +11,14 @@ from app.config.database import load_database_settings
 from app.database.engine import build_database_engine
 from app.database.schema import (
     EXPECTED_TABLE_NAMES,
+    SCHEMA_VERSION,
     branch_merge_message_mappings,
     branch_merge_operations,
     chats,
     create_schema,
     documents,
     folders,
+    messages,
     metadata,
 )
 
@@ -64,6 +66,30 @@ class DatabaseSchemaTests(unittest.TestCase):
         self.assertEqual(
             table_names,
             EXPECTED_TABLE_NAMES,
+        )
+
+    def test_current_schema_version_is_six(self):
+        self.assertEqual(
+            SCHEMA_VERSION,
+            6,
+        )
+
+    def test_messages_include_nullable_agent_id(self):
+        columns = {
+            column["name"]: column
+            for column in inspect(
+                self.engine
+            ).get_columns(
+                messages.name
+            )
+        }
+
+        self.assertIn(
+            "agent_id",
+            columns,
+        )
+        self.assertTrue(
+            columns["agent_id"]["nullable"]
         )
 
     def test_sqlite_generated_numeric_ids(self):
