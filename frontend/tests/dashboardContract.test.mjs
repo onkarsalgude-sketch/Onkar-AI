@@ -234,3 +234,135 @@ test(
     );
   }
 );
+
+test(
+  "dashboard service exposes read-only live health request",
+  () => {
+    const source = read(
+      "src/services/dashboardService.js"
+    );
+
+    assert.ok(
+      source.includes(
+        "getDashboardHealth"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        '"/admin/dashboard/health"'
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "Authorization:"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "`Bearer ${token}`"
+      )
+    );
+  }
+);
+
+
+test(
+  "dashboard renders live system health contract",
+  () => {
+    const source = read(
+      "src/components/Dashboard/AdminDashboard.jsx"
+    );
+
+    for (
+      const label of [
+        "System Health",
+        "Last checked",
+        "Database",
+        "Document Storage",
+        "Document Recovery",
+        "Knowledge / RAG",
+        "Healthy",
+        "Warning",
+        "Critical",
+        "Initializing",
+        "Unavailable",
+        "Disabled",
+      ]
+    ) {
+      assert.ok(
+        source.includes(label)
+      );
+    }
+  }
+);
+
+
+test(
+  "dashboard refresh loads metrics and health independently",
+  () => {
+    const source = read(
+      "src/components/Dashboard/AdminDashboard.jsx"
+    );
+
+    assert.ok(
+      source.includes(
+        "getDashboardSummary(token)"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "getDashboardHealth(token)"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "Promise.allSettled"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "healthErrorMessage"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        'summaryResult.status ==='
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        'healthResult.status ==='
+      )
+    );
+  }
+);
+
+
+test(
+  "dashboard step 4 uses manual refresh only",
+  () => {
+    const source = read(
+      "src/components/Dashboard/AdminDashboard.jsx"
+    );
+
+    assert.ok(
+      source.includes(
+        '"Refresh"'
+      )
+    );
+
+    assert.ok(
+      !source.includes(
+        "setInterval("
+      )
+    );
+  }
+);

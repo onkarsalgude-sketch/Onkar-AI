@@ -4,6 +4,7 @@ import {
 } from "react";
 
 import {
+  getDashboardHealth,
   getDashboardSummary,
 } from "../../services/dashboardService";
 
@@ -80,6 +81,164 @@ function formatBytes(value) {
 }
 
 
+function formatCheckedAt(value) {
+  if (!value) {
+    return "Not available";
+  }
+
+  const date = new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return "Not available";
+  }
+
+  return date.toLocaleString();
+}
+
+
+function systemStatusLabel(status) {
+  return {
+    healthy: "Healthy",
+    degraded: "Warning",
+    unhealthy: "Critical",
+    initializing: "Initializing",
+  }[status] || "Unknown";
+}
+
+
+function componentStatusLabel(status) {
+  return {
+    healthy: "Healthy",
+    degraded: "Warning",
+    unavailable: "Unavailable",
+    disabled: "Disabled",
+  }[status] || "Unknown";
+}
+
+
+function healthToneClasses(
+  status,
+  isDark
+) {
+  if (status === "healthy") {
+    return isDark
+      ? "border-emerald-700/70 bg-emerald-950/40 text-emerald-200"
+      : "border-emerald-200 bg-emerald-50 text-emerald-800";
+  }
+
+  if (
+    status === "degraded" ||
+    status === "initializing"
+  ) {
+    return isDark
+      ? "border-amber-700/70 bg-amber-950/40 text-amber-200"
+      : "border-amber-200 bg-amber-50 text-amber-800";
+  }
+
+  if (
+    status === "unhealthy" ||
+    status === "unavailable"
+  ) {
+    return isDark
+      ? "border-red-700/70 bg-red-950/40 text-red-200"
+      : "border-red-200 bg-red-50 text-red-800";
+  }
+
+  return isDark
+    ? "border-slate-700 bg-slate-900 text-slate-300"
+    : "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+
+function HealthStatusBadge({
+  status,
+  isDark,
+  system = false,
+}) {
+  const label = system
+    ? systemStatusLabel(status)
+    : componentStatusLabel(status);
+
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${healthToneClasses(
+        status,
+        isDark
+      )}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+
+function healthComponentLabel(name) {
+  return {
+    database: "Database",
+    document_storage:
+      "Document Storage",
+    document_recovery:
+      "Document Recovery",
+    knowledge_rag:
+      "Knowledge / RAG",
+  }[name] || name || "Unknown";
+}
+
+
+function HealthComponentRow({
+  component,
+  isDark,
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-3 ${
+        isDark
+          ? "border-slate-700 bg-slate-900"
+          : "border-slate-200 bg-slate-50"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold">
+            {healthComponentLabel(
+              component?.name
+            )}
+          </p>
+
+          <p
+            className={`mt-1 text-xs ${
+              isDark
+                ? "text-slate-400"
+                : "text-slate-500"
+            }`}
+          >
+            {component?.detail ||
+              "No detail"}{" "}
+            ·{" "}
+            {Math.max(
+              0,
+              Number(
+                component?.latency_ms
+              ) || 0
+            )}{" "}
+            ms
+          </p>
+        </div>
+
+        <HealthStatusBadge
+          status={component?.status}
+          isDark={isDark}
+        />
+      </div>
+    </div>
+  );
+}
+
+
 function MetricCard({
   label,
   value,
@@ -142,6 +301,16 @@ function AdminDashboard({
   ] = useState(null);
 
   const [
+    health,
+    setHealth,
+  ] = useState(null);
+
+  const [
+    healthErrorMessage,
+    setHealthErrorMessage,
+  ] = useState("");
+
+  const [
     loading,
     setLoading,
   ] = useState(false);
@@ -150,6 +319,42 @@ function AdminDashboard({
     errorMessage,
     setErrorMessage,
   ] = useState("");
+
+  function dashboardErrorMessage(
+    error,
+    kind
+  ) {
+    if (
+      error?.code ===
+      "credential_required"
+    ) {
+      return (
+        "Enter the monitoring credential to continue."
+      );
+    }
+
+    if (error?.status === 401) {
+      return (
+        "The monitoring credential was not accepted."
+      );
+    }
+
+    if (error?.status === 404) {
+      return kind === "health"
+        ? "Live system health is not enabled on this server."
+        : "The dashboard endpoint is not enabled on this server.";
+    }
+
+    if (error?.status === 503) {
+      return kind === "health"
+        ? "Live system health is temporarily unavailable."
+        : "Dashboard metrics are temporarily unavailable.";
+    }
+
+    return kind === "health"
+      ? "Could not load live system health."
+      : "Could not load dashboard metrics.";
+  }
 
   async function loadDashboard(
     suppliedCredential
@@ -160,6 +365,8 @@ function AdminDashboard({
 
     if (!token) {
       setSummary(null);
+      setHealth(null);
+      setHealthErrorMessage("");
       setErrorMessage(
         "Enter the monitoring credential to load dashboard metrics."
       );
@@ -168,62 +375,88 @@ function AdminDashboard({
 
     setLoading(true);
     setErrorMessage("");
+    setHealthErrorMessage("");
 
     try {
-      const response =
-        await getDashboardSummary(
-          token
-        );
+      const [
+        summaryResult,
+        healthResult,
+      ] = await Promise.allSettled([
+        getDashboardSummary(token),
+        getDashboardHealth(token),
+      ]);
+
+      let acceptedCredential =
+        false;
 
       if (
-        response?.service !==
-          "dashboard" ||
-        !response?.summary
+        summaryResult.status ===
+        "fulfilled"
       ) {
-        throw new Error(
-          "invalid_dashboard_payload"
+        const response =
+          summaryResult.value;
+
+        if (
+          response?.service ===
+            "dashboard" &&
+          response?.summary
+        ) {
+          setSummary(
+            response.summary
+          );
+          acceptedCredential =
+            true;
+        } else {
+          setErrorMessage(
+            "Could not load dashboard metrics."
+          );
+        }
+      } else {
+        setErrorMessage(
+          dashboardErrorMessage(
+            summaryResult.reason,
+            "summary"
+          )
         );
       }
 
-      storeSessionCredential(
-        token
-      );
-      setCredential(token);
-      setSummary(
-        response.summary
-      );
-    } catch (error) {
-      setSummary(null);
-
       if (
-        error?.code ===
-        "credential_required"
+        healthResult.status ===
+        "fulfilled"
       ) {
-        setErrorMessage(
-          "Enter the monitoring credential to continue."
-        );
-      } else if (
-        error?.status === 401
-      ) {
-        setErrorMessage(
-          "The monitoring credential was not accepted."
-        );
-      } else if (
-        error?.status === 404
-      ) {
-        setErrorMessage(
-          "The dashboard endpoint is not enabled on this server."
-        );
-      } else if (
-        error?.status === 503
-      ) {
-        setErrorMessage(
-          "Dashboard metrics are temporarily unavailable."
-        );
+        const response =
+          healthResult.value;
+
+        if (
+          response?.service ===
+            "dashboard_health" &&
+          response?.health?.service ===
+            "system_health"
+        ) {
+          setHealth(
+            response.health
+          );
+          acceptedCredential =
+            true;
+        } else {
+          setHealthErrorMessage(
+            "Could not load live system health."
+          );
+        }
       } else {
-        setErrorMessage(
-          "Could not load dashboard metrics."
+        setHealthErrorMessage(
+          dashboardErrorMessage(
+            healthResult.reason,
+            "health"
+          )
         );
+      }
+
+      if (acceptedCredential) {
+        storeSessionCredential(
+          token
+        );
+        setCredential(token);
       }
     } finally {
       setLoading(false);
@@ -290,6 +523,13 @@ function AdminDashboard({
       ? agents.usage
       : [];
 
+  const healthComponents =
+    Array.isArray(
+      health?.components
+    )
+      ? health.components
+      : [];
+
   function handleSubmit(event) {
     event.preventDefault();
     loadDashboard(
@@ -301,6 +541,8 @@ function AdminDashboard({
     clearSessionCredential();
     setCredential("");
     setSummary(null);
+    setHealth(null);
+    setHealthErrorMessage("");
     setErrorMessage(
       "Monitoring credential cleared for this browser session."
     );
@@ -351,8 +593,8 @@ function AdminDashboard({
                   : "text-slate-500"
               }`}
             >
-              Usage, storage, recovery,
-              and incident visibility.
+              Live system health, usage,
+              storage, recovery, and incident visibility.
             </p>
           </div>
 
@@ -426,7 +668,7 @@ function AdminDashboard({
               >
                 {loading
                   ? "Loading…"
-                  : summary
+                  : summary || health
                     ? "Refresh"
                     : "Load Dashboard"}
               </button>
@@ -459,7 +701,10 @@ function AdminDashboard({
             )}
           </form>
 
-          {!summary && !loading && (
+          {!summary &&
+            !health &&
+            !healthErrorMessage &&
+            !loading && (
             <div
               className={`rounded-2xl border border-dashed p-8 text-center ${
                 isDark
@@ -470,6 +715,76 @@ function AdminDashboard({
               Enter the monitoring
               credential to view metrics.
             </div>
+          )}
+
+          {(health ||
+            healthErrorMessage) && (
+            <section
+              className={`mb-5 rounded-2xl border p-4 ${
+                isDark
+                  ? "border-slate-700 bg-slate-800/60"
+                  : "border-slate-200 bg-white"
+              }`}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold">
+                    System Health
+                  </h3>
+
+                  <p
+                    className={`mt-1 text-xs ${
+                      isDark
+                        ? "text-slate-400"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    Last checked:{" "}
+                    {formatCheckedAt(
+                      health?.checked_at
+                    )}
+                  </p>
+                </div>
+
+                {health && (
+                  <HealthStatusBadge
+                    status={health.status}
+                    isDark={isDark}
+                    system
+                  />
+                )}
+              </div>
+
+              {healthErrorMessage && (
+                <p
+                  className={`mt-3 rounded-xl border px-3 py-2 text-sm ${
+                    isDark
+                      ? "border-amber-700/60 bg-amber-950/30 text-amber-200"
+                      : "border-amber-200 bg-amber-50 text-amber-800"
+                  }`}
+                >
+                  {healthErrorMessage}
+                </p>
+              )}
+
+              {health && (
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {healthComponents.map(
+                    (component) => (
+                      <HealthComponentRow
+                        key={
+                          component.name
+                        }
+                        component={
+                          component
+                        }
+                        isDark={isDark}
+                      />
+                    )
+                  )}
+                </div>
+              )}
+            </section>
           )}
 
           {summary && (
