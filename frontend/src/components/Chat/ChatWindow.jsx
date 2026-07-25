@@ -13,6 +13,12 @@ import Thinking from "./Thinking";
 import BranchExplorer from "./BranchExplorer";
 import WorkspaceWelcome from "../Workspace/WorkspaceWelcome";
 import DocumentLibrary from "../Documents/DocumentLibrary";
+import {
+  FiBell,
+  FiMenu,
+  FiSearch,
+  FiUser,
+} from "react-icons/fi";
 
 
 function ChatWindow({
@@ -228,6 +234,33 @@ messageActionLoadingId = null,
   }, []);
 
 
+  useEffect(() => {
+    function handleWorkspaceShortcut(
+      event
+    ) {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "k"
+      ) {
+        event.preventDefault();
+        onOpenSidebar?.();
+      }
+    }
+
+    window.addEventListener(
+      "keydown",
+      handleWorkspaceShortcut
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleWorkspaceShortcut
+      );
+    };
+  }, [onOpenSidebar]);
+
+
   function registerMessageRef(
     messageId,
     element
@@ -398,60 +431,112 @@ messageActionLoadingId = null,
       )}
 
       <header
-        className={`flex h-20 shrink-0 items-center justify-between border-b px-3 sm:px-5 md:px-8 ${
+        data-workspace-topbar="v2.40"
+        className={`flex h-16 shrink-0 items-center justify-between gap-3 border-b px-3 sm:px-5 md:px-6 ${
           isDark
-            ? "border-slate-800 bg-[#0f172a]"
-            : "border-slate-200 bg-white"
+            ? "border-white/10 bg-[#0b1020]/95"
+            : "border-slate-200 bg-white/95"
         }`}
       >
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
             onClick={onOpenSidebar}
-            className={`shrink-0 rounded-lg p-2 text-xl md:hidden ${
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition md:hidden ${
               isDark
-                ? "bg-slate-800 hover:bg-slate-700"
-                : "bg-slate-200 hover:bg-slate-300"
+                ? "text-slate-300 hover:bg-white/[0.06] hover:text-white"
+                : "text-slate-600 hover:bg-slate-100"
             }`}
             aria-label="Open sidebar"
           >
-            ☰
+            <FiMenu
+              aria-hidden="true"
+              size={18}
+            />
           </button>
 
           <div className="min-w-0">
-            <h2 className="truncate text-base font-bold sm:text-lg md:text-xl">
-              Onkar Personal AI
-            </h2>
-
-            <p className="hidden truncate text-sm text-slate-500 sm:block">
-              PDF RAG • Vision • Voice •
-              Internet Search
+            <p className="truncate text-sm font-semibold">
+              {activeChat?.title ||
+                "Onkar-AI Workspace"}
             </p>
+
+            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  isOnline
+                    ? "bg-emerald-500"
+                    : "bg-red-500"
+                }`}
+              />
+              {isOnline
+                ? "Online"
+                : "Offline"}
+            </div>
           </div>
         </div>
 
-        <div
-          className={`ml-2 flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs md:px-4 md:text-sm ${
-            isOnline
-              ? isDark
-                ? "bg-emerald-500/10 text-emerald-400"
-                : "bg-emerald-100 text-emerald-700"
-              : isDark
-                ? "bg-red-500/10 text-red-400"
-                : "bg-red-100 text-red-700"
-          }`}
-        >
-          <span
-            className={`h-2 w-2 rounded-full ${
-              isOnline
-                ? "bg-emerald-500"
-                : "bg-red-500"
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenSidebar}
+            className={`hidden h-9 min-w-0 items-center gap-2 rounded-xl border px-3 text-left text-xs transition sm:flex md:w-64 lg:w-80 ${
+              isDark
+                ? "border-white/10 bg-white/[0.035] text-slate-400 hover:border-white/15 hover:bg-white/[0.06]"
+                : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100"
             }`}
-          />
+            title="Open workspace search"
+            aria-label="Open workspace search"
+          >
+            <FiSearch
+              aria-hidden="true"
+              size={15}
+            />
 
-          {isOnline
-            ? "Online"
-            : "Offline"}
+            <span className="min-w-0 flex-1 truncate">
+              Search chats & bookmarks...
+            </span>
+
+            <kbd
+              className={`rounded-md border px-1.5 py-0.5 text-[10px] ${
+                isDark
+                  ? "border-white/10 bg-slate-950/70 text-slate-500"
+                  : "border-slate-200 bg-white text-slate-500"
+              }`}
+            >
+              Ctrl K
+            </kbd>
+          </button>
+
+          <button
+            type="button"
+            disabled
+            title="Notifications are not available yet"
+            aria-label="Notifications are not available yet"
+            className={`flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-xl border opacity-55 ${
+              isDark
+                ? "border-white/10 text-slate-400"
+                : "border-slate-200 text-slate-500"
+            }`}
+          >
+            <FiBell
+              aria-hidden="true"
+              size={16}
+            />
+          </button>
+
+          <button
+            type="button"
+            disabled
+            title="Profile is not available yet"
+            aria-label="Profile is not available yet"
+            className="flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-600 text-white opacity-75"
+          >
+            <FiUser
+              aria-hidden="true"
+              size={15}
+            />
+          </button>
         </div>
       </header>
 

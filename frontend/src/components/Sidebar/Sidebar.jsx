@@ -6,6 +6,17 @@ import SettingsModal from "../Common/SettingsModal";
 import AdminDashboard from "../Dashboard/AdminDashboard";
 import GlobalChatSearch from "./GlobalChatSearch";
 import BookmarksPanel from "./BookmarksPanel";
+import {
+  FiBookmark,
+  FiBookOpen,
+  FiCpu,
+  FiDatabase,
+  FiGitBranch,
+  FiGrid,
+  FiMessageSquare,
+  FiSettings,
+  FiUser,
+} from "react-icons/fi";
 
 function getGroup(dateString) {
   if (!dateString) return "Older";
@@ -151,6 +162,32 @@ function Sidebar({
   function handleNewChat() {
     newChat();
     onClose?.();
+  }
+
+  function handleWorkspaceTarget(
+    targetId,
+    {
+      focus = false,
+      closeMobile = true,
+    } = {}
+  ) {
+    const target =
+      document.getElementById(
+        targetId
+      );
+
+    target?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+    });
+
+    if (focus) {
+      target?.focus?.();
+    }
+
+    if (closeMobile) {
+      onClose?.();
+    }
   }
 
   function handleSelectChat(
@@ -464,7 +501,7 @@ function Sidebar({
 
       <aside
         data-workspace-sidebar="primary"
-        className={`fixed inset-y-0 left-0 z-50 flex h-screen w-[292px] max-w-[88vw] shrink-0 flex-col overflow-hidden border-r shadow-2xl transition-all duration-300 md:static md:z-auto md:h-full md:max-w-none md:translate-x-0 md:rounded-[28px] md:border ${
+        className={`fixed inset-y-0 left-0 z-50 flex h-screen w-[272px] max-w-[88vw] shrink-0 flex-col overflow-hidden border-r shadow-2xl transition-all duration-300 md:static md:z-auto md:h-full md:max-w-none md:translate-x-0 md:rounded-[24px] md:border ${
           isOpen
             ? "translate-x-0"
             : "-translate-x-full"
@@ -483,22 +520,19 @@ function Sidebar({
         >
           <div className="flex min-w-0 items-center gap-3">
             <div
-              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border text-lg font-black shadow-lg ${
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-[11px] font-black shadow-lg ${
                 isDark
                   ? "border-blue-400/30 bg-blue-500/10 text-blue-300 shadow-blue-950/40"
                   : "border-blue-200 bg-blue-50 text-blue-700 shadow-blue-100"
               }`}
               aria-hidden="true"
             >
-              AI
+              OA
             </div>
 
             <div className="min-w-0">
-              <h1 className="truncate text-xl font-bold tracking-tight">
-                Onkar{" "}
-                <span className="text-blue-400">
-                  AI
-                </span>
+              <h1 className="truncate text-lg font-bold tracking-tight">
+                Onkar-AI
               </h1>
 
               <p
@@ -528,55 +562,196 @@ function Sidebar({
         </div>
 
         <div
-          className={`space-y-2 border-b p-4 ${
+          data-sidebar-navigation="v2.40"
+          className={`border-b p-3 ${
             isDark
-              ? "border-slate-800"
+              ? "border-white/10"
               : "border-slate-200"
           }`}
         >
           <button
             type="button"
-            onClick={
-              handleNewChat
-            }
-            className="w-full rounded-2xl bg-blue-600 p-3 font-semibold text-white shadow-lg shadow-blue-950/20 transition hover:bg-blue-500"
+            onClick={handleNewChat}
+            className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-fuchsia-600 px-3 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-950/25 transition hover:brightness-110"
           >
-            + New Chat
+            <span
+              className="text-lg leading-none"
+              aria-hidden="true"
+            >
+              +
+            </span>
+            New Chat
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setShowDashboard(true);
-              onClose?.();
-            }}
-            className={`w-full rounded-xl p-3 font-semibold transition ${
-              isDark
-                ? "bg-slate-800 text-white hover:bg-slate-700"
-                : "bg-slate-100 text-slate-900 hover:bg-slate-200"
-            }`}
+          <nav
+            className="space-y-1"
+            aria-label="Workspace navigation"
           >
-            📊 Dashboard
-          </button>
+            <button
+              type="button"
+              onClick={() =>
+                handleWorkspaceTarget(
+                  "sidebar-chat-list",
+                  {
+                    closeMobile: false,
+                  }
+                )
+              }
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
+                isDark
+                  ? "bg-white/[0.07] text-white"
+                  : "bg-slate-100 text-slate-950"
+              }`}
+            >
+              <FiMessageSquare
+                aria-hidden="true"
+                size={17}
+              />
+              Chats
+            </button>
 
-          <button
-            type="button"
-            onClick={() =>
-              setShowSettings(
-                true
-              )
-            }
-            className={`w-full rounded-xl p-3 font-semibold transition ${
-              isDark
-                ? "bg-slate-700 text-white hover:bg-slate-600"
-                : "bg-slate-200 text-slate-900 hover:bg-slate-300"
-            }`}
-          >
-            ⚙ Settings
-          </button>
+            <button
+              type="button"
+              onClick={() =>
+                handleWorkspaceTarget(
+                  "workspace-branch-explorer"
+                )
+              }
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                isDark
+                  ? "text-slate-300 hover:bg-white/[0.06] hover:text-white"
+                  : "text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              <FiGitBranch
+                aria-hidden="true"
+                size={17}
+              />
+              Branches
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                handleWorkspaceTarget(
+                  "sidebar-bookmarks-panel",
+                  {
+                    closeMobile: false,
+                  }
+                )
+              }
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                isDark
+                  ? "text-slate-300 hover:bg-white/[0.06] hover:text-white"
+                  : "text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              <FiBookmark
+                aria-hidden="true"
+                size={17}
+              />
+              Bookmarks
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                handleWorkspaceTarget(
+                  "workspace-document-library"
+                )
+              }
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                isDark
+                  ? "text-slate-300 hover:bg-white/[0.06] hover:text-white"
+                  : "text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              <FiBookOpen
+                aria-hidden="true"
+                size={17}
+              />
+              Knowledge Base
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                handleWorkspaceTarget(
+                  "agentPicker",
+                  {
+                    focus: true,
+                  }
+                )
+              }
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                isDark
+                  ? "text-slate-300 hover:bg-white/[0.06] hover:text-white"
+                  : "text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              <FiCpu
+                aria-hidden="true"
+                size={17}
+              />
+              Agents
+            </button>
+
+            <button
+              type="button"
+              disabled
+              title="Memory is not available yet"
+              className="flex w-full cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-slate-500 opacity-70"
+            >
+              <FiDatabase
+                aria-hidden="true"
+                size={17}
+              />
+              Memory
+              <span className="ml-auto text-[10px]">
+                Later
+              </span>
+            </button>
+
+            <button
+              type="button"
+              disabled
+              title="Profile is not available yet"
+              className="flex w-full cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-slate-500 opacity-70"
+            >
+              <FiUser
+                aria-hidden="true"
+                size={17}
+              />
+              Profile
+              <span className="ml-auto text-[10px]">
+                Later
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setShowSettings(true)
+              }
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                isDark
+                  ? "text-slate-300 hover:bg-white/[0.06] hover:text-white"
+                  : "text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              <FiSettings
+                aria-hidden="true"
+                size={17}
+              />
+              Settings
+            </button>
+          </nav>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-5">
+        <div
+          id="sidebar-chat-list"
+          className="flex-1 overflow-y-auto px-3 py-4"
+        >
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-xs uppercase tracking-wider text-slate-500">
               Chats
@@ -593,27 +768,31 @@ function Sidebar({
             </span>
           </div>
 
-          <GlobalChatSearch
-            folders={folders}
-            onSelectResult={
-              handleSearchResult
-            }
-            onSearchActiveChange={
-              setGlobalSearchActive
-            }
-            theme={theme}
-          />
+          <div id="sidebar-global-search">
+            <GlobalChatSearch
+              folders={folders}
+              onSelectResult={
+                handleSearchResult
+              }
+              onSearchActiveChange={
+                setGlobalSearchActive
+              }
+              theme={theme}
+            />
+          </div>
 
-          <BookmarksPanel
-            folders={folders}
-            onSelectResult={
-              handleSearchResult
-            }
-            onPanelActiveChange={
-              setBookmarksPanelActive
-            }
-            theme={theme}
-          />
+          <div id="sidebar-bookmarks-panel">
+            <BookmarksPanel
+              folders={folders}
+              onSelectResult={
+                handleSearchResult
+              }
+              onPanelActiveChange={
+                setBookmarksPanelActive
+              }
+              theme={theme}
+            />
+          </div>
 
           {!globalSearchActive &&
             !bookmarksPanelActive && (
@@ -822,6 +1001,57 @@ function Sidebar({
               </div>
             </>
           )}
+        </div>
+
+        <div
+          data-sidebar-user-card="real-dashboard-link"
+          className={`border-t p-3 ${
+            isDark
+              ? "border-white/10"
+              : "border-slate-200"
+          }`}
+        >
+          <div
+            className={`rounded-2xl border p-3 ${
+              isDark
+                ? "border-white/10 bg-white/[0.035]"
+                : "border-slate-200 bg-slate-50"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-600 text-xs font-bold text-white">
+                OS
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">
+                  Onkar Salgude
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Personal workspace
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowDashboard(true);
+                onClose?.();
+              }}
+              className={`mt-3 flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium transition ${
+                isDark
+                  ? "border-white/10 bg-slate-950/50 text-slate-300 hover:bg-white/[0.06]"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              <FiGrid
+                aria-hidden="true"
+                size={14}
+              />
+              📊 Dashboard · System & usage
+            </button>
+          </div>
         </div>
       </aside>
 
