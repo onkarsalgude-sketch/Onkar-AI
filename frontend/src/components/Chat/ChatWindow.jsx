@@ -11,7 +11,7 @@ import {
 import MessageInput from "./MessageInput";
 import Thinking from "./Thinking";
 import BranchExplorer from "./BranchExplorer";
-import WelcomeScreen from "../Common/WelcomeScreen";
+import WorkspaceWelcome from "../Workspace/WorkspaceWelcome";
 import DocumentLibrary from "../Documents/DocumentLibrary";
 
 
@@ -84,6 +84,21 @@ messageActionLoadingId = null,
     useRef(null);
 
   const isDark = theme === "dark";
+
+  const activeChat =
+    chats.find(
+      (chat) =>
+        Number(chat?.id) ===
+        Number(activeChatId)
+    ) || null;
+
+  const workspaceBranchCount =
+    Math.max(
+      0,
+      Number(
+        activeChat?.branch_count
+      ) || 0
+    );
 
   const targetMessageId =
     Number(
@@ -340,7 +355,8 @@ messageActionLoadingId = null,
 
   return (
     <main
-      className={`relative flex h-screen min-w-0 flex-1 flex-col transition-colors duration-300 ${
+      data-workspace-chat="primary"
+      className={`relative flex h-full min-w-0 flex-1 flex-col transition-colors duration-300 ${
         isDark
           ? "bg-[#0f172a] text-white"
           : "bg-slate-100 text-slate-900"
@@ -439,27 +455,64 @@ messageActionLoadingId = null,
         </div>
       </header>
 
-      <BranchExplorer
-        chats={chats}
-        activeChatId={activeChatId}
-        onSelectChat={selectChat}
-        onMergeCompleted={
-          onMergeCompleted
-        }
-        theme={theme}
-      />
+      <div
+        id="workspace-branch-explorer"
+        data-workspace-feature="branches"
+      >
+        <BranchExplorer
+          chats={chats}
+          activeChatId={activeChatId}
+          onSelectChat={selectChat}
+          onMergeCompleted={
+            onMergeCompleted
+          }
+          theme={theme}
+        />
+      </div>
 
-      <DocumentLibrary
-        activeChatId={activeChatId}
-        refreshKey={documentRefreshKey}
-        theme={theme}
-      />
+      <div
+        id="workspace-document-library"
+        data-workspace-feature="knowledge"
+      >
+        <DocumentLibrary
+          activeChatId={activeChatId}
+          refreshKey={documentRefreshKey}
+          theme={theme}
+        />
+      </div>
 
       <section className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 md:px-8 md:py-6">
         <div className="mx-auto max-w-4xl">
           {messages.length <= 1 && (
-            <WelcomeScreen
+            <WorkspaceWelcome
               setInput={setInput}
+              activeChatId={activeChatId}
+              branchCount={
+                workspaceBranchCount
+              }
+              onOpenKnowledge={() =>
+                document
+                  .getElementById(
+                    "workspace-document-library"
+                  )
+                  ?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "nearest",
+                  })
+              }
+              onOpenBranches={() =>
+                document
+                  .getElementById(
+                    "workspace-branch-explorer"
+                  )
+                  ?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "nearest",
+                  })
+              }
+              onOpenSidebar={
+                onOpenSidebar
+              }
               theme={theme}
             />
           )}
