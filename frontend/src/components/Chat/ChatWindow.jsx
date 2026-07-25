@@ -340,7 +340,8 @@ messageActionLoadingId = null,
 
   return (
     <main
-      className={`relative flex h-screen min-w-0 flex-1 flex-col transition-colors duration-300 ${
+      data-workspace-chat="primary"
+      className={`relative flex h-full min-w-0 flex-1 flex-col transition-colors duration-300 ${
         isDark
           ? "bg-[#0f172a] text-white"
           : "bg-slate-100 text-slate-900"

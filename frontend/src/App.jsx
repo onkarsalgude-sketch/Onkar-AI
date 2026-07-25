@@ -110,10 +110,11 @@ regenerateResponse,
 
   return (
     <div
-      className={`flex min-h-screen ${
+      data-workspace-shell="v2.39"
+      className={`flex h-screen overflow-hidden md:gap-3 md:p-3 ${
         theme === "dark"
-          ? "bg-[#0f172a] text-white"
-          : "bg-slate-100 text-slate-900"
+          ? "bg-[#060914] text-white"
+          : "bg-slate-200 text-slate-900"
       }`}
     >
       <Sidebar
@@ -166,7 +167,15 @@ toggleChatPin={toggleChatPin}
         onThemeChange={setTheme}
       />
 
-     <ChatWindow
+      <div
+        data-workspace-main="primary"
+        className={`min-w-0 flex-1 overflow-hidden md:rounded-[28px] md:border md:shadow-2xl ${
+          theme === "dark"
+            ? "md:border-white/10 md:bg-[#0f172a] md:shadow-black/30"
+            : "md:border-slate-200 md:bg-white md:shadow-slate-300/50"
+        }`}
+      >
+       <ChatWindow
   activeChatId={activeChatId}
   chats={chats}
   selectChat={selectChat}
@@ -240,6 +249,7 @@ onRemoveMessageBookmark={
   }
   theme={theme}
 />
+      </div>
     </div>
   );
 }

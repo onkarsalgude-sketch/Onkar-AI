@@ -255,12 +255,12 @@ function Sidebar({
             chat.id
           )
         }
-        className={`group cursor-pointer rounded-xl border p-3 transition ${
+        className={`group cursor-pointer rounded-2xl p-3 transition ${
           isActive
-            ? "border-blue-500 bg-blue-600 text-white"
+            ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-950/20"
             : isDark
-              ? "border-slate-800 bg-slate-900 hover:border-slate-700 hover:bg-slate-800"
-              : "border-slate-200 bg-slate-100 hover:border-slate-300 hover:bg-slate-200"
+              ? "bg-white/[0.035] hover:bg-white/[0.07]"
+              : "bg-slate-100/80 hover:bg-slate-200"
         }`}
       >
         <div className="flex items-start justify-between gap-2">
@@ -463,37 +463,54 @@ function Sidebar({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex h-screen w-80 shrink-0 flex-col border-r transition-all duration-300 md:static md:z-auto md:translate-x-0 ${
+        data-workspace-sidebar="primary"
+        className={`fixed inset-y-0 left-0 z-50 flex h-screen w-[292px] max-w-[88vw] shrink-0 flex-col overflow-hidden border-r shadow-2xl transition-all duration-300 md:static md:z-auto md:h-full md:max-w-none md:translate-x-0 md:rounded-[28px] md:border ${
           isOpen
             ? "translate-x-0"
             : "-translate-x-full"
         } ${
           isDark
-            ? "border-slate-800 bg-[#0b1220] text-white"
-            : "border-slate-200 bg-white text-slate-900"
+            ? "border-slate-800 bg-[#0b1020] text-white shadow-black/30"
+            : "border-slate-200 bg-white text-slate-900 shadow-slate-300/50"
         }`}
       >
         <div
-          className={`flex items-center justify-between border-b p-6 ${
+          className={`flex items-center justify-between border-b px-4 py-5 ${
             isDark
               ? "border-slate-800"
               : "border-slate-200"
           }`}
         >
-          <div>
-            <h1 className="text-2xl font-bold">
-              🤖 Onkar AI
-            </h1>
-
-            <p
-              className={`mt-1 text-sm ${
+          <div className="flex min-w-0 items-center gap-3">
+            <div
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border text-lg font-black shadow-lg ${
                 isDark
-                  ? "text-slate-400"
-                  : "text-slate-500"
+                  ? "border-blue-400/30 bg-blue-500/10 text-blue-300 shadow-blue-950/40"
+                  : "border-blue-200 bg-blue-50 text-blue-700 shadow-blue-100"
               }`}
+              aria-hidden="true"
             >
-              Personal AI Assistant
-            </p>
+              AI
+            </div>
+
+            <div className="min-w-0">
+              <h1 className="truncate text-xl font-bold tracking-tight">
+                Onkar{" "}
+                <span className="text-blue-400">
+                  AI
+                </span>
+              </h1>
+
+              <p
+                className={`mt-0.5 truncate text-xs ${
+                  isDark
+                    ? "text-slate-400"
+                    : "text-slate-500"
+                }`}
+              >
+                Personal AI Workspace
+              </p>
+            </div>
           </div>
 
           <button
@@ -511,7 +528,7 @@ function Sidebar({
         </div>
 
         <div
-          className={`space-y-3 border-b p-4 ${
+          className={`space-y-2 border-b p-4 ${
             isDark
               ? "border-slate-800"
               : "border-slate-200"
@@ -522,7 +539,7 @@ function Sidebar({
             onClick={
               handleNewChat
             }
-            className="w-full rounded-xl bg-blue-600 p-3 font-semibold text-white transition hover:bg-blue-700"
+            className="w-full rounded-2xl bg-blue-600 p-3 font-semibold text-white shadow-lg shadow-blue-950/20 transition hover:bg-blue-500"
           >
             + New Chat
           </button>
