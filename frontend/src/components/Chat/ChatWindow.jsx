@@ -72,6 +72,11 @@ messageActionLoadingId = null,
   const [highlightedMessageId, setHighlightedMessageId] =
     useState(null);
 
+  const [
+    workspacePanel,
+    setWorkspacePanel,
+  ] = useState(null);
+
   const [isOnline, setIsOnline] =
     useState(() => {
       if (
@@ -232,6 +237,35 @@ messageActionLoadingId = null,
       window.removeEventListener(
         "offline",
         handleOffline
+      );
+    };
+  }, []);
+
+
+  useEffect(() => {
+    function handleWorkspacePanel(
+      event
+    ) {
+      const panel =
+        event?.detail?.panel;
+
+      if (
+        panel === "branches" ||
+        panel === "knowledge"
+      ) {
+        setWorkspacePanel(panel);
+      }
+    }
+
+    window.addEventListener(
+      "onkar-ai:open-workspace-panel",
+      handleWorkspacePanel
+    );
+
+    return () => {
+      window.removeEventListener(
+        "onkar-ai:open-workspace-panel",
+        handleWorkspacePanel
       );
     };
   }, []);
@@ -543,72 +577,126 @@ messageActionLoadingId = null,
         </div>
       </header>
 
-      <div
-        id="workspace-branch-explorer"
-        data-workspace-feature="branches"
-      >
-        <BranchExplorer
-          chats={chats}
-          activeChatId={activeChatId}
-          onSelectChat={selectChat}
-          onMergeCompleted={
-            onMergeCompleted
+      {workspacePanel && (
+        <div
+          data-workspace-tool-overlay={
+            workspacePanel
           }
-          theme={theme}
-        />
-      </div>
+          className="absolute inset-x-3 top-[72px] z-40 max-h-[calc(100%-88px)] overflow-hidden rounded-2xl border border-white/10 bg-[#080d19]/98 shadow-2xl shadow-black/50 backdrop-blur-xl sm:inset-x-5 md:inset-x-6"
+        >
+          <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+            <div>
+              <p className="text-sm font-semibold">
+                {workspacePanel ===
+                "branches"
+                  ? "Chat Branches"
+                  : "Knowledge Base"}
+              </p>
+
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                {workspacePanel ===
+                "branches"
+                  ? "Explore and manage the real branch tree."
+                  : "Manage the real PDF and RAG tools for this chat."}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                setWorkspacePanel(null)
+              }
+              className="rounded-lg px-3 py-1.5 text-sm text-slate-400 transition hover:bg-white/[0.06] hover:text-white"
+              aria-label="Close workspace tool"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="max-h-[calc(100vh-190px)] overflow-y-auto">
+            {workspacePanel ===
+            "branches" ? (
+              <div
+                id="workspace-branch-explorer"
+                data-workspace-feature="branches"
+              >
+                <BranchExplorer
+                  chats={chats}
+                  activeChatId={
+                    activeChatId
+                  }
+                  onSelectChat={
+                    selectChat
+                  }
+                  onMergeCompleted={
+                    onMergeCompleted
+                  }
+                  theme={theme}
+                />
+              </div>
+            ) : (
+              <div
+                id="workspace-document-library"
+                data-workspace-feature="knowledge"
+              >
+                <DocumentLibrary
+                  activeChatId={
+                    activeChatId
+                  }
+                  refreshKey={
+                    documentRefreshKey
+                  }
+                  theme={theme}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div
-        id="workspace-document-library"
-        data-workspace-feature="knowledge"
+        data-workspace-command-deck="v2.40"
+        className={`shrink-0 border-b px-3 sm:px-5 md:px-6 ${
+          isDark
+            ? "border-white/10 bg-[#0f172a]/98"
+            : "border-slate-200 bg-slate-100/98"
+        }`}
       >
-        <DocumentLibrary
-          activeChatId={activeChatId}
-          refreshKey={documentRefreshKey}
-          theme={theme}
-        />
+        <div className="mx-auto max-w-5xl">
+          <WorkspaceWelcome
+            setInput={setInput}
+            activeChatId={activeChatId}
+            branchCount={
+              workspaceBranchCount
+            }
+            onOpenKnowledge={() =>
+              setWorkspacePanel(
+                "knowledge"
+              )
+            }
+            onOpenBranches={() =>
+              setWorkspacePanel(
+                "branches"
+              )
+            }
+            onOpenSidebar={
+              onOpenSidebar
+            }
+            showGreetingActions
+            showBottomCards={false}
+            theme={theme}
+          />
+        </div>
       </div>
 
       <section
         data-chat-canvas="v2.40"
-        className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 md:px-6 md:py-5"
+        className="flex-1 overflow-y-auto px-3 py-3 sm:px-5 md:px-6 md:py-4"
       >
         <div className="mx-auto max-w-5xl">
-          {messages.length <= 1 && (
-            <WorkspaceWelcome
-              setInput={setInput}
-              activeChatId={activeChatId}
-              branchCount={
-                workspaceBranchCount
-              }
-              onOpenKnowledge={() =>
-                document
-                  .getElementById(
-                    "workspace-document-library"
-                  )
-                  ?.scrollIntoView({
-                    behavior: "smooth",
-                    block: "nearest",
-                  })
-              }
-              onOpenBranches={() =>
-                document
-                  .getElementById(
-                    "workspace-branch-explorer"
-                  )
-                  ?.scrollIntoView({
-                    behavior: "smooth",
-                    block: "nearest",
-                  })
-              }
-              onOpenSidebar={
-                onOpenSidebar
-              }
-              theme={theme}
-            />
-          )}
 
-          {messages.length > 1 && (
+          {activeChatId &&
+            messages.length > 0 && (
             <div
               data-chat-thread-header="live"
               className={`mb-3 flex items-center justify-between gap-3 rounded-t-2xl border px-4 py-3 ${
@@ -706,12 +794,14 @@ messageActionLoadingId = null,
 
           <div
             data-chat-thread-body={
-              messages.length > 1
+              activeChatId &&
+              messages.length > 0
                 ? "active"
                 : "idle"
             }
             className={
-              messages.length > 1
+              activeChatId &&
+              messages.length > 0
                 ? `rounded-b-2xl border border-t-0 px-3 pb-2 pt-4 sm:px-4 ${
                     isDark
                       ? "border-white/10 bg-[#0b1020]/55"
@@ -944,6 +1034,35 @@ onRemoveMessageBookmark={
           )}
 
           <div ref={messagesEndRef} />
+          </div>
+
+          <div
+            data-workspace-bottom-deck="after-thread"
+            className="pt-2"
+          >
+            <WorkspaceWelcome
+              setInput={setInput}
+              activeChatId={activeChatId}
+              branchCount={
+                workspaceBranchCount
+              }
+              onOpenKnowledge={() =>
+                setWorkspacePanel(
+                  "knowledge"
+                )
+              }
+              onOpenBranches={() =>
+                setWorkspacePanel(
+                  "branches"
+                )
+              }
+              onOpenSidebar={
+                onOpenSidebar
+              }
+              showGreetingActions={false}
+              showBottomCards
+              theme={theme}
+            />
           </div>
         </div>
       </section>

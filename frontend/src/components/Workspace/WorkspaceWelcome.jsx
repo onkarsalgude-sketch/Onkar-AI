@@ -95,6 +95,8 @@ function WorkspaceWelcome({
   onOpenKnowledge,
   onOpenBranches,
   onOpenSidebar,
+  showGreetingActions = true,
+  showBottomCards = true,
   theme = "dark",
 }) {
   const isDark =
@@ -113,100 +115,105 @@ function WorkspaceWelcome({
     <section
       data-workspace-welcome="v2.39"
       data-reference-polish="v2.40"
-      className="pb-5 pt-3 sm:pb-6 sm:pt-5"
+      className="pb-3 pt-3 sm:pb-4 sm:pt-4"
     >
       <div className="mx-auto max-w-6xl">
-        <div className="mb-5 sm:mb-6">
-          <div className="flex items-center gap-2.5">
-            <span
-              className="h-3 w-3 rounded-full bg-gradient-to-br from-violet-400 to-fuchsia-600 shadow-lg shadow-fuchsia-900/30"
-              aria-hidden="true"
-            />
+        {showGreetingActions && (
+          <>
+            <div className="mb-3">
+              <div className="flex items-center gap-2.5">
+                <span
+                  className="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-violet-400 to-fuchsia-600 shadow-lg shadow-fuchsia-900/30"
+                  aria-hidden="true"
+                />
 
-            <h1
-              className={`text-2xl font-bold tracking-tight sm:text-3xl ${
-                isDark
-                  ? "text-white"
-                  : "text-slate-950"
-              }`}
-            >
-              {greeting}, Onkar! 👋
-            </h1>
-          </div>
-
-          <p
-            className={`mt-1.5 text-sm ${
-              isDark
-                ? "text-slate-400"
-                : "text-slate-600"
-            }`}
-          >
-            How can I help you today?
-          </p>
-        </div>
-
-        <div
-          data-workspace-quick-actions="6"
-          className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6"
-        >
-          {QUICK_ACTIONS.map(
-            (action) => {
-              const Icon =
-                action.icon;
-
-              return (
-                <button
-                  key={action.id}
-                  type="button"
-                  onClick={() =>
-                    chooseAction(action)
-                  }
-                  className={`group min-h-[82px] rounded-xl border p-3 text-left transition duration-200 hover:-translate-y-0.5 ${
+                <h1
+                  className={`text-xl font-bold tracking-tight sm:text-2xl ${
                     isDark
-                      ? "border-white/10 bg-white/[0.03] hover:border-violet-400/30 hover:bg-violet-500/[0.06]"
-                      : "border-slate-200 bg-white hover:border-violet-300 hover:bg-violet-50/60"
+                      ? "text-white"
+                      : "text-slate-950"
                   }`}
-                  aria-label={`Quick action: ${action.label}`}
-                  title={action.description}
                 >
-                  <div className="flex items-start gap-2.5">
-                    <span
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition ${
+                  {greeting}, Onkar! 👋
+                </h1>
+              </div>
+
+              <p
+                className={`mt-1 text-sm ${
+                  isDark
+                    ? "text-slate-400"
+                    : "text-slate-600"
+                }`}
+              >
+                How can I help you today?
+              </p>
+            </div>
+
+            <div
+              data-workspace-quick-actions="6"
+              className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6"
+            >
+              {QUICK_ACTIONS.map(
+                (action) => {
+                  const Icon =
+                    action.icon;
+
+                  return (
+                    <button
+                      key={action.id}
+                      type="button"
+                      onClick={() =>
+                        chooseAction(action)
+                      }
+                      className={`group min-h-[82px] rounded-xl border p-2.5 text-left transition duration-200 hover:-translate-y-0.5 ${
                         isDark
-                          ? "border-violet-400/15 bg-violet-500/10 text-violet-300 group-hover:border-violet-400/30"
-                          : "border-violet-200 bg-violet-50 text-violet-700 group-hover:border-violet-300"
+                          ? "border-white/10 bg-white/[0.03] hover:border-violet-400/30 hover:bg-violet-500/[0.06]"
+                          : "border-slate-200 bg-white hover:border-violet-300 hover:bg-violet-50/60"
                       }`}
+                      aria-label={`Quick action: ${action.label}`}
+                      title={action.description}
                     >
-                      <Icon
-                        aria-hidden="true"
-                        size={16}
-                      />
-                    </span>
+                      <div className="flex items-start gap-2">
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition ${
+                            isDark
+                              ? "border-violet-400/15 bg-violet-500/10 text-violet-300 group-hover:border-violet-400/30"
+                              : "border-violet-200 bg-violet-50 text-violet-700 group-hover:border-violet-300"
+                          }`}
+                        >
+                          <Icon
+                            aria-hidden="true"
+                            size={15}
+                          />
+                        </span>
 
-                    <span className="min-w-0">
-                      <span
-                        className={`block text-sm font-semibold ${
-                          isDark
-                            ? "text-slate-100"
-                            : "text-slate-900"
-                        }`}
-                      >
-                        {action.label}
-                      </span>
+                        <span className="min-w-0">
+                          <span
+                            className={`block text-sm font-semibold ${
+                              isDark
+                                ? "text-slate-100"
+                                : "text-slate-900"
+                            }`}
+                          >
+                            {action.label}
+                          </span>
 
-                      <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">
-                        {action.description}
-                      </span>
-                    </span>
-                  </div>
-                </button>
-              );
-            }
-          )}
-        </div>
+                          <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">
+                            {action.description}
+                          </span>
+                        </span>
+                      </div>
+                    </button>
+                  );
+                }
+              )}
+            </div>
+          </>
+        )}
 
+        {showBottomCards && (
         <div
-          data-workspace-bottom-cards="3"
+            data-workspace-bottom-cards="3"
           data-reference-bottom-cards="v2.40"
           className="mt-5 grid grid-cols-1 gap-2.5 md:grid-cols-3"
         >
@@ -363,6 +370,7 @@ function WorkspaceWelcome({
             </div>
           </button>
         </div>
+        )}
       </div>
     </section>
   );

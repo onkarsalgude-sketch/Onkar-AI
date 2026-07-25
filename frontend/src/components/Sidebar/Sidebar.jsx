@@ -171,6 +171,34 @@ function Sidebar({
       closeMobile = true,
     } = {}
   ) {
+    if (
+      targetId ===
+        "workspace-branch-explorer" ||
+      targetId ===
+        "workspace-document-library"
+    ) {
+      window.dispatchEvent(
+        new CustomEvent(
+          "onkar-ai:open-workspace-panel",
+          {
+            detail: {
+              panel:
+                targetId ===
+                "workspace-branch-explorer"
+                  ? "branches"
+                  : "knowledge",
+            },
+          }
+        )
+      );
+
+      if (closeMobile) {
+        onClose?.();
+      }
+
+      return;
+    }
+
     const target =
       document.getElementById(
         targetId
@@ -501,7 +529,7 @@ function Sidebar({
 
       <aside
         data-workspace-sidebar="primary"
-        className={`fixed inset-y-0 left-0 z-50 flex h-screen w-[272px] max-w-[88vw] shrink-0 flex-col overflow-hidden border-r shadow-2xl transition-all duration-300 md:static md:z-auto md:h-full md:max-w-none md:translate-x-0 md:rounded-[24px] md:border ${
+        className={`fixed inset-y-0 left-0 z-50 flex h-screen w-[252px] max-w-[88vw] shrink-0 flex-col overflow-hidden border-r shadow-2xl transition-all duration-300 md:static md:z-auto md:h-full md:max-w-none md:translate-x-0 md:rounded-[22px] md:border ${
           isOpen
             ? "translate-x-0"
             : "-translate-x-full"
@@ -512,7 +540,7 @@ function Sidebar({
         }`}
       >
         <div
-          className={`flex items-center justify-between border-b px-4 py-5 ${
+          className={`flex items-center justify-between border-b px-3.5 py-4 ${
             isDark
               ? "border-slate-800"
               : "border-slate-200"
