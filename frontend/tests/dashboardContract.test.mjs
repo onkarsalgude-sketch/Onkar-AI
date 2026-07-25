@@ -23,7 +23,9 @@ function read(relativePath) {
       relativePath
     ),
     "utf8"
-  );
+  )
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
 }
 
 
@@ -231,6 +233,258 @@ test(
 
     assert.ok(
       packageJson.dependencies.axios
+    );
+  }
+);
+
+test(
+  "dashboard service exposes read-only live health request",
+  () => {
+    const source = read(
+      "src/services/dashboardService.js"
+    );
+
+    assert.ok(
+      source.includes(
+        "getDashboardHealth"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        '"/admin/dashboard/health"'
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "Authorization:"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "`Bearer ${token}`"
+      )
+    );
+  }
+);
+
+
+test(
+  "dashboard renders live system health contract",
+  () => {
+    const source = read(
+      "src/components/Dashboard/AdminDashboard.jsx"
+    );
+
+    for (
+      const label of [
+        "System Health",
+        "Last checked",
+        "Database",
+        "Document Storage",
+        "Document Recovery",
+        "Knowledge / RAG",
+        "Healthy",
+        "Warning",
+        "Critical",
+        "Initializing",
+        "Unavailable",
+        "Disabled",
+      ]
+    ) {
+      assert.ok(
+        source.includes(label)
+      );
+    }
+  }
+);
+
+
+test(
+  "dashboard refresh loads metrics and health independently",
+  () => {
+    const source = read(
+      "src/components/Dashboard/AdminDashboard.jsx"
+    );
+
+    assert.ok(
+      source.includes(
+        "getDashboardSummary(token)"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "getDashboardHealth(token)"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "Promise.allSettled"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "healthErrorMessage"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        'summaryResult.status ==='
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        'healthResult.status ==='
+      )
+    );
+  }
+);
+
+
+test(
+  "dashboard auto refresh uses a bounded 30 second interval",
+  () => {
+    const source = read(
+      "src/components/Dashboard/AdminDashboard.jsx"
+    );
+
+    assert.ok(
+      source.includes(
+        "DASHBOARD_AUTO_REFRESH_MS"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "30_000"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "window.setInterval("
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "window.clearInterval("
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "activeCredential"
+      )
+    );
+  }
+);
+
+
+test(
+  "dashboard auto refresh prevents overlapping cycles",
+  () => {
+    const source = read(
+      "src/components/Dashboard/AdminDashboard.jsx"
+    );
+
+    assert.ok(
+      source.includes(
+        "useRef"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "refreshInFlightRef.current"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "background = false"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "setRefreshing(true)"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "setRefreshing(false)"
+      )
+    );
+  }
+);
+
+
+test(
+  "dashboard preserves manual refresh and forget stops polling",
+  () => {
+    const source = read(
+      "src/components/Dashboard/AdminDashboard.jsx"
+    );
+
+    assert.ok(
+      source.includes(
+        '"Refresh"'
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "loadDashboard(\n      credential"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        'setActiveCredential("")'
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "requestEpochRef.current += 1"
+      )
+    );
+  }
+);
+
+
+test(
+  "dashboard keeps backend Last checked timestamp distinct from auto refresh",
+  () => {
+    const source = read(
+      "src/components/Dashboard/AdminDashboard.jsx"
+    );
+
+    assert.ok(
+      source.includes(
+        "health?.checked_at"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "Auto refresh: every 30 seconds"
+      )
+    );
+
+    assert.ok(
+      !source.includes(
+        "lastRefreshed"
+      )
     );
   }
 );

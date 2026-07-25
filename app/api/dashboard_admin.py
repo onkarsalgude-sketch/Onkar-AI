@@ -18,12 +18,16 @@ from app.services.branch_merge_security import (
     verify_branch_merge_bearer,
 )
 from app.services.dashboard_service import (
+    build_dashboard_health,
     build_dashboard_summary,
 )
 
 
 DASHBOARD_SUMMARY_PATH = (
     "/admin/dashboard/summary"
+)
+DASHBOARD_HEALTH_PATH = (
+    "/admin/dashboard/health"
 )
 
 
@@ -62,15 +66,27 @@ def _dashboard_unavailable() -> HTTPException:
     )
 
 
+def _dashboard_health_unavailable() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail=(
+            "Dashboard health is unavailable."
+        ),
+    )
+
+
 def create_dashboard_admin_router(
     settings: SystemHealthMonitoringSettings,
     *,
     summary_provider: Callable = (
         build_dashboard_summary
     ),
+    health_provider: Callable = (
+        build_dashboard_health
+    ),
     db_path: str | None = None,
 ) -> APIRouter:
-    """Create the authenticated read-only dashboard summary route."""
+    """Create authenticated read-only dashboard routes."""
 
     validate_system_health_monitoring_settings(
         settings
@@ -81,6 +97,13 @@ def create_dashboard_admin_router(
     ):
         raise TypeError(
             "Dashboard summary provider must be callable."
+        )
+
+    if not callable(
+        health_provider
+    ):
+        raise TypeError(
+            "Dashboard health provider must be callable."
         )
 
     router = APIRouter()
@@ -116,6 +139,48 @@ def create_dashboard_admin_router(
         return {
             "service": "dashboard",
             "summary": summary,
+        }
+
+    @router.get(
+        DASHBOARD_HEALTH_PATH,
+        operation_id=(
+            "get_admin_dashboard_health"
+        ),
+        tags=["admin"],
+    )
+    def get_admin_dashboard_health(
+        request: Request,
+    ) -> dict[str, Any]:
+        _authenticate(
+            request,
+            settings,
+        )
+
+        try:
+            health = health_provider(
+                recovery_report=getattr(
+                    request.app.state,
+                    "document_recovery_report",
+                    None,
+                ),
+                rag_runtime=getattr(
+                    request.app.state,
+                    "rag_runtime",
+                    None,
+                ),
+            )
+        except Exception:
+            raise _dashboard_health_unavailable()
+
+        if not isinstance(
+            health,
+            dict,
+        ):
+            raise _dashboard_health_unavailable()
+
+        return {
+            "service": "dashboard_health",
+            "health": health,
         }
 
     return router

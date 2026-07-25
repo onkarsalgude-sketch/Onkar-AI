@@ -2,11 +2,17 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from app.services.dashboard_service import (
     DashboardMetricsError,
+    build_dashboard_health,
     build_dashboard_summary,
     summarize_usage_metrics,
+)
+from app.services.system_health_service import (
+    HealthCheckDefinition,
+    healthy_outcome,
 )
 
 
@@ -245,6 +251,190 @@ class DashboardServiceTests(
         )
         self.assertNotIn(
             "private",
+            str(context.exception),
+        )
+
+    def test_health_reuses_definitions_and_adds_rag_runtime(self):
+        recovery_report = object()
+        rag_runtime = SimpleNamespace(
+            settings=object()
+        )
+
+        def definitions_builder(
+            *,
+            recovery_report_provider,
+        ):
+            self.assertIs(
+                recovery_report_provider(),
+                recovery_report,
+            )
+            return (
+                HealthCheckDefinition(
+                    name="database",
+                    check=lambda: (
+                        healthy_outcome(
+                            "sqlite_reachable"
+                        )
+                    ),
+                    critical=True,
+                ),
+                HealthCheckDefinition(
+                    name="document_storage",
+                    check=lambda: (
+                        healthy_outcome(
+                            "local_storage_reachable"
+                        )
+                    ),
+                    critical=True,
+                ),
+                HealthCheckDefinition(
+                    name="document_recovery",
+                    check=lambda: (
+                        healthy_outcome(
+                            "recovery_completed"
+                        )
+                    ),
+                    critical=False,
+                ),
+            )
+
+        payload = build_dashboard_health(
+            recovery_report=(
+                recovery_report
+            ),
+            rag_runtime=rag_runtime,
+            definitions_builder=(
+                definitions_builder
+            ),
+        )
+
+        self.assertEqual(
+            payload["service"],
+            "system_health",
+        )
+        self.assertEqual(
+            payload["status"],
+            "healthy",
+        )
+        self.assertEqual(
+            [
+                component["name"]
+                for component in payload[
+                    "components"
+                ]
+            ],
+            [
+                "database",
+                "document_storage",
+                "document_recovery",
+                "knowledge_rag",
+            ],
+        )
+
+        rag_component = payload[
+            "components"
+        ][-1]
+
+        self.assertEqual(
+            rag_component["status"],
+            "healthy",
+        )
+        self.assertTrue(
+            rag_component["healthy"]
+        )
+        self.assertFalse(
+            rag_component["critical"]
+        )
+        self.assertEqual(
+            rag_component["detail"],
+            "rag_runtime_ready",
+        )
+
+    def test_missing_rag_runtime_degrades_health(self):
+        def definitions_builder(
+            *,
+            recovery_report_provider,
+        ):
+            del recovery_report_provider
+            return (
+                HealthCheckDefinition(
+                    name="database",
+                    check=healthy_outcome,
+                    critical=True,
+                ),
+            )
+
+        payload = build_dashboard_health(
+            rag_runtime=None,
+            definitions_builder=(
+                definitions_builder
+            ),
+        )
+
+        self.assertEqual(
+            payload["status"],
+            "degraded",
+        )
+        self.assertTrue(
+            payload["ready"]
+        )
+        self.assertTrue(
+            payload[
+                "attention_required"
+            ]
+        )
+        self.assertEqual(
+            payload["components"][-1][
+                "detail"
+            ],
+            "rag_runtime_unavailable",
+        )
+        self.assertFalse(
+            payload["components"][-1][
+                "critical"
+            ]
+        )
+
+    def test_health_failure_raises_sanitized_error(self):
+        def failing_runner(
+            definitions,
+        ):
+            del definitions
+            raise RuntimeError(
+                "postgresql://user:secret@host/db"
+            )
+
+        with self.assertRaises(
+            DashboardMetricsError
+        ) as context:
+            build_dashboard_health(
+                recovery_report=None,
+                rag_runtime=(
+                    SimpleNamespace(
+                        settings=object()
+                    )
+                ),
+                definitions_builder=(
+                    lambda **ignored: ()
+                ),
+                health_runner=(
+                    failing_runner
+                ),
+            )
+
+        self.assertEqual(
+            str(context.exception),
+            (
+                "Dashboard health metrics "
+                "are unavailable."
+            ),
+        )
+        self.assertNotIn(
+            "secret",
+            str(context.exception),
+        )
+        self.assertNotIn(
+            "postgresql://",
             str(context.exception),
         )
 
