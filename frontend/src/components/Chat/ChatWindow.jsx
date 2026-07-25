@@ -15,8 +15,11 @@ import WorkspaceWelcome from "../Workspace/WorkspaceWelcome";
 import DocumentLibrary from "../Documents/DocumentLibrary";
 import {
   FiBell,
+  FiBookmark,
   FiMenu,
+  FiMoreHorizontal,
   FiSearch,
+  FiShare2,
   FiUser,
 } from "react-icons/fi";
 
@@ -566,8 +569,11 @@ messageActionLoadingId = null,
         />
       </div>
 
-      <section className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 md:px-8 md:py-6">
-        <div className="mx-auto max-w-4xl">
+      <section
+        data-chat-canvas="v2.40"
+        className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 md:px-6 md:py-5"
+      >
+        <div className="mx-auto max-w-5xl">
           {messages.length <= 1 && (
             <WorkspaceWelcome
               setInput={setInput}
@@ -602,6 +608,118 @@ messageActionLoadingId = null,
             />
           )}
 
+          {messages.length > 1 && (
+            <div
+              data-chat-thread-header="live"
+              className={`mb-3 flex items-center justify-between gap-3 rounded-t-2xl border px-4 py-3 ${
+                isDark
+                  ? "border-white/10 bg-[#0b1020]/90"
+                  : "border-slate-200 bg-white"
+              }`}
+            >
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-sm font-semibold">
+                    {activeChat?.title ||
+                      "Current conversation"}
+                  </p>
+
+                  {activeChat?.is_pinned && (
+                    <span
+                      className="text-amber-400"
+                      title="Pinned chat"
+                      aria-label="Pinned chat"
+                    >
+                      ★
+                    </span>
+                  )}
+                </div>
+
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  {workspaceBranchCount > 0
+                    ? `${workspaceBranchCount} ${
+                        workspaceBranchCount === 1
+                          ? "branch"
+                          : "branches"
+                      }`
+                    : "Onkar-AI conversation"}
+                </p>
+              </div>
+
+              <div
+                className="flex shrink-0 items-center gap-1"
+                aria-label="Conversation actions preview"
+              >
+                <button
+                  type="button"
+                  disabled
+                  title="Thread bookmark shortcut is not available here yet"
+                  aria-label="Thread bookmark shortcut is not available here yet"
+                  className={`flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-lg opacity-45 ${
+                    isDark
+                      ? "text-slate-400"
+                      : "text-slate-500"
+                  }`}
+                >
+                  <FiBookmark
+                    aria-hidden="true"
+                    size={15}
+                  />
+                </button>
+
+                <button
+                  type="button"
+                  disabled
+                  title="Share conversation is not available yet"
+                  aria-label="Share conversation is not available yet"
+                  className={`flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-lg opacity-45 ${
+                    isDark
+                      ? "text-slate-400"
+                      : "text-slate-500"
+                  }`}
+                >
+                  <FiShare2
+                    aria-hidden="true"
+                    size={15}
+                  />
+                </button>
+
+                <button
+                  type="button"
+                  disabled
+                  title="More conversation actions are not available yet"
+                  aria-label="More conversation actions are not available yet"
+                  className={`flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-lg opacity-45 ${
+                    isDark
+                      ? "text-slate-400"
+                      : "text-slate-500"
+                  }`}
+                >
+                  <FiMoreHorizontal
+                    aria-hidden="true"
+                    size={17}
+                  />
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div
+            data-chat-thread-body={
+              messages.length > 1
+                ? "active"
+                : "idle"
+            }
+            className={
+              messages.length > 1
+                ? `rounded-b-2xl border border-t-0 px-3 pb-2 pt-4 sm:px-4 ${
+                    isDark
+                      ? "border-white/10 bg-[#0b1020]/55"
+                      : "border-slate-200 bg-white/70"
+                  }`
+                : ""
+            }
+          >
           {messages.map(
             (message, index) => {
               const messageId =
@@ -826,17 +944,19 @@ onRemoveMessageBookmark={
           )}
 
           <div ref={messagesEndRef} />
+          </div>
         </div>
       </section>
 
       <div
-        className={`shrink-0 px-3 pb-4 sm:px-5 md:px-8 md:pb-6 ${
+        data-chat-composer-dock="v2.40"
+        className={`shrink-0 border-t px-3 pb-4 pt-3 sm:px-5 md:px-6 md:pb-5 ${
           isDark
-            ? "bg-[#0f172a]"
-            : "bg-slate-100"
+            ? "border-white/10 bg-[#0b1020]/95"
+            : "border-slate-200 bg-white/95"
         }`}
       >
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto max-w-5xl">
           <MessageInput
             input={input}
             setInput={setInput}

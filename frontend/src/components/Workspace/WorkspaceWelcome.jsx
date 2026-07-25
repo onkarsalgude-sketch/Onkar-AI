@@ -207,13 +207,14 @@ function WorkspaceWelcome({
 
         <div
           data-workspace-bottom-cards="3"
-          className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-3"
+          data-reference-bottom-cards="v2.40"
+          className="mt-5 grid grid-cols-1 gap-2.5 md:grid-cols-3"
         >
           <button
             type="button"
             onClick={onOpenKnowledge}
             disabled={!activeChatId}
-            className={`group rounded-2xl border p-4 text-left transition ${
+            className={`group min-h-[116px] rounded-xl border p-3.5 text-left transition ${
               !activeChatId
                 ? "cursor-not-allowed opacity-55"
                 : "hover:-translate-y-0.5"
@@ -225,7 +226,7 @@ function WorkspaceWelcome({
           >
             <div className="flex items-start gap-3">
               <span
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
                   isDark
                     ? "bg-blue-500/10 text-blue-300"
                     : "bg-blue-100 text-blue-700"
@@ -233,14 +234,20 @@ function WorkspaceWelcome({
               >
                 <FiDatabase
                   aria-hidden="true"
-                  size={18}
+                  size={16}
                 />
               </span>
 
               <div className="min-w-0">
-                <p className="text-sm font-semibold">
-                  Knowledge Base
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">
+                    Knowledge Base
+                  </p>
+
+                  <span className="text-[10px] font-medium text-violet-400">
+                    Open
+                  </span>
+                </div>
 
                 <p className="mt-1 text-[11px] leading-4 text-slate-500">
                   {activeChatId
@@ -254,7 +261,7 @@ function WorkspaceWelcome({
           <button
             type="button"
             onClick={onOpenSidebar}
-            className={`group rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 ${
+            className={`group min-h-[116px] rounded-xl border p-3.5 text-left transition hover:-translate-y-0.5 ${
               isDark
                 ? "border-white/10 bg-white/[0.03] hover:border-amber-400/25 hover:bg-amber-500/[0.06]"
                 : "border-slate-200 bg-white hover:border-amber-300 hover:bg-amber-50/50"
@@ -262,7 +269,7 @@ function WorkspaceWelcome({
           >
             <div className="flex items-start gap-3">
               <span
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
                   isDark
                     ? "bg-amber-500/10 text-amber-300"
                     : "bg-amber-100 text-amber-700"
@@ -270,14 +277,20 @@ function WorkspaceWelcome({
               >
                 <FiBookmark
                   aria-hidden="true"
-                  size={18}
+                  size={16}
                 />
               </span>
 
               <div className="min-w-0">
-                <p className="text-sm font-semibold">
-                  Recent Bookmarks
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">
+                    Recent Bookmarks
+                  </p>
+
+                  <span className="text-[10px] font-medium text-violet-400">
+                    Open
+                  </span>
+                </div>
 
                 <p className="mt-1 text-[11px] leading-4 text-slate-500">
                   Open the existing bookmarks panel from the left sidebar.
@@ -293,7 +306,7 @@ function WorkspaceWelcome({
               !activeChatId ||
               branchCount <= 0
             }
-            className={`group rounded-2xl border p-4 text-left transition ${
+            className={`group min-h-[116px] rounded-xl border p-3.5 text-left transition ${
               !activeChatId ||
               branchCount <= 0
                 ? "cursor-not-allowed opacity-55"
@@ -306,7 +319,7 @@ function WorkspaceWelcome({
           >
             <div className="flex items-start gap-3">
               <span
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
                   isDark
                     ? "bg-emerald-500/10 text-emerald-300"
                     : "bg-emerald-100 text-emerald-700"
@@ -314,7 +327,7 @@ function WorkspaceWelcome({
               >
                 <FiGitBranch
                   aria-hidden="true"
-                  size={18}
+                  size={16}
                 />
               </span>
 
@@ -324,7 +337,7 @@ function WorkspaceWelcome({
                     Chat Branches
                   </p>
 
-                  {branchCount > 0 && (
+                  {branchCount > 0 ? (
                     <span
                       className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                         isDark
@@ -333,6 +346,10 @@ function WorkspaceWelcome({
                       }`}
                     >
                       {branchCount}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-medium text-slate-500">
+                      No branches
                     </span>
                   )}
                 </div>
