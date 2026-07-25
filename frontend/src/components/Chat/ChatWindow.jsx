@@ -11,7 +11,7 @@ import {
 import MessageInput from "./MessageInput";
 import Thinking from "./Thinking";
 import BranchExplorer from "./BranchExplorer";
-import WelcomeScreen from "../Common/WelcomeScreen";
+import WorkspaceWelcome from "../Workspace/WorkspaceWelcome";
 import DocumentLibrary from "../Documents/DocumentLibrary";
 
 
@@ -459,7 +459,7 @@ messageActionLoadingId = null,
       <section className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 md:px-8 md:py-6">
         <div className="mx-auto max-w-4xl">
           {messages.length <= 1 && (
-            <WelcomeScreen
+            <WorkspaceWelcome
               setInput={setInput}
               theme={theme}
             />

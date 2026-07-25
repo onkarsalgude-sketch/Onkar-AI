@@ -131,7 +131,7 @@ test(
       const behavior of [
         "<BranchExplorer",
         "<DocumentLibrary",
-        "<WelcomeScreen",
+        "<WorkspaceWelcome",
         "<Message",
         "<MessageInput",
         "onOpenSidebar",
