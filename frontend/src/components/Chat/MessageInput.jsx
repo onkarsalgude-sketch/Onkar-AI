@@ -1,4 +1,10 @@
 import { useRef, useState } from "react";
+import {
+  FiCpu,
+  FiMic,
+  FiPaperclip,
+  FiSend,
+} from "react-icons/fi";
 
 function MessageInput({
   input,
@@ -94,21 +100,26 @@ function MessageInput({
 
   return (
     <div
-      className={`w-full rounded-2xl border p-2 transition-colors sm:p-3 ${
+      data-workspace-composer="v2.39"
+      className={`w-full rounded-[26px] border p-2.5 shadow-2xl backdrop-blur transition-colors sm:p-3 ${
         isDark
-          ? "border-slate-800 bg-slate-950"
-          : "border-slate-300 bg-white shadow-sm"
+          ? "border-white/10 bg-[#090f1d]/95 shadow-black/25"
+          : "border-slate-200 bg-white/95 shadow-slate-300/60"
       }`}
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <label
           htmlFor="agentPicker"
-          className={`text-xs font-semibold ${
+          className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold ${
             isDark
-              ? "text-slate-300"
-              : "text-slate-700"
+              ? "bg-white/[0.04] text-slate-300"
+              : "bg-slate-100 text-slate-700"
           }`}
         >
+          <FiCpu
+            aria-hidden="true"
+            size={13}
+          />
           Agent
         </label>
 
@@ -124,10 +135,10 @@ function MessageInput({
             agentsLoading ||
             !agentsAvailable
           }
-          className={`min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none transition focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60 sm:max-w-xs ${
+          className={`min-w-0 flex-1 rounded-xl border px-3 py-2 text-sm outline-none transition focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60 sm:max-w-xs ${
             isDark
-              ? "border-slate-700 bg-slate-900 text-white"
-              : "border-slate-300 bg-slate-50 text-slate-900"
+              ? "border-white/10 bg-white/[0.04] text-white"
+              : "border-slate-200 bg-slate-50 text-slate-900"
           }`}
           aria-label="Select chat agent"
         >
@@ -342,7 +353,14 @@ function MessageInput({
         </div>
       )}
 
-      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+      <div
+        data-composer-input-row="primary"
+        className={`flex min-w-0 items-center gap-2 rounded-2xl border p-1.5 sm:gap-2.5 ${
+          isDark
+            ? "border-white/10 bg-white/[0.035]"
+            : "border-slate-200 bg-slate-50"
+        }`}
+      >
         <input
           type="file"
           id="fileUpload"
@@ -356,27 +374,30 @@ function MessageInput({
         {/* Attachment */}
         <label
           htmlFor="fileUpload"
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg transition sm:h-11 sm:w-11 ${
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition sm:h-11 sm:w-11 ${
             isBusy
               ? "cursor-not-allowed opacity-50"
               : "cursor-pointer"
           } ${
             isDark
-              ? "bg-slate-800 hover:bg-slate-700"
-              : "bg-slate-200 hover:bg-slate-300"
+              ? "text-slate-300 hover:bg-white/[0.07] hover:text-white"
+              : "text-slate-600 hover:bg-slate-200 hover:text-slate-900"
           }`}
           title="Attach PDF or image"
         >
-          📎
+          <FiPaperclip
+            aria-hidden="true"
+            size={19}
+          />
         </label>
 
         {/* Text input */}
         <input
           type="text"
-          className={`h-10 min-w-0 flex-1 rounded-xl border px-3 text-sm outline-none transition focus:border-blue-500 sm:h-11 sm:px-4 sm:text-base ${
+          className={`h-10 min-w-0 flex-1 border-0 bg-transparent px-2 text-sm outline-none transition sm:h-11 sm:px-3 sm:text-base ${
             isDark
-              ? "border-slate-700 bg-slate-900 text-white placeholder:text-slate-500"
-              : "border-slate-300 bg-slate-50 text-slate-900 placeholder:text-slate-400"
+              ? "text-white placeholder:text-slate-500"
+              : "text-slate-900 placeholder:text-slate-400"
           }`}
           placeholder={
             pendingFiles.length > 0
@@ -398,10 +419,12 @@ function MessageInput({
             listening ? stopListening : startListening
           }
           disabled={isBusy}
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg text-white transition disabled:cursor-not-allowed disabled:opacity-50 sm:h-11 sm:w-11 ${
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition disabled:cursor-not-allowed disabled:opacity-50 sm:h-11 sm:w-11 ${
             listening
-              ? "animate-pulse bg-red-600 hover:bg-red-700"
-              : "bg-purple-600 hover:bg-purple-700"
+              ? "animate-pulse bg-red-500/15 text-red-400 hover:bg-red-500/20"
+              : isDark
+                ? "text-slate-300 hover:bg-white/[0.07] hover:text-white"
+                : "text-slate-600 hover:bg-slate-200 hover:text-slate-900"
           }`}
           title={
             listening
@@ -414,7 +437,17 @@ function MessageInput({
               : "Start voice input"
           }
         >
-          {listening ? "🔴" : "🎤"}
+          {listening ? (
+            <span
+              className="h-2.5 w-2.5 rounded-full bg-red-400"
+              aria-hidden="true"
+            />
+          ) : (
+            <FiMic
+              aria-hidden="true"
+              size={18}
+            />
+          )}
         </button>
 
         {/* Send */}
@@ -422,11 +455,14 @@ function MessageInput({
           type="button"
           onClick={sendMessage}
           disabled={!canSend}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-600 text-lg font-bold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50 sm:h-11 sm:w-11"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-950/20 transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40 sm:h-11 sm:w-11"
           title="Send message"
           aria-label="Send message"
         >
-          ➤
+          <FiSend
+            aria-hidden="true"
+            size={18}
+          />
         </button>
       </div>
     </div>

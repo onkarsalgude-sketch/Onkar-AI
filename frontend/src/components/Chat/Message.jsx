@@ -389,21 +389,59 @@ onCreateConversationBranch,
 
   return (
     <div
-      className={`mb-5 flex ${
+      data-chat-message={
+        isUser ? "user" : "assistant"
+      }
+      className={`group/message mb-6 flex w-full items-start gap-3 ${
         isUser
-          ? "justify-end"
-          : "justify-start"
+          ? "justify-end pl-8 sm:pl-16"
+          : "justify-start pr-8 sm:pr-16"
       }`}
     >
+      {!isUser && (
+        <div
+          className={`mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border text-[11px] font-black shadow-lg ${
+            isDark
+              ? "border-blue-400/20 bg-blue-500/10 text-blue-300 shadow-blue-950/30"
+              : "border-blue-200 bg-blue-50 text-blue-700 shadow-blue-100"
+          }`}
+          aria-hidden="true"
+        >
+          AI
+        </div>
+      )}
+
       <div
-        className={`max-w-[90%] rounded-2xl px-4 py-3 leading-relaxed sm:max-w-3xl sm:px-5 sm:py-4 ${
+        data-message-surface="premium"
+        className={`max-w-[88%] rounded-[22px] border px-4 py-3.5 leading-relaxed shadow-sm sm:max-w-3xl sm:px-5 sm:py-4 ${
           isUser
-            ? "rounded-br-md bg-blue-600 text-white"
+            ? "rounded-br-lg border-blue-400/20 bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-blue-950/20"
             : isDark
-              ? "rounded-bl-md border border-slate-700 bg-slate-800 text-slate-100"
-              : "rounded-bl-md border border-slate-200 bg-white text-slate-900 shadow-sm"
+              ? "rounded-bl-lg border-white/10 bg-white/[0.045] text-slate-100 shadow-black/10"
+              : "rounded-bl-lg border-slate-200 bg-white text-slate-900 shadow-slate-200/70"
         }`}
       >
+        <div
+          className={`mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] ${
+            isUser
+              ? "text-blue-100"
+              : isDark
+                ? "text-slate-500"
+                : "text-slate-400"
+          }`}
+        >
+          <span>
+            {isUser
+              ? "You"
+              : "Onkar AI"}
+          </span>
+
+          {!isUser && agentName && (
+            <span className="normal-case tracking-normal text-blue-400">
+              · {agentName}
+            </span>
+          )}
+        </div>
         {/* Image preview */}
         {imageUrl && (
           <div className="mb-3">
@@ -676,7 +714,7 @@ onCreateConversationBranch,
 
         {/* Message actions */}
         {!isEditing && content && (
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-white/10 pt-3">
             <button
               type="button"
               onClick={copyText}
@@ -870,6 +908,15 @@ onCreateConversationBranch,
           </div>
         )}
       </div>
+
+      {isUser && (
+        <div
+          className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-[11px] font-black text-white shadow-lg shadow-blue-950/20"
+          aria-hidden="true"
+        >
+          YOU
+        </div>
+      )}
     </div>
   );
 }
