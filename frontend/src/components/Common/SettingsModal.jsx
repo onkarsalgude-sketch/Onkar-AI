@@ -916,7 +916,7 @@ function exportJSON() {
               type="button"
               onClick={() =>
                 alert(
-                  "Clear Memory feature will be added next."
+                  "Use the Memory card in the right utility rail to clear memory."
                 )
               }
               className={`w-full rounded-xl p-4 text-left transition ${

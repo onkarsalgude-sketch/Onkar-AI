@@ -128,7 +128,7 @@ test(
 
 
 test(
-  "memory is a transparent placeholder rather than fake data",
+  "memory card uses real backend previews and explicit controls",
   () => {
     const source = read(
       "src/components/Workspace/WorkspaceRightRail.jsx"
@@ -136,25 +136,29 @@ test(
 
     assert.ok(
       source.includes(
-        'data-right-rail-memory="placeholder"'
+        "data-right-rail-memory={"
       )
     );
 
     assert.ok(
       source.includes(
-        "Coming later"
+        'data-memory-preview="backend"'
       )
     );
 
     assert.ok(
       source.includes(
+        "handleClearMemory"
+      )
+    );
+
+    assert.ok(
+      !source.includes(
         "No memory data is shown"
       )
     );
   }
 );
-
-
 test(
   "analytics is reserved for v2.40 without fabricated metrics",
   () => {

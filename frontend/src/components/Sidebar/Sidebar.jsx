@@ -727,7 +727,7 @@ function Sidebar({
             <button
               type="button"
               disabled
-              title="Memory is not available yet"
+              title="Memory controls are available in the right utility rail"
               className="flex w-full cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-slate-500 opacity-70"
             >
               <FiDatabase
