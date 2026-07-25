@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import Sidebar from "./components/Sidebar/Sidebar";
 import ChatWindow from "./components/Chat/ChatWindow";
+import WorkspaceRightRail from "./components/Workspace/WorkspaceRightRail";
 
 import useChat from "./hooks/useChat";
 
@@ -250,6 +251,15 @@ onRemoveMessageBookmark={
   theme={theme}
 />
       </div>
+
+      <WorkspaceRightRail
+        agents={agents}
+        agentsLoading={agentsLoading}
+        agentsAvailable={agentsAvailable}
+        selectedAgentId={selectedAgentId}
+        onAgentChange={changeSelectedAgent}
+        theme={theme}
+      />
     </div>
   );
 }
