@@ -23,7 +23,9 @@ function read(relativePath) {
       relativePath
     ),
     "utf8"
-  );
+  )
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
 }
 
 
