@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -11,6 +12,9 @@ import {
 
 const DASHBOARD_CREDENTIAL_KEY =
   "onkar-ai-dashboard-credential";
+
+const DASHBOARD_AUTO_REFRESH_MS =
+  30_000;
 
 
 function readSessionCredential() {
@@ -296,6 +300,11 @@ function AdminDashboard({
   ] = useState("");
 
   const [
+    activeCredential,
+    setActiveCredential,
+  ] = useState("");
+
+  const [
     summary,
     setSummary,
   ] = useState(null);
@@ -314,6 +323,17 @@ function AdminDashboard({
     loading,
     setLoading,
   ] = useState(false);
+
+  const [
+    refreshing,
+    setRefreshing,
+  ] = useState(false);
+
+  const refreshInFlightRef =
+    useRef(false);
+
+  const requestEpochRef =
+    useRef(0);
 
   const [
     errorMessage,
@@ -357,7 +377,10 @@ function AdminDashboard({
   }
 
   async function loadDashboard(
-    suppliedCredential
+    suppliedCredential,
+    {
+      background = false,
+    } = {}
   ) {
     const token = String(
       suppliedCredential || ""
@@ -370,10 +393,25 @@ function AdminDashboard({
       setErrorMessage(
         "Enter the monitoring credential to load dashboard metrics."
       );
-      return;
+      return false;
     }
 
-    setLoading(true);
+    if (refreshInFlightRef.current) {
+      return false;
+    }
+
+    refreshInFlightRef.current =
+      true;
+
+    const requestEpoch =
+      requestEpochRef.current;
+
+    if (background) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
     setErrorMessage("");
     setHealthErrorMessage("");
 
@@ -385,6 +423,13 @@ function AdminDashboard({
         getDashboardSummary(token),
         getDashboardHealth(token),
       ]);
+
+      if (
+        requestEpoch !==
+        requestEpochRef.current
+      ) {
+        return false;
+      }
 
       let acceptedCredential =
         false;
@@ -457,9 +502,37 @@ function AdminDashboard({
           token
         );
         setCredential(token);
+        setActiveCredential(
+          token
+        );
+      } else {
+        const authorizationRejected =
+          [
+            summaryResult,
+            healthResult,
+          ].some(
+            (result) =>
+              result.status ===
+                "rejected" &&
+              result.reason?.status ===
+                401
+          );
+
+        if (authorizationRejected) {
+          setActiveCredential("");
+        }
       }
+
+      return acceptedCredential;
     } finally {
-      setLoading(false);
+      refreshInFlightRef.current =
+        false;
+
+      if (background) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   }
 
@@ -481,6 +554,43 @@ function AdminDashboard({
       );
     }
   }, [open]);
+
+  useEffect(() => {
+    if (
+      !open ||
+      !activeCredential
+    ) {
+      return undefined;
+    }
+
+    const intervalId =
+      window.setInterval(
+        () => {
+          if (
+            refreshInFlightRef.current
+          ) {
+            return;
+          }
+
+          void loadDashboard(
+            activeCredential,
+            {
+              background: true,
+            }
+          );
+        },
+        DASHBOARD_AUTO_REFRESH_MS
+      );
+
+    return () => {
+      window.clearInterval(
+        intervalId
+      );
+    };
+  }, [
+    open,
+    activeCredential,
+  ]);
 
   if (!open) {
     return null;
@@ -538,8 +648,10 @@ function AdminDashboard({
   }
 
   function handleForgetCredential() {
+    requestEpochRef.current += 1;
     clearSessionCredential();
     setCredential("");
+    setActiveCredential("");
     setSummary(null);
     setHealth(null);
     setHealthErrorMessage("");
@@ -636,7 +748,9 @@ function AdminDashboard({
               }`}
             >
               Stored only in sessionStorage
-              for this browser tab.
+              for this browser tab. Auto refresh
+              runs every 30 seconds after
+              the credential is accepted.
             </p>
 
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -662,15 +776,18 @@ function AdminDashboard({
                 type="submit"
                 disabled={
                   loading ||
+                  refreshing ||
                   !credential.trim()
                 }
                 className="rounded-xl bg-blue-600 px-4 py-2 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {loading
                   ? "Loading…"
-                  : summary || health
-                    ? "Refresh"
-                    : "Load Dashboard"}
+                  : refreshing
+                    ? "Refreshing…"
+                    : summary || health
+                      ? "Refresh"
+                      : "Load Dashboard"}
               </button>
 
               <button
@@ -743,6 +860,18 @@ function AdminDashboard({
                     {formatCheckedAt(
                       health?.checked_at
                     )}
+                  </p>
+
+                  <p
+                    className={`mt-1 text-xs ${
+                      isDark
+                        ? "text-slate-500"
+                        : "text-slate-400"
+                    }`}
+                  >
+                    {refreshing
+                      ? "Auto refresh: refreshing now…"
+                      : "Auto refresh: every 30 seconds"}
                   </p>
                 </div>
 

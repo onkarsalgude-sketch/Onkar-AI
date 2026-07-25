@@ -347,7 +347,87 @@ test(
 
 
 test(
-  "dashboard step 4 uses manual refresh only",
+  "dashboard auto refresh uses a bounded 30 second interval",
+  () => {
+    const source = read(
+      "src/components/Dashboard/AdminDashboard.jsx"
+    );
+
+    assert.ok(
+      source.includes(
+        "DASHBOARD_AUTO_REFRESH_MS"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "30_000"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "window.setInterval("
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "window.clearInterval("
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "activeCredential"
+      )
+    );
+  }
+);
+
+
+test(
+  "dashboard auto refresh prevents overlapping cycles",
+  () => {
+    const source = read(
+      "src/components/Dashboard/AdminDashboard.jsx"
+    );
+
+    assert.ok(
+      source.includes(
+        "useRef"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "refreshInFlightRef.current"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "background = false"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "setRefreshing(true)"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "setRefreshing(false)"
+      )
+    );
+  }
+);
+
+
+test(
+  "dashboard preserves manual refresh and forget stops polling",
   () => {
     const source = read(
       "src/components/Dashboard/AdminDashboard.jsx"
@@ -360,8 +440,48 @@ test(
     );
 
     assert.ok(
+      source.includes(
+        "loadDashboard(\n      credential"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        'setActiveCredential("")'
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "requestEpochRef.current += 1"
+      )
+    );
+  }
+);
+
+
+test(
+  "dashboard keeps backend Last checked timestamp distinct from auto refresh",
+  () => {
+    const source = read(
+      "src/components/Dashboard/AdminDashboard.jsx"
+    );
+
+    assert.ok(
+      source.includes(
+        "health?.checked_at"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "Auto refresh: every 30 seconds"
+      )
+    );
+
+    assert.ok(
       !source.includes(
-        "setInterval("
+        "lastRefreshed"
       )
     );
   }
