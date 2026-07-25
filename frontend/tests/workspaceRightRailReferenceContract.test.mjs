@@ -40,7 +40,7 @@ test(
       );
     const memory =
       source.indexOf(
-        'data-right-rail-memory="placeholder"'
+        'data-right-rail-memory={'
       );
     const activity =
       source.indexOf(
@@ -88,7 +88,7 @@ test(
 
 
 test(
-  "memory stays explicitly unavailable rather than fabricated",
+  "memory is grounded in the authenticated backend preview contract",
   () => {
     const source = read(
       "src/components/Workspace/WorkspaceRightRail.jsx"
@@ -96,19 +96,29 @@ test(
 
     assert.ok(
       source.includes(
-        'data-right-rail-memory="placeholder"'
+        'from "../../services/memoryService"'
       )
     );
 
     assert.ok(
       source.includes(
-        "No memory data is shown"
+        "getMemory"
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        'data-memory-preview="backend"'
+      )
+    );
+
+    assert.ok(
+      source.includes(
+        "item.preview"
       )
     );
   }
 );
-
-
 test(
   "todays activity has no invented time series",
   () => {

@@ -93,7 +93,7 @@ test(
 
 
 test(
-  "memory and profile remain transparent disabled placeholders",
+  "dedicated memory navigation and profile remain transparent disabled placeholders",
   () => {
     const source = read(
       "src/components/Sidebar/Sidebar.jsx"
@@ -101,7 +101,7 @@ test(
 
     assert.ok(
       source.includes(
-        'title="Memory is not available yet"'
+        'title="Memory controls are available in the right utility rail"'
       )
     );
 

@@ -15,13 +15,23 @@ import {
 import {
   getDashboardHealth,
 } from "../../services/dashboardService";
+import {
+  clearMemory,
+  getMemory,
+} from "../../services/memoryService";
 
 
 const DASHBOARD_CREDENTIAL_KEY =
   "onkar-ai-dashboard-credential";
 
+const MEMORY_CREDENTIAL_KEY =
+  "onkar-ai-memory-credential";
+
 const RIGHT_RAIL_HEALTH_REFRESH_MS =
   30_000;
+
+const RIGHT_RAIL_MEMORY_LIMIT =
+  6;
 
 
 function readSessionCredential() {
@@ -34,6 +44,58 @@ function readSessionCredential() {
   } catch {
     return "";
   }
+}
+
+
+function readMemorySessionCredential() {
+  try {
+    return (
+      window.sessionStorage.getItem(
+        MEMORY_CREDENTIAL_KEY
+      ) || ""
+    );
+  } catch {
+    return "";
+  }
+}
+
+
+function storeMemorySessionCredential(
+  credential
+) {
+  try {
+    window.sessionStorage.setItem(
+      MEMORY_CREDENTIAL_KEY,
+      credential
+    );
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+
+function removeMemorySessionCredential() {
+  try {
+    window.sessionStorage.removeItem(
+      MEMORY_CREDENTIAL_KEY
+    );
+  } catch {
+    // Session storage may be unavailable.
+  }
+}
+
+
+function memoryStateLabel(state) {
+  return {
+    locked: "Locked",
+    loading: "Loading",
+    live: "Live",
+    empty: "Empty",
+    unauthorized: "Unauthorized",
+    unavailable: "Unavailable",
+  }[state] || "Unavailable";
 }
 
 
@@ -176,6 +238,44 @@ function WorkspaceRightRail({
     useRef(false);
 
   const healthEpochRef =
+    useRef(0);
+
+  const [
+    memoryItems,
+    setMemoryItems,
+  ] = useState([]);
+
+  const [
+    memoryState,
+    setMemoryState,
+  ] = useState("locked");
+
+  const [
+    memoryMessage,
+    setMemoryMessage,
+  ] = useState(
+    "Memory credential required"
+  );
+
+  const [
+    memoryCredentialInput,
+    setMemoryCredentialInput,
+  ] = useState("");
+
+  const [
+    memoryRefreshKey,
+    setMemoryRefreshKey,
+  ] = useState(0);
+
+  const [
+    memoryClearing,
+    setMemoryClearing,
+  ] = useState(false);
+
+  const memoryInFlightRef =
+    useRef(false);
+
+  const memoryEpochRef =
     useRef(0);
 
 
@@ -362,6 +462,261 @@ function WorkspaceRightRail({
   }, []);
 
 
+  useEffect(() => {
+    let disposed = false;
+
+    async function loadMemory() {
+      if (
+        memoryInFlightRef.current
+      ) {
+        return;
+      }
+
+      const credential =
+        readMemorySessionCredential();
+
+      if (!credential) {
+        memoryEpochRef.current += 1;
+
+        if (!disposed) {
+          setMemoryItems([]);
+          setMemoryState("locked");
+          setMemoryMessage(
+            "Memory credential required"
+          );
+        }
+
+        return;
+      }
+
+      const requestEpoch =
+        memoryEpochRef.current;
+
+      memoryInFlightRef.current =
+        true;
+
+      if (!disposed) {
+        setMemoryState("loading");
+        setMemoryMessage(
+          "Loading stored conversation memory"
+        );
+      }
+
+      try {
+        const response =
+          await getMemory(
+            credential,
+            {
+              limit:
+                RIGHT_RAIL_MEMORY_LIMIT,
+            }
+          );
+
+        if (
+          disposed ||
+          requestEpoch !==
+            memoryEpochRef.current
+        ) {
+          return;
+        }
+
+        const items =
+          Array.isArray(
+            response?.items
+          )
+            ? response.items
+            : [];
+
+        setMemoryItems(items);
+
+        if (items.length > 0) {
+          setMemoryState("live");
+          setMemoryMessage("");
+        } else {
+          setMemoryState("empty");
+          setMemoryMessage(
+            "No stored conversational memory"
+          );
+        }
+      } catch (error) {
+        if (disposed) {
+          return;
+        }
+
+        setMemoryItems([]);
+
+        if (
+          error?.status === 401
+        ) {
+          removeMemorySessionCredential();
+          setMemoryState(
+            "unauthorized"
+          );
+          setMemoryMessage(
+            "Memory credential was not accepted"
+          );
+        } else if (
+          error?.status === 404
+        ) {
+          setMemoryState(
+            "unavailable"
+          );
+          setMemoryMessage(
+            "Memory API is not available"
+          );
+        } else {
+          setMemoryState(
+            "unavailable"
+          );
+          setMemoryMessage(
+            "Memory is unavailable"
+          );
+        }
+      } finally {
+        memoryInFlightRef.current =
+          false;
+      }
+    }
+
+    void loadMemory();
+
+    function handleFocus() {
+      void loadMemory();
+    }
+
+    window.addEventListener(
+      "focus",
+      handleFocus
+    );
+
+    return () => {
+      disposed = true;
+      memoryEpochRef.current += 1;
+
+      window.removeEventListener(
+        "focus",
+        handleFocus
+      );
+    };
+  }, [memoryRefreshKey]);
+
+
+  function handleMemoryAuthorize(
+    event
+  ) {
+    event.preventDefault();
+
+    const credential =
+      memoryCredentialInput.trim();
+
+    if (!credential) {
+      setMemoryState("locked");
+      setMemoryMessage(
+        "Enter the memory credential"
+      );
+      return;
+    }
+
+    if (
+      !storeMemorySessionCredential(
+        credential
+      )
+    ) {
+      setMemoryState("unavailable");
+      setMemoryMessage(
+        "Browser session storage is unavailable"
+      );
+      return;
+    }
+
+    setMemoryCredentialInput("");
+    memoryEpochRef.current += 1;
+    setMemoryRefreshKey(
+      (value) => value + 1
+    );
+  }
+
+
+  function handleMemoryRefresh() {
+    memoryEpochRef.current += 1;
+    setMemoryRefreshKey(
+      (value) => value + 1
+    );
+  }
+
+
+  function handleForgetMemoryCredential() {
+    removeMemorySessionCredential();
+    memoryEpochRef.current += 1;
+    setMemoryItems([]);
+    setMemoryCredentialInput("");
+    setMemoryState("locked");
+    setMemoryMessage(
+      "Memory credential required"
+    );
+  }
+
+
+  async function handleClearMemory() {
+    const credential =
+      readMemorySessionCredential();
+
+    if (!credential) {
+      setMemoryItems([]);
+      setMemoryState("locked");
+      setMemoryMessage(
+        "Memory credential required"
+      );
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        "Clear all conversational memory? This cannot be undone."
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setMemoryClearing(true);
+
+    try {
+      await clearMemory(
+        credential
+      );
+
+      memoryEpochRef.current += 1;
+
+      setMemoryRefreshKey(
+        (value) => value + 1
+      );
+    } catch (error) {
+      if (
+        error?.status === 401
+      ) {
+        removeMemorySessionCredential();
+        setMemoryItems([]);
+        setMemoryState(
+          "unauthorized"
+        );
+        setMemoryMessage(
+          "Memory credential was not accepted"
+        );
+      } else {
+        setMemoryState(
+          "unavailable"
+        );
+        setMemoryMessage(
+          "Memory could not be cleared"
+        );
+      }
+    } finally {
+      setMemoryClearing(false);
+    }
+  }
+
+
   const healthComponents =
     Array.isArray(
       systemHealth?.components
@@ -506,42 +861,248 @@ function WorkspaceRightRail({
         </section>
 
         <section
-          data-right-rail-memory="placeholder"
-          className={`rounded-2xl border border-dashed p-3.5 ${
+          data-right-rail-memory={
+            memoryState
+          }
+          className={`rounded-2xl border p-3.5 ${
             isDark
-              ? "border-white/10 bg-white/[0.02]"
-              : "border-slate-300 bg-slate-50/70"
+              ? "border-white/10 bg-white/[0.035]"
+              : "border-slate-200 bg-slate-50"
           }`}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span
+                className={`flex h-9 w-9 items-center justify-center rounded-xl ${
+                  memoryState === "live"
+                    ? isDark
+                      ? "bg-violet-500/10 text-violet-300"
+                      : "bg-violet-100 text-violet-700"
+                    : isDark
+                      ? "bg-slate-800 text-slate-400"
+                      : "bg-slate-200 text-slate-600"
+                }`}
+              >
+                {memoryState ===
+                "locked" ? (
+                  <FiLock
+                    aria-hidden="true"
+                    size={16}
+                  />
+                ) : (
+                  <FiDatabase
+                    aria-hidden="true"
+                    size={17}
+                  />
+                )}
+              </span>
+
+              <div>
+                <h3 className="text-sm font-semibold">
+                  Memory
+                </h3>
+
+                <p className="text-[11px] text-slate-500">
+                  Conversation memory
+                </p>
+              </div>
+            </div>
+
             <span
-              className={`flex h-9 w-9 items-center justify-center rounded-xl ${
-                isDark
-                  ? "bg-violet-500/10 text-violet-300"
-                  : "bg-violet-100 text-violet-700"
+              className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
+                memoryState === "live"
+                  ? isDark
+                    ? "bg-emerald-500/10 text-emerald-300"
+                    : "bg-emerald-100 text-emerald-700"
+                  : memoryState ===
+                        "unauthorized" ||
+                      memoryState ===
+                        "unavailable"
+                    ? isDark
+                      ? "bg-red-500/10 text-red-300"
+                      : "bg-red-100 text-red-700"
+                    : isDark
+                      ? "bg-slate-800 text-slate-400"
+                      : "bg-slate-200 text-slate-600"
               }`}
             >
-              <FiDatabase
-                aria-hidden="true"
-                size={17}
-              />
+              {memoryStateLabel(
+                memoryState
+              )}
             </span>
-
-            <div>
-              <h3 className="text-sm font-semibold">
-                Memory
-              </h3>
-
-              <p className="text-[11px] text-slate-500">
-                Coming later
-              </p>
-            </div>
           </div>
 
-          <p className="mt-3 text-[11px] leading-4 text-slate-500">
-            No memory data is shown until a
-            real memory feature exists.
-          </p>
+          {(
+            memoryState === "locked" ||
+            memoryState === "unauthorized"
+          ) ? (
+            <form
+              className="mt-3 space-y-2"
+              onSubmit={
+                handleMemoryAuthorize
+              }
+            >
+              <label
+                htmlFor="right-rail-memory-credential"
+                className="block text-[11px] font-medium text-slate-400"
+              >
+                Memory credential
+              </label>
+
+              <input
+                id="right-rail-memory-credential"
+                type="password"
+                value={
+                  memoryCredentialInput
+                }
+                onChange={(event) =>
+                  setMemoryCredentialInput(
+                    event.target.value
+                  )
+                }
+                autoComplete="off"
+                placeholder="Enter credential"
+                className={`w-full rounded-xl border px-3 py-2 text-xs outline-none transition focus:border-violet-500 ${
+                  isDark
+                    ? "border-white/10 bg-slate-950/80 text-white placeholder:text-slate-600"
+                    : "border-slate-200 bg-white text-slate-900 placeholder:text-slate-400"
+                }`}
+              />
+
+              <button
+                type="submit"
+                disabled={
+                  !memoryCredentialInput.trim()
+                }
+                className="w-full rounded-xl bg-violet-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Authorize Memory
+              </button>
+
+              <p className="text-[10px] leading-4 text-slate-500">
+                Stored only in sessionStorage for
+                this browser session.
+              </p>
+
+              {memoryMessage && (
+                <p
+                  className={`text-[10px] leading-4 ${
+                    memoryState ===
+                    "unauthorized"
+                      ? "text-red-400"
+                      : "text-slate-500"
+                  }`}
+                >
+                  {memoryMessage}
+                </p>
+              )}
+            </form>
+          ) : memoryState ===
+            "loading" ? (
+            <div
+              className={`mt-3 rounded-xl px-3 py-2.5 text-[11px] ${
+                isDark
+                  ? "bg-slate-950/60 text-slate-400"
+                  : "bg-white text-slate-600"
+              }`}
+            >
+              Loading stored conversation
+              memory...
+            </div>
+          ) : (
+            <>
+              {memoryState === "live" ? (
+                <div className="mt-3 space-y-2">
+                  {memoryItems.map(
+                    (item, index) => (
+                      <div
+                        key={`${item.role}-${index}`}
+                        data-memory-preview="backend"
+                        data-memory-truncated={
+                          item.truncated
+                            ? "true"
+                            : "false"
+                        }
+                        className={`rounded-xl border px-3 py-2 ${
+                          isDark
+                            ? "border-white/10 bg-slate-950/60"
+                            : "border-slate-200 bg-white"
+                        }`}
+                      >
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-400">
+                          {item.role}
+                        </p>
+
+                        <p className="mt-1 break-words text-[11px] leading-4 text-slate-400">
+                          {item.preview}
+                          {item.truncated
+                            ? "..."
+                            : ""}
+                        </p>
+                      </div>
+                    )
+                  )}
+                </div>
+              ) : (
+                <div
+                  className={`mt-3 rounded-xl px-3 py-2.5 text-[11px] leading-4 ${
+                    isDark
+                      ? "bg-slate-950/60 text-slate-400"
+                      : "bg-white text-slate-600"
+                  }`}
+                >
+                  <p className="font-medium">
+                    {memoryMessage}
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={
+                    handleMemoryRefresh
+                  }
+                  disabled={
+                    memoryState ===
+                    "loading"
+                  }
+                  className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold transition ${
+                    isDark
+                      ? "border-white/10 text-slate-300 hover:bg-white/[0.06]"
+                      : "border-slate-200 text-slate-600 hover:bg-white"
+                  }`}
+                >
+                  Refresh
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    handleClearMemory
+                  }
+                  disabled={
+                    memoryClearing
+                  }
+                  className="rounded-lg border border-red-500/20 px-2.5 py-1.5 text-[10px] font-semibold text-red-400 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {memoryClearing
+                    ? "Clearing..."
+                    : "Clear Memory"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    handleForgetMemoryCredential
+                  }
+                  className="rounded-lg px-2.5 py-1.5 text-[10px] font-medium text-slate-500 transition hover:text-slate-300"
+                >
+                  Forget credential
+                </button>
+              </div>
+            </>
+          )}
         </section>
 
         <section
