@@ -243,6 +243,9 @@ def create_app(
     from app.api.knowledge import (
         router as knowledge_router,
     )
+    from app.api.memory import (
+        router as memory_router,
+    )
     from app.api.image import router as image_router
 
     application.include_router(
@@ -251,6 +254,7 @@ def create_app(
     application.include_router(chat_router)
     application.include_router(documents_router)
     application.include_router(knowledge_router)
+    application.include_router(memory_router)
     application.include_router(image_router)
     application.include_router(backups_router)
 
