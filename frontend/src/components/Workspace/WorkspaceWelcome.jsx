@@ -19,7 +19,7 @@ const QUICK_ACTIONS = [
     id: "study",
     label: "Study",
     description:
-      "Learn a topic step by step",
+      "Learn anything",
     icon: FiBookOpen,
     prompt:
       "Help me study this topic step by step: ",
@@ -28,7 +28,7 @@ const QUICK_ACTIONS = [
     id: "code",
     label: "Code",
     description:
-      "Build, explain, or debug code",
+      "Write better code",
     icon: FiCode,
     prompt:
       "Help me write or debug code for this task: ",
@@ -37,7 +37,7 @@ const QUICK_ACTIONS = [
     id: "research",
     label: "Research",
     description:
-      "Explore a topic in depth",
+      "Deep research",
     icon: FiSearch,
     prompt:
       "Research this topic and summarize the important points: ",
@@ -46,7 +46,7 @@ const QUICK_ACTIONS = [
     id: "write",
     label: "Write",
     description:
-      "Draft and improve writing",
+      "Content & docs",
     icon: FiEdit3,
     prompt:
       "Help me write and improve this: ",
@@ -55,7 +55,7 @@ const QUICK_ACTIONS = [
     id: "analyze",
     label: "Analyze",
     description:
-      "Find patterns and key insights",
+      "Data & insights",
     icon: FiCompass,
     prompt:
       "Analyze this and explain the key insights: ",
@@ -64,7 +64,7 @@ const QUICK_ACTIONS = [
     id: "create",
     label: "Create",
     description:
-      "Turn an idea into a plan",
+      "Plans & ideas",
     icon: FiLayers,
     prompt:
       "Help me create a plan, idea, or project from this: ",
@@ -95,6 +95,8 @@ function WorkspaceWelcome({
   onOpenKnowledge,
   onOpenBranches,
   onOpenSidebar,
+  showGreetingActions = true,
+  showBottomCards = true,
   theme = "dark",
 }) {
   const isDark =
@@ -112,121 +114,114 @@ function WorkspaceWelcome({
   return (
     <section
       data-workspace-welcome="v2.39"
-      className="pb-7 pt-3 sm:pb-9 sm:pt-5"
+      data-reference-polish="v2.40"
+      className="pb-3 pt-3 sm:pb-4 sm:pt-4"
     >
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-7 flex flex-col gap-3 sm:mb-8">
-          <div className="flex items-center gap-2">
-            <span
-              className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
-                isDark
-                  ? "border-blue-400/20 bg-blue-500/10 text-blue-300"
-                  : "border-blue-200 bg-blue-50 text-blue-700"
-              }`}
-            >
-              Personal AI Workspace
-            </span>
-          </div>
+      <div className="mx-auto max-w-6xl">
+        {showGreetingActions && (
+          <>
+            <div className="mb-3">
+              <div className="flex items-center gap-2.5">
+                <span
+                  className="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-violet-400 to-fuchsia-600 shadow-lg shadow-fuchsia-900/30"
+                  aria-hidden="true"
+                />
 
-          <div>
-            <h1
-              className={`text-3xl font-bold tracking-tight sm:text-4xl ${
-                isDark
-                  ? "text-white"
-                  : "text-slate-950"
-              }`}
-            >
-              {greeting},{" "}
-              <span className="text-blue-400">
-                Onkar
-              </span>
-              ! 👋
-            </h1>
-
-            <p
-              className={`mt-2 max-w-2xl text-sm leading-6 sm:text-base ${
-                isDark
-                  ? "text-slate-400"
-                  : "text-slate-600"
-              }`}
-            >
-              What would you like to work on today?
-              Pick a quick action or start typing below.
-            </p>
-          </div>
-        </div>
-
-        <div
-          data-workspace-quick-actions="6"
-          className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6"
-        >
-          {QUICK_ACTIONS.map(
-            (action) => {
-              const Icon =
-                action.icon;
-
-              return (
-                <button
-                  key={action.id}
-                  type="button"
-                  onClick={() =>
-                    chooseAction(action)
-                  }
-                  className={`group min-h-32 rounded-2xl border p-4 text-left transition duration-200 hover:-translate-y-0.5 ${
+                <h1
+                  className={`text-xl font-bold tracking-tight sm:text-2xl ${
                     isDark
-                      ? "border-white/10 bg-white/[0.035] hover:border-blue-400/30 hover:bg-blue-500/[0.08]"
-                      : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/60"
+                      ? "text-white"
+                      : "text-slate-950"
                   }`}
-                  aria-label={`Quick action: ${action.label}`}
-                  title={action.description}
                 >
-                  <span
-                    className={`mb-4 flex h-10 w-10 items-center justify-center rounded-xl border transition ${
-                      isDark
-                        ? "border-white/10 bg-slate-900/80 text-blue-300 group-hover:border-blue-400/30"
-                        : "border-slate-200 bg-slate-50 text-blue-700 group-hover:border-blue-300"
-                    }`}
-                  >
-                    <Icon
-                      aria-hidden="true"
-                      size={18}
-                    />
-                  </span>
+                  {greeting}, Onkar! 👋
+                </h1>
+              </div>
 
-                  <span
-                    className={`block text-sm font-semibold ${
-                      isDark
-                        ? "text-slate-100"
-                        : "text-slate-900"
-                    }`}
-                  >
-                    {action.label}
-                  </span>
+              <p
+                className={`mt-1 text-sm ${
+                  isDark
+                    ? "text-slate-400"
+                    : "text-slate-600"
+                }`}
+              >
+                How can I help you today?
+              </p>
+            </div>
 
-                  <span
-                    className={`mt-1 block text-[11px] leading-4 ${
-                      isDark
-                        ? "text-slate-500"
-                        : "text-slate-500"
-                    }`}
-                  >
-                    {action.description}
-                  </span>
-                </button>
-              );
-            }
-          )}
-        </div>
+            <div
+              data-workspace-quick-actions="6"
+              className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6"
+            >
+              {QUICK_ACTIONS.map(
+                (action) => {
+                  const Icon =
+                    action.icon;
 
+                  return (
+                    <button
+                      key={action.id}
+                      type="button"
+                      onClick={() =>
+                        chooseAction(action)
+                      }
+                      className={`group min-h-[82px] rounded-xl border p-2.5 text-left transition duration-200 hover:-translate-y-0.5 ${
+                        isDark
+                          ? "border-white/10 bg-white/[0.03] hover:border-violet-400/30 hover:bg-violet-500/[0.06]"
+                          : "border-slate-200 bg-white hover:border-violet-300 hover:bg-violet-50/60"
+                      }`}
+                      aria-label={`Quick action: ${action.label}`}
+                      title={action.description}
+                    >
+                      <div className="flex items-start gap-2">
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition ${
+                            isDark
+                              ? "border-violet-400/15 bg-violet-500/10 text-violet-300 group-hover:border-violet-400/30"
+                              : "border-violet-200 bg-violet-50 text-violet-700 group-hover:border-violet-300"
+                          }`}
+                        >
+                          <Icon
+                            aria-hidden="true"
+                            size={15}
+                          />
+                        </span>
+
+                        <span className="min-w-0">
+                          <span
+                            className={`block text-sm font-semibold ${
+                              isDark
+                                ? "text-slate-100"
+                                : "text-slate-900"
+                            }`}
+                          >
+                            {action.label}
+                          </span>
+
+                          <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">
+                            {action.description}
+                          </span>
+                        </span>
+                      </div>
+                    </button>
+                  );
+                }
+              )}
+            </div>
+          </>
+        )}
+
+        {showBottomCards && (
         <div
-          data-workspace-bottom-cards="3"
-          className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-3"
+            data-workspace-bottom-cards="3"
+          data-reference-bottom-cards="v2.40"
+          className="mt-5 grid grid-cols-1 gap-2.5 md:grid-cols-3"
         >
           <button
             type="button"
             onClick={onOpenKnowledge}
             disabled={!activeChatId}
-            className={`group rounded-2xl border p-4 text-left transition ${
+            className={`group min-h-[116px] rounded-xl border p-3.5 text-left transition ${
               !activeChatId
                 ? "cursor-not-allowed opacity-55"
                 : "hover:-translate-y-0.5"
@@ -238,7 +233,7 @@ function WorkspaceWelcome({
           >
             <div className="flex items-start gap-3">
               <span
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
                   isDark
                     ? "bg-blue-500/10 text-blue-300"
                     : "bg-blue-100 text-blue-700"
@@ -246,14 +241,20 @@ function WorkspaceWelcome({
               >
                 <FiDatabase
                   aria-hidden="true"
-                  size={18}
+                  size={16}
                 />
               </span>
 
               <div className="min-w-0">
-                <p className="text-sm font-semibold">
-                  Knowledge Base
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">
+                    Knowledge Base
+                  </p>
+
+                  <span className="text-[10px] font-medium text-violet-400">
+                    Open
+                  </span>
+                </div>
 
                 <p className="mt-1 text-[11px] leading-4 text-slate-500">
                   {activeChatId
@@ -267,7 +268,7 @@ function WorkspaceWelcome({
           <button
             type="button"
             onClick={onOpenSidebar}
-            className={`group rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 ${
+            className={`group min-h-[116px] rounded-xl border p-3.5 text-left transition hover:-translate-y-0.5 ${
               isDark
                 ? "border-white/10 bg-white/[0.03] hover:border-amber-400/25 hover:bg-amber-500/[0.06]"
                 : "border-slate-200 bg-white hover:border-amber-300 hover:bg-amber-50/50"
@@ -275,7 +276,7 @@ function WorkspaceWelcome({
           >
             <div className="flex items-start gap-3">
               <span
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
                   isDark
                     ? "bg-amber-500/10 text-amber-300"
                     : "bg-amber-100 text-amber-700"
@@ -283,14 +284,20 @@ function WorkspaceWelcome({
               >
                 <FiBookmark
                   aria-hidden="true"
-                  size={18}
+                  size={16}
                 />
               </span>
 
               <div className="min-w-0">
-                <p className="text-sm font-semibold">
-                  Recent Bookmarks
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">
+                    Recent Bookmarks
+                  </p>
+
+                  <span className="text-[10px] font-medium text-violet-400">
+                    Open
+                  </span>
+                </div>
 
                 <p className="mt-1 text-[11px] leading-4 text-slate-500">
                   Open the existing bookmarks panel from the left sidebar.
@@ -306,7 +313,7 @@ function WorkspaceWelcome({
               !activeChatId ||
               branchCount <= 0
             }
-            className={`group rounded-2xl border p-4 text-left transition ${
+            className={`group min-h-[116px] rounded-xl border p-3.5 text-left transition ${
               !activeChatId ||
               branchCount <= 0
                 ? "cursor-not-allowed opacity-55"
@@ -319,7 +326,7 @@ function WorkspaceWelcome({
           >
             <div className="flex items-start gap-3">
               <span
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
                   isDark
                     ? "bg-emerald-500/10 text-emerald-300"
                     : "bg-emerald-100 text-emerald-700"
@@ -327,7 +334,7 @@ function WorkspaceWelcome({
               >
                 <FiGitBranch
                   aria-hidden="true"
-                  size={18}
+                  size={16}
                 />
               </span>
 
@@ -337,7 +344,7 @@ function WorkspaceWelcome({
                     Chat Branches
                   </p>
 
-                  {branchCount > 0 && (
+                  {branchCount > 0 ? (
                     <span
                       className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                         isDark
@@ -346,6 +353,10 @@ function WorkspaceWelcome({
                       }`}
                     >
                       {branchCount}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-medium text-slate-500">
+                      No branches
                     </span>
                   )}
                 </div>
@@ -359,6 +370,7 @@ function WorkspaceWelcome({
             </div>
           </button>
         </div>
+        )}
       </div>
     </section>
   );
