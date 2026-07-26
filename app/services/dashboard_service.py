@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from typing import Any, Callable
 
 from app.config.settings import CHAT_DB
@@ -409,3 +410,132 @@ def build_dashboard_summary(
         "recovery": recovery,
         "incidents": incidents,
     }
+
+
+def summarize_today_conversation_activity(
+    *,
+    db_path: str | None = None,
+    connection_factory: Callable = (
+        get_runtime_connection
+    ),
+    now_provider: Callable[[], datetime] | None = None,
+) -> dict[str, Any]:
+    """Return today's conversation activity counts and 4-hour buckets based on message timestamps."""
+
+    connection = None
+    try:
+        if now_provider is not None:
+            now = now_provider()
+        else:
+            now = datetime.now()
+
+        if not isinstance(now, datetime):
+            raise TypeError("now_provider must return a datetime instance.")
+
+        start_dt = datetime(now.year, now.month, now.day, 0, 0, 0)
+        end_exclusive_dt = start_dt + timedelta(days=1)
+
+        day_str = start_dt.strftime("%Y-%m-%d")
+        start_iso = start_dt.isoformat()
+        end_exclusive_iso = end_exclusive_dt.isoformat()
+
+        bucket_intervals = []
+        buckets = []
+        for i in range(6):
+            b_start_dt = start_dt + timedelta(hours=i * 4)
+            b_end_dt = start_dt + timedelta(hours=(i + 1) * 4)
+            b_start_label = b_start_dt.strftime("%H:%M")
+            b_end_label = (
+                "24:00" if i == 5 else b_end_dt.strftime("%H:%M")
+            )
+            bucket_intervals.append((b_start_dt, b_end_dt))
+            buckets.append(
+                {
+                    "label": f"{b_start_label}-{b_end_label}",
+                    "start": b_start_dt.isoformat(),
+                    "end_exclusive": b_end_dt.isoformat(),
+                    "message_count": 0,
+                }
+            )
+
+        connection = connection_factory(
+            _resolved_db_path(db_path)
+        )
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT role, created_at
+            FROM messages
+            WHERE created_at >= ? AND created_at < ?
+            """,
+            (start_iso, end_exclusive_iso),
+        )
+
+        rows = cursor.fetchall()
+
+        total = 0
+        user = 0
+        assistant = 0
+        other = 0
+
+        for row in rows:
+            if (
+                row is None
+                or len(row) < 2
+                or row[0] is None
+                or row[1] is None
+            ):
+                continue
+
+            role = str(row[0])
+            created_at_raw = str(row[1])
+
+            try:
+                dt = datetime.fromisoformat(created_at_raw)
+            except (ValueError, TypeError):
+                continue
+
+            if dt.tzinfo is not None:
+                dt = dt.astimezone().replace(tzinfo=None)
+
+            if not (start_dt <= dt < end_exclusive_dt):
+                continue
+
+            total += 1
+            if role == "user":
+                user += 1
+            elif role == "assistant":
+                assistant += 1
+            else:
+                other += 1
+
+            for idx, (b_start, b_end) in enumerate(bucket_intervals):
+                if b_start <= dt < b_end:
+                    buckets[idx]["message_count"] += 1
+                    break
+
+        return {
+            "scope": "conversation activity",
+            "day": day_str,
+            "day_basis": "server-local calendar day",
+            "start": start_iso,
+            "end_exclusive": end_exclusive_iso,
+            "bucket_hours": 4,
+            "messages": {
+                "total": total,
+                "user": user,
+                "assistant": assistant,
+                "other": other,
+            },
+            "buckets": buckets,
+        }
+    except DashboardMetricsError:
+        raise
+    except Exception as error:
+        raise DashboardMetricsError(
+            "Dashboard activity is unavailable."
+        ) from error
+    finally:
+        if connection is not None:
+            _safe_close(connection)
