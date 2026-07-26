@@ -18,6 +18,7 @@ from app.database.schema import (
     knowledge_documents,
     document_recovery_runs,
     folders,
+    instance_profile,
     message_bookmarks,
     messages,
     schema_migrations,
@@ -78,8 +79,19 @@ _SCHEMA_V5_APPLICATION_TABLES = (
 )
 
 
-_APPLICATION_TABLES = (
+_SCHEMA_V6_APPLICATION_TABLES = (
     *_SCHEMA_V5_APPLICATION_TABLES,
+)
+
+
+_SCHEMA_V7_APPLICATION_TABLES = (
+    *_SCHEMA_V6_APPLICATION_TABLES,
+    instance_profile,
+)
+
+
+_APPLICATION_TABLES = (
+    *_SCHEMA_V7_APPLICATION_TABLES,
 )
 
 _SCHEMA_V1_VERSIONED_TABLE_NAMES = frozenset(
@@ -137,6 +149,30 @@ _SCHEMA_V5_VERSIONED_TABLE_NAMES = frozenset(
             table.name
             for table
             in _SCHEMA_V5_APPLICATION_TABLES
+        ),
+    }
+)
+
+
+_SCHEMA_V6_VERSIONED_TABLE_NAMES = frozenset(
+    {
+        schema_migrations.name,
+        *(
+            table.name
+            for table
+            in _SCHEMA_V6_APPLICATION_TABLES
+        ),
+    }
+)
+
+
+_SCHEMA_V7_VERSIONED_TABLE_NAMES = frozenset(
+    {
+        schema_migrations.name,
+        *(
+            table.name
+            for table
+            in _SCHEMA_V7_APPLICATION_TABLES
         ),
     }
 )
@@ -661,6 +697,15 @@ def validate_existing_schema(
                 *_SCHEMA_V5_APPLICATION_TABLES,
                 schema_migrations,
             )
+        elif resolved_version == 6:
+            required_table_names = (
+                _SCHEMA_V6_VERSIONED_TABLE_NAMES
+            )
+
+            tables_to_validate = (
+                *_SCHEMA_V6_APPLICATION_TABLES,
+                schema_migrations,
+            )
         elif (
             resolved_version
             == SCHEMA_VERSION
@@ -900,6 +945,19 @@ def initialize_schema(
                             description=(
                                 "Add message agent "
                                 "metadata"
+                            ),
+                            applied_at=_utc_now_iso(),
+                        )
+                    )
+
+                if latest_version < 7:
+                    connection.execute(
+                        insert(
+                            schema_migrations
+                        ).values(
+                            version=7,
+                            description=(
+                                "Add instance profile"
                             ),
                             applied_at=_utc_now_iso(),
                         )

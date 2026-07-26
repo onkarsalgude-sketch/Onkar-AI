@@ -247,6 +247,9 @@ def create_app(
         router as memory_router,
     )
     from app.api.image import router as image_router
+    from app.api.profile import (
+        router as profile_router,
+    )
 
     application.include_router(
         agents_router
@@ -256,6 +259,7 @@ def create_app(
     application.include_router(knowledge_router)
     application.include_router(memory_router)
     application.include_router(image_router)
+    application.include_router(profile_router)
     application.include_router(backups_router)
 
     application.state.document_recovery_report = None

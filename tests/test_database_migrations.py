@@ -174,7 +174,7 @@ class DatabaseMigrationTests(unittest.TestCase):
 
         self.assertEqual(
             version,
-            6,
+            7,
         )
         self.assertIn(
             "agent_id",
@@ -189,7 +189,7 @@ class DatabaseMigrationTests(unittest.TestCase):
         )
         self.assertEqual(
             versions,
-            [5, 6],
+            [5, 6, 7],
         )
 
     def test_version_five_migration_is_idempotent(
@@ -227,7 +227,7 @@ class DatabaseMigrationTests(unittest.TestCase):
         )
         self.assertEqual(
             versions,
-            [5, 6],
+            [5, 6, 7],
         )
 
     def test_version_four_records_versions_five_and_six(
@@ -252,7 +252,7 @@ class DatabaseMigrationTests(unittest.TestCase):
 
         self.assertEqual(
             versions,
-            [1, 2, 3, 4, 5, 6],
+            [1, 2, 3, 4, 5, 6, 7],
         )
 
     def test_stamped_version_six_missing_agent_id_is_rejected(

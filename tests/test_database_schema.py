@@ -68,10 +68,10 @@ class DatabaseSchemaTests(unittest.TestCase):
             EXPECTED_TABLE_NAMES,
         )
 
-    def test_current_schema_version_is_six(self):
+    def test_current_schema_version_is_seven(self):
         self.assertEqual(
             SCHEMA_VERSION,
-            6,
+            7,
         )
 
     def test_messages_include_nullable_agent_id(self):

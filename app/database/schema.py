@@ -12,6 +12,7 @@ The column types intentionally preserve current API and SQLite semantics:
 This module does not migrate existing databases automatically.
 """
 
+# pyrefly: ignore [missing-import]
 from sqlalchemy import (
     CheckConstraint,
     Column,
@@ -24,10 +25,11 @@ from sqlalchemy import (
     func,
     text,
 )
+# pyrefly: ignore [missing-import]
 from sqlalchemy.engine import Engine
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 metadata = MetaData()
 
@@ -889,6 +891,28 @@ knowledge_documents = Table(
     Index("ix_knowledge_documents_enabled_updated", "is_enabled", "updated_at"),
 )
 
+
+instance_profile = Table(
+    "instance_profile",
+    metadata,
+    Column(
+        "id",
+        Integer,
+        primary_key=True,
+        autoincrement=False,
+    ),
+    Column("display_name", Text, nullable=False),
+    Column("timezone", Text, nullable=True),
+    Column("created_at", Text, nullable=False),
+    Column("updated_at", Text, nullable=False),
+    CheckConstraint("id = 1", name="ck_instance_profile_singleton_id"),
+    CheckConstraint(
+        "length(display_name) BETWEEN 1 AND 50",
+        name="ck_instance_profile_display_name_length",
+    ),
+)
+
+
 EXPECTED_TABLE_NAMES = frozenset(
     {
         "schema_migrations",
@@ -903,6 +927,7 @@ EXPECTED_TABLE_NAMES = frozenset(
         "system_incident_alert_outbox",
         "branch_merge_operations",
         "branch_merge_message_mappings",
+        "instance_profile",
     }
 )
 
