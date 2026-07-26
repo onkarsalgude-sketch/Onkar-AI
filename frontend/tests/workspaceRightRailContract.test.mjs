@@ -160,7 +160,7 @@ test(
   }
 );
 test(
-  "analytics is reserved for v2.40 without fabricated metrics",
+  "todays activity uses real backend activity source",
   () => {
     const source = read(
       "src/components/Workspace/WorkspaceRightRail.jsx"
@@ -168,18 +168,18 @@ test(
 
     assert.ok(
       source.includes(
-        'data-right-rail-analytics="placeholder"'
+        "data-right-rail-activity={"
       )
     );
 
     assert.ok(
       source.includes(
-        "Planned for v2.40"
+        'data-activity-source="dashboard-backend"'
       )
     );
 
     assert.ok(
-      source.includes(
+      !source.includes(
         "No fabricated chart data"
       )
     );

@@ -44,7 +44,7 @@ test(
       );
     const activity =
       source.indexOf(
-        'data-right-rail-activity="no-timeseries"'
+        'data-right-rail-activity={'
       );
     const system =
       source.indexOf(
@@ -120,7 +120,7 @@ test(
   }
 );
 test(
-  "todays activity has no invented time series",
+  "todays activity uses real backend activity source",
   () => {
     const source = read(
       "src/components/Workspace/WorkspaceRightRail.jsx"
@@ -128,19 +128,19 @@ test(
 
     assert.ok(
       source.includes(
-        'data-right-rail-activity="no-timeseries"'
+        'data-right-rail-activity={'
       )
     );
 
     assert.ok(
       source.includes(
+        'data-activity-source="dashboard-backend"'
+      )
+    );
+
+    assert.ok(
+      !source.includes(
         "No fabricated chart data"
-      )
-    );
-
-    assert.ok(
-      source.includes(
-        "No real time-series source is"
       )
     );
 
