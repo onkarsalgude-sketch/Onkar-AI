@@ -13,6 +13,7 @@ import {
 } from "react-icons/fi";
 
 import {
+  getDashboardActivityToday,
   getDashboardHealth,
 } from "../../services/dashboardService";
 import {
@@ -45,6 +46,43 @@ function readSessionCredential() {
     return "";
   }
 }
+
+
+function removeSessionCredential() {
+  try {
+    window.sessionStorage.removeItem(
+      DASHBOARD_CREDENTIAL_KEY
+    );
+  } catch {
+    // Session storage may be unavailable.
+  }
+}
+
+
+function activityStateLabel(state) {
+  return {
+    locked: "Locked",
+    loading: "Loading",
+    live: "Live",
+    empty: "Empty",
+    unauthorized: "Unauthorized",
+    unavailable: "Unavailable",
+  }[state] || "Unavailable";
+}
+
+
+function formatBucketLabel(startIso) {
+  if (!startIso) {
+    return "";
+  }
+
+  const match = String(
+    startIso
+  ).match(/T(\d{2}:\d{2})/);
+
+  return match ? match[1] : "";
+}
+
 
 
 function readMemorySessionCredential() {
@@ -241,6 +279,34 @@ function WorkspaceRightRail({
     useRef(0);
 
   const [
+    activityData,
+    setActivityData,
+  ] = useState(null);
+
+  const [
+    activityState,
+    setActivityState,
+  ] = useState("locked");
+
+  const [
+    activityMessage,
+    setActivityMessage,
+  ] = useState(
+    "Dashboard credential required"
+  );
+
+  const [
+    activityRefreshKey,
+    setActivityRefreshKey,
+  ] = useState(0);
+
+  const activityInFlightRef =
+    useRef(false);
+
+  const activityEpochRef =
+    useRef(0);
+
+  const [
     memoryItems,
     setMemoryItems,
   ] = useState([]);
@@ -398,12 +464,20 @@ function WorkspaceRightRail({
         if (
           error?.status === 401
         ) {
+          removeSessionCredential();
           setHealthState(
             "unauthorized"
           );
           setHealthMessage(
             "Monitoring credential was not accepted"
           );
+          setActivityState(
+            "unauthorized"
+          );
+          setActivityMessage(
+            "Dashboard credential was not accepted"
+          );
+          setActivityData(null);
         } else if (
           error?.status === 404
         ) {
@@ -460,6 +534,173 @@ function WorkspaceRightRail({
       );
     };
   }, []);
+
+
+  useEffect(() => {
+    let disposed = false;
+
+    async function loadActivity() {
+      if (
+        activityInFlightRef.current
+      ) {
+        return;
+      }
+
+      const credential =
+        readSessionCredential();
+
+      if (!credential) {
+        activityEpochRef.current += 1;
+
+        if (!disposed) {
+          setActivityData(null);
+          setActivityState("locked");
+          setActivityMessage(
+            "Dashboard credential required"
+          );
+        }
+
+        return;
+      }
+
+      const requestEpoch =
+        activityEpochRef.current;
+
+      activityInFlightRef.current =
+        true;
+
+      if (
+        !disposed &&
+        !activityData
+      ) {
+        setActivityState("loading");
+        setActivityMessage(
+          "Loading conversation activity"
+        );
+      }
+
+      try {
+        const response =
+          await getDashboardActivityToday(
+            credential
+          );
+
+        if (
+          disposed ||
+          requestEpoch !==
+            activityEpochRef.current
+        ) {
+          return;
+        }
+
+        const act =
+          response?.activity;
+
+        if (
+          response?.service ===
+            "dashboard_activity" &&
+          act
+        ) {
+          setActivityData(act);
+
+          const total =
+            act.messages?.total || 0;
+
+          if (total > 0) {
+            setActivityState("live");
+            setActivityMessage("");
+          } else {
+            setActivityState("empty");
+            setActivityMessage(
+              "No conversation messages recorded for this server-local day."
+            );
+          }
+
+          return;
+        }
+
+        setActivityData(null);
+        setActivityState("unavailable");
+        setActivityMessage(
+          "Live activity data unavailable"
+        );
+      } catch (error) {
+        if (disposed) {
+          return;
+        }
+
+        setActivityData(null);
+
+        if (
+          error?.status === 401
+        ) {
+          removeSessionCredential();
+          setActivityState(
+            "unauthorized"
+          );
+          setActivityMessage(
+            "Dashboard credential was not accepted"
+          );
+          setHealthState(
+            "unauthorized"
+          );
+          setHealthMessage(
+            "Monitoring credential was not accepted"
+          );
+          setSystemHealth(null);
+        } else if (
+          error?.status === 404
+        ) {
+          setActivityState(
+            "unavailable"
+          );
+          setActivityMessage(
+            "Activity API is not available"
+          );
+        } else {
+          setActivityState(
+            "unavailable"
+          );
+          setActivityMessage(
+            "Live activity data unavailable"
+          );
+        }
+      } finally {
+        activityInFlightRef.current =
+          false;
+      }
+    }
+
+    void loadActivity();
+
+    function handleFocus() {
+      void loadActivity();
+    }
+
+    window.addEventListener(
+      "focus",
+      handleFocus
+    );
+
+    return () => {
+      disposed = true;
+      activityEpochRef.current += 1;
+
+      window.removeEventListener(
+        "focus",
+        handleFocus
+      );
+    };
+  }, [activityRefreshKey]);
+
+
+  function handleActivityRefresh() {
+    activityEpochRef.current += 1;
+    setActivityRefreshKey(
+      (value) => value + 1
+    );
+  }
+
 
 
   useEffect(() => {
@@ -1106,68 +1347,312 @@ function WorkspaceRightRail({
         </section>
 
         <section
-          data-right-rail-analytics="placeholder"
-          data-right-rail-activity="no-timeseries"
-          className={`rounded-2xl border border-dashed p-3.5 ${
+          data-right-rail-activity={
+            activityState
+          }
+          data-activity-source="dashboard-backend"
+          className={`rounded-2xl border p-3.5 ${
             isDark
-              ? "border-white/10 bg-white/[0.02]"
-              : "border-slate-300 bg-slate-50/70"
+              ? "border-white/10 bg-white/[0.035]"
+              : "border-slate-200 bg-slate-50"
           }`}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span
+                className={`flex h-9 w-9 items-center justify-center rounded-xl ${
+                  activityState === "live"
+                    ? isDark
+                      ? "bg-cyan-500/10 text-cyan-300"
+                      : "bg-cyan-100 text-cyan-700"
+                    : isDark
+                      ? "bg-slate-800 text-slate-400"
+                      : "bg-slate-200 text-slate-600"
+                }`}
+              >
+                <FiBarChart2
+                  aria-hidden="true"
+                  size={17}
+                />
+              </span>
+
+              <div>
+                <h3 className="text-sm font-semibold">
+                  Today&apos;s Activity
+                </h3>
+
+                <p className="text-[11px] text-slate-500">
+                  Conversation activity
+                </p>
+              </div>
+            </div>
+
             <span
-              className={`flex h-9 w-9 items-center justify-center rounded-xl ${
-                isDark
-                  ? "bg-cyan-500/10 text-cyan-300"
-                  : "bg-cyan-100 text-cyan-700"
+              className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
+                activityState === "live"
+                  ? isDark
+                    ? "bg-emerald-500/10 text-emerald-300"
+                    : "bg-emerald-100 text-emerald-700"
+                  : activityState ===
+                      "empty"
+                    ? isDark
+                      ? "bg-blue-500/10 text-blue-300"
+                      : "bg-blue-100 text-blue-700"
+                    : activityState ===
+                          "unauthorized" ||
+                        activityState ===
+                          "unavailable"
+                      ? isDark
+                        ? "bg-red-500/10 text-red-300"
+                        : "bg-red-100 text-red-700"
+                      : isDark
+                        ? "bg-slate-800 text-slate-400"
+                        : "bg-slate-200 text-slate-600"
               }`}
             >
-              <FiBarChart2
-                aria-hidden="true"
-                size={17}
-              />
+              {activityStateLabel(
+                activityState
+              )}
             </span>
+          </div>
 
-            <div>
-              <h3 className="text-sm font-semibold">
-                Today&apos;s Activity
-              </h3>
+          <div className="mt-2 text-[11px] text-slate-500">
+            Server-local day
+            {activityData?.day
+              ? ` · ${activityData.day}`
+              : ""}
+          </div>
 
-              <p className="text-[11px] text-slate-500">
-                Planned for v2.40
+          {activityState === "loading" ? (
+            <div
+              className={`mt-3 rounded-xl px-3 py-2.5 text-[11px] ${
+                isDark
+                  ? "bg-slate-950/60 text-slate-400"
+                  : "bg-white text-slate-600"
+              }`}
+            >
+              Loading conversation activity...
+            </div>
+          ) : activityState ===
+              "locked" ||
+            activityState ===
+              "unauthorized" ? (
+            <div
+              className={`mt-3 rounded-xl px-3 py-2.5 text-[11px] leading-4 ${
+                isDark
+                  ? "bg-slate-950/60 text-slate-400"
+                  : "bg-white text-slate-600"
+              }`}
+            >
+              <p className="font-medium">
+                {activityMessage}
+              </p>
+
+              <p className="mt-1 text-slate-500">
+                Open Dashboard from the left
+                sidebar to authorize live activity.
               </p>
             </div>
-          </div>
-
-          <div
-            className={`mt-3 rounded-xl border border-dashed px-3 py-3 ${
-              isDark
-                ? "border-white/10 bg-slate-950/50"
-                : "border-slate-200 bg-white"
-            }`}
-          >
-            <div className="space-y-2 opacity-50">
-              <div className="h-px bg-slate-600/30" />
-              <div className="h-px bg-slate-600/30" />
-              <div className="h-px bg-slate-600/30" />
+          ) : activityState ===
+            "unavailable" ? (
+            <div
+              className={`mt-3 rounded-xl px-3 py-2.5 text-[11px] leading-4 ${
+                isDark
+                  ? "bg-slate-950/60 text-slate-400"
+                  : "bg-white text-slate-600"
+              }`}
+            >
+              <p className="font-medium">
+                {activityMessage}
+              </p>
             </div>
+          ) : (
+            <>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                <div
+                  className={`rounded-xl border p-2 ${
+                    isDark
+                      ? "border-white/10 bg-slate-950/60"
+                      : "border-slate-200 bg-white"
+                  }`}
+                >
+                  <p className="text-[10px] font-semibold uppercase text-slate-400">
+                    Total
+                  </p>
+                  <p className="mt-0.5 text-base font-bold">
+                    {activityData?.messages?.total ??
+                      0}
+                  </p>
+                </div>
 
-            <div className="mt-3 flex items-start gap-2 text-[11px] leading-4 text-slate-500">
-              <FiActivity
-                aria-hidden="true"
-                className="mt-0.5 shrink-0"
-                size={14}
-              />
+                <div
+                  className={`rounded-xl border p-2 ${
+                    isDark
+                      ? "border-white/10 bg-slate-950/60"
+                      : "border-slate-200 bg-white"
+                  }`}
+                >
+                  <p className="text-[10px] font-semibold uppercase text-cyan-400">
+                    User
+                  </p>
+                  <p className="mt-0.5 text-base font-bold">
+                    {activityData?.messages?.user ??
+                      0}
+                  </p>
+                </div>
 
-              <span>
-                <span className="block font-medium">
-                  No fabricated chart data
-                </span>
-                No real time-series source is
-                available yet.
-              </span>
-            </div>
-          </div>
+                <div
+                  className={`rounded-xl border p-2 ${
+                    isDark
+                      ? "border-white/10 bg-slate-950/60"
+                      : "border-slate-200 bg-white"
+                  }`}
+                >
+                  <p className="text-[10px] font-semibold uppercase text-violet-400">
+                    Assistant
+                  </p>
+                  <p className="mt-0.5 text-base font-bold">
+                    {activityData?.messages?.assistant ??
+                      0}
+                  </p>
+                </div>
+              </div>
+
+              {(activityData?.messages?.other ??
+                0) > 0 && (
+                <div className="mt-2 text-center text-[10px] text-slate-400">
+                  Other:{" "}
+                  {
+                    activityData.messages
+                      .other
+                  }
+                </div>
+              )}
+
+              {Array.isArray(
+                activityData?.buckets
+              ) &&
+                activityData.buckets
+                  .length > 0 && (
+                  <div className="mt-3">
+                    <div
+                      className={`flex h-16 items-end gap-1.5 rounded-xl border p-2.5 ${
+                        isDark
+                          ? "border-white/10 bg-slate-950/60"
+                          : "border-slate-200 bg-white"
+                      }`}
+                    >
+                      {(() => {
+                        const maxVal =
+                          Math.max(
+                            1,
+                            ...activityData.buckets.map(
+                              (b) =>
+                                b.message_count ||
+                                0
+                            )
+                          );
+
+                        return activityData.buckets.map(
+                          (b, idx) => {
+                            const count =
+                              b.message_count ||
+                              0;
+
+                            const heightPct =
+                              count > 0
+                                ? Math.max(
+                                    8,
+                                    Math.round(
+                                      (count /
+                                        maxVal) *
+                                        100
+                                    )
+                                  )
+                                : 0;
+
+                            const label =
+                              formatBucketLabel(
+                                b.start
+                              );
+
+                            return (
+                              <div
+                                key={
+                                  b.start ||
+                                  idx
+                                }
+                                className="flex h-full flex-1 flex-col items-center justify-end"
+                                title={`Bucket ${label}: ${count} messages`}
+                                aria-label={`Bucket ${label}: ${count} messages`}
+                              >
+                                <div
+                                  style={{
+                                    height: `${heightPct}%`,
+                                  }}
+                                  className={`w-full rounded-t transition-all ${
+                                    count > 0
+                                      ? isDark
+                                        ? "bg-cyan-500/80 hover:bg-cyan-400"
+                                        : "bg-cyan-600 hover:bg-cyan-500"
+                                      : "bg-transparent"
+                                  }`}
+                                />
+                              </div>
+                            );
+                          }
+                        );
+                      })()}
+                    </div>
+
+                    <div className="mt-1.5 flex justify-between px-1 font-mono text-[9px] text-slate-500">
+                      {activityData.buckets.map(
+                        (b, idx) => (
+                          <span
+                            key={
+                              b.start ||
+                              idx
+                            }
+                          >
+                            {formatBucketLabel(
+                              b.start
+                            )}
+                          </span>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
+
+              {activityState === "empty" && (
+                <div className="mt-2 text-[11px] leading-4 text-slate-400">
+                  No conversation messages
+                  recorded for this
+                  server-local day.
+                </div>
+              )}
+
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={
+                    handleActivityRefresh
+                  }
+                  disabled={
+                    activityState ===
+                    "loading"
+                  }
+                  className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold transition ${
+                    isDark
+                      ? "border-white/10 text-slate-300 hover:bg-white/[0.06]"
+                      : "border-slate-200 text-slate-600 hover:bg-white"
+                  }`}
+                >
+                  Refresh
+                </button>
+              </div>
+            </>
+          )}
         </section>
 
         <section

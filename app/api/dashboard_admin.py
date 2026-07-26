@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+# pyrefly: ignore [missing-import]
 from fastapi import (
     APIRouter,
     HTTPException,
@@ -20,6 +21,7 @@ from app.services.branch_merge_security import (
 from app.services.dashboard_service import (
     build_dashboard_health,
     build_dashboard_summary,
+    summarize_today_conversation_activity,
 )
 
 
@@ -28,6 +30,9 @@ DASHBOARD_SUMMARY_PATH = (
 )
 DASHBOARD_HEALTH_PATH = (
     "/admin/dashboard/health"
+)
+DASHBOARD_ACTIVITY_TODAY_PATH = (
+    "/admin/dashboard/activity/today"
 )
 
 
@@ -75,6 +80,15 @@ def _dashboard_health_unavailable() -> HTTPException:
     )
 
 
+def _dashboard_activity_unavailable() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail=(
+            "Dashboard activity is unavailable."
+        ),
+    )
+
+
 def create_dashboard_admin_router(
     settings: SystemHealthMonitoringSettings,
     *,
@@ -83,6 +97,9 @@ def create_dashboard_admin_router(
     ),
     health_provider: Callable = (
         build_dashboard_health
+    ),
+    activity_provider: Callable = (
+        summarize_today_conversation_activity
     ),
     db_path: str | None = None,
 ) -> APIRouter:
@@ -104,6 +121,13 @@ def create_dashboard_admin_router(
     ):
         raise TypeError(
             "Dashboard health provider must be callable."
+        )
+
+    if not callable(
+        activity_provider
+    ):
+        raise TypeError(
+            "Dashboard activity provider must be callable."
         )
 
     router = APIRouter()
@@ -181,6 +205,39 @@ def create_dashboard_admin_router(
         return {
             "service": "dashboard_health",
             "health": health,
+        }
+
+    @router.get(
+        DASHBOARD_ACTIVITY_TODAY_PATH,
+        operation_id=(
+            "get_admin_dashboard_activity_today"
+        ),
+        tags=["admin"],
+    )
+    def get_admin_dashboard_activity_today(
+        request: Request,
+    ) -> dict[str, Any]:
+        _authenticate(
+            request,
+            settings,
+        )
+
+        try:
+            activity = activity_provider(
+                db_path=db_path
+            )
+        except Exception:
+            raise _dashboard_activity_unavailable()
+
+        if not isinstance(
+            activity,
+            dict,
+        ):
+            raise _dashboard_activity_unavailable()
+
+        return {
+            "service": "dashboard_activity",
+            "activity": activity,
         }
 
     return router
